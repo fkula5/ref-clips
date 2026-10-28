@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+# Uruchamia serwer WWW (http://localhost:8000) oraz worker zadań w tle. Ctrl+C zatrzymuje oba.
+set -euo pipefail
+cd "$(dirname "$0")"
+
+if [ ! -d .venv ]; then
+  echo "Brak .venv — utwórz: python3 -m venv .venv && .venv/bin/pip install -r requirements.txt" >&2
+  exit 1
+fi
+if ! command -v "${FFMPEG_PATH:-ffmpeg}" >/dev/null 2>&1; then
+  echo "UWAGA: brak ffmpeg — uruchom: sudo apt install ffmpeg (aplikacja wystartuje, ale zadania będą czekać)" >&2
+fi
+
+PY=.venv/bin/python
+$PY -m app.initdb
+
+$PY -m app.worker &
+WORKER_PID=$!
+trap 'kill "$WORKER_PID" 2>/dev/null || true' EXIT INT TERM
+
+# --host 0.0.0.0, żeby przeglądarka z Windowsa dotarła do WSL pod localhost:8000
+$PY -m uvicorn app.main:app --host "${HOST:-0.0.0.0}" --port "${PORT:-8000}"

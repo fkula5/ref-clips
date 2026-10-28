@@ -1,0 +1,34 @@
+<div id="videos-panel" {% if busy %}hx-get="/matches/{{ match.id }}" hx-trigger="every 3s" hx-select="#videos-panel" hx-swap="outerHTML"{% endif %}>
+{% if not match.videos %}
+  <p class="muted">Brak nagrań. Wgraj plik poniżej.</p>
+{% endif %}
+{% for v in match.videos %}
+  <div class="card video-row">
+    <div class="grow">
+      <strong>{{ v.display_name }}</strong>
+      <span class="muted">· {{ VIDEO_SOURCES.get(v.source, v.source) }}{% if v.size_bytes %} · {{ (v.size_bytes / 1048576)|round(0)|int }} MB{% endif %}{% if v.duration %} · {{ v.duration|clock }}{% endif %}</span>
+      <div>
+        <span class="badge {{ v.status }}">{{ VIDEO_STATUSES.get(v.status, v.status) }}</span>
+        {% if v.status in ('queued', 'processing') %}
+          {% set job = v.latest_job %}
+          {% if job and job.status == 'running' %}
+            <progress max="1" value="{{ job.progress }}"></progress> {{ (job.progress * 100)|round|int }}%
+          {% elif not ffmpeg_ok() %}<span class="muted">czeka na ffmpeg</span>
+          {% else %}<span class="muted">czeka na worker (python -m app.worker)</span>{% endif %}
+        {% endif %}
+        {% if v.error %}<div class="error-text">{{ v.error }}</div>{% endif %}
+      </div>
+    </div>
+    <div class="row">
+      {% if v.status == 'ready' %}
+        <a class="btn primary" href="/videos/{{ v.id }}">Odtwarzacz</a>
+        <a class="btn" href="/videos/{{ v.id }}/notes">Wklej notatki</a>
+      {% endif %}
+      {% if v.status == 'error' %}
+        <form method="post" action="/videos/{{ v.id }}/retry"><button class="btn">Ponów konwersję</button></form>
+      {% endif %}
+      <form method="post" action="/videos/{{ v.id }}/delete" onsubmit="return confirm('Usunąć nagranie wraz z klipami?')"><button class="btn danger small">Usuń</button></form>
+    </div>
+  </div>
+{% endfor %}
+</div>

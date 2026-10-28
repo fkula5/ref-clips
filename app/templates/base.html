@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="pl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}ref-clips{% endblock %} · ref-clips</title>
+  <link rel="stylesheet" href="/static/app.css">
+  <script src="https://unpkg.com/htmx.org@2.0.4/dist/htmx.min.js"></script>
+</head>
+<body>
+  <header class="top">
+    <a class="brand" href="/">ref-clips</a>
+    <nav>
+      <a href="/">Mecze</a>
+      <a href="/clips">Klipy</a>
+      <a href="/tags">Tagi</a>
+    </nav>
+  </header>
+  {% if not ffmpeg_ok() %}
+  <div class="banner error" id="ffmpeg-banner">{{ ffmpeg_message }}. Do czasu instalacji konwersja i wycinanie czekają w kolejce.</div>
+  {% endif %}
+  <main>{% block content %}{% endblock %}</main>
+  {% block scripts %}{% endblock %}
+</body>
+</html>

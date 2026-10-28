@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block title %}Tagi{% endblock %}
+{% block content %}
+<h1>Słownik tagów</h1>
+<p class="muted">Parser notatek rozpoznaje w tekście nazwę tagu oraz jego aliasy (po przecinku). Jedno- i dwuliterowe tagi (U, T, D) są rozpoznawane tylko wielką literą.</p>
+<table>
+  <thead><tr><th>Nazwa</th><th>Aliasy</th><th>Użycia</th><th></th></tr></thead>
+  <tbody>
+  {% for t in tags %}
+    <tr>
+      <td><input form="tag{{ t.id }}" name="name" value="{{ t.name }}" required></td>
+      <td><input form="tag{{ t.id }}" name="aliases" value="{{ t.aliases }}" class="wide"></td>
+      <td>{{ usage.get(t.id, 0) }}</td>
+      <td class="row">
+        <button form="tag{{ t.id }}" class="btn small">Zapisz</button>
+        <button form="tag{{ t.id }}" class="btn danger small" formaction="/tags/{{ t.id }}/delete" onclick="return confirm('Usunąć tag?')">Usuń</button>
+      </td>
+    </tr>
+  {% endfor %}
+    <tr>
+      <td><input form="tag-new" name="name" placeholder="nowy tag" required></td>
+      <td><input form="tag-new" name="aliases" placeholder="aliasy, po przecinku" class="wide"></td>
+      <td></td>
+      <td><button form="tag-new" class="btn primary small">Dodaj</button></td>
+    </tr>
+  </tbody>
+</table>
+{% for t in tags %}<form id="tag{{ t.id }}" method="post" action="/tags/{{ t.id }}"></form>{% endfor %}
+<form id="tag-new" method="post" action="/tags"></form>
+{% endblock %}

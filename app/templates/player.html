@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% block title %}{{ video.display_name }}{% endblock %}
+{% block content %}
+<div class="row between">
+  <div>
+    <h1>{{ video.display_name }}</h1>
+    <a href="/matches/{{ match.id }}">{{ match.title }}</a>
+  </div>
+  <div class="row">
+    <a class="btn" href="/videos/{{ video.id }}/notes">Wklej notatki</a>
+    <a class="btn" href="/clips?video_id={{ video.id }}">Klipy tego nagrania</a>
+  </div>
+</div>
+
+{% if video.status != 'ready' %}
+  <div class="banner error">Wersja robocza nie jest jeszcze gotowa (status: {{ VIDEO_STATUSES.get(video.status, video.status) }}). Wróć do <a href="/matches/{{ match.id }}">meczu</a>.</div>
+{% else %}
+<div class="player-layout">
+  <section>
+    <div class="video-wrap">
+      <video id="player" src="/videos/{{ video.id }}/stream" preload="auto" controls playsinline></video>
+      <div id="timeline" class="timeline" title="Kliknij, by przewinąć"></div>
+    </div>
+    <div class="row controls">
+      <span id="clock" class="clock">0:00</span>
+      <label>Tempo
+        <select id="speed">
+          {% for s in [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2] %}<option value="{{ s }}" {{ 'selected' if s == 1 }}>{{ s }}×</option>{% endfor %}
+        </select>
+      </label>
+      <button class="btn" id="btn-m" type="button">M · Dodaj decyzję</button>
+      <button class="btn" id="btn-q" type="button">Q · Znacznik kwarty (<span id="next-period">Q1</span>)</button>
+    </div>
+    <form id="quick-form" class="card hidden" autocomplete="off">
+      <label>Decyzja w <strong id="quick-time">0:00</strong> — wpisz np. „Filip PTS” lub „Kasia kroki białe”
+        <input id="quick-text" placeholder="sędzia, tagi, uwagi — Enter zapisuje, Esc anuluje">
+      </label>
+    </form>
+    <p class="muted shortcuts">
+      Skróty: <kbd>Spacja</kbd> start/pauza · <kbd>←</kbd><kbd>→</kbd> ±1 s · <kbd>Shift</kbd>+<kbd>←</kbd><kbd>→</kbd> ±5 s ·
+      <kbd>,</kbd><kbd>.</kbd> klatka wstecz/naprzód · <kbd>[</kbd><kbd>]</kbd> tempo · <kbd>M</kbd> decyzja · <kbd>Q</kbd> kwarta
+    </p>
+  </section>
+
+  <aside>
+    <div class="card">
+      <h3>Znaczniki kwart</h3>
+      <div id="marks"></div>
+      <div class="row">
+        <select id="mark-period">{% for p in PERIODS %}<option>{{ p }}</option>{% endfor %}</select>
+        <button class="btn small" id="btn-mark" type="button">Ustaw w bieżącej chwili</button>
+      </div>
+      <p class="muted">Kwarta każdego klipu wynika z tych znaczników.</p>
+    </div>
+    <div class="card">
+      <h3>Decyzje <span id="dec-count" class="muted"></span></h3>
+      <ul id="decisions" class="dec-list"></ul>
+    </div>
+  </aside>
+</div>
+<div id="toast" class="toast hidden"></div>
+<script type="application/json" id="init-state">{{ state|tojson }}</script>
+{% endif %}
+{% endblock %}
+{% block scripts %}{% if video.status == 'ready' %}<script>window.START_AT = {{ start_at }};</script><script src="/static/player.js"></script>{% endif %}{% endblock %}

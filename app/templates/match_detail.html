@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}{{ match.title }}{% endblock %}
+{% block content %}
+<div class="row between">
+  <h1>{{ match.title }}</h1>
+  <div class="row">
+    <a class="btn" href="/matches/{{ match.id }}/edit">Edytuj</a>
+    <a class="btn" href="/clips?match_id={{ match.id }}">Klipy ({{ match.decisions|length }})</a>
+  </div>
+</div>
+<p class="muted">
+  {{ match.level }}{% if match.level %} · {% endif %}
+  {{ match.team_a_name or '—' }} ({{ match.team_a_color }}) vs {{ match.team_b_name or '—' }} ({{ match.team_b_color }})
+</p>
+<p>Obsada:
+  {% for mr in match.referees %}<span class="chip">{{ mr.referee.name }} <small>{{ 'R' if mr.role == 'crew_chief' else 'U' }}</small></span>{% else %}<span class="muted">brak</span>{% endfor %}
+</p>
+
+<h2>Nagrania</h2>
+{% include "_videos_panel.html" %}
+
+<h3>Dodaj nagranie</h3>
+<form id="upload-form" class="card form" data-match="{{ match.id }}">
+  <div class="grid2">
+    <label>Pliki wideo (można kilka, np. osobne kwarty)
+      <input type="file" id="upload-files" accept="video/*,.mkv,.mov,.mp4,.avi,.ts" multiple required>
+    </label>
+    <label>Etykieta (opcjonalnie)
+      <input id="upload-label" placeholder="np. Całość / Q1–Q2">
+    </label>
+  </div>
+  <label>Źródło
+    <select id="upload-source">{% for k, v in VIDEO_SOURCES.items() if k != 'youtube' %}<option value="{{ k }}">{{ v }}</option>{% endfor %}</select>
+  </label>
+  <button class="btn primary" type="submit">Wgraj</button>
+  <div id="upload-progress"></div>
+</form>
+
+<form method="post" action="/matches/{{ match.id }}/delete" onsubmit="return confirm('Usunąć mecz razem z nagraniami i klipami?')">
+  <button class="btn danger small">Usuń mecz</button>
+</form>
+{% endblock %}
+{% block scripts %}<script src="/static/upload.js"></script>{% endblock %}

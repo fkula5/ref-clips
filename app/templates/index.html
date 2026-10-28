@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block title %}Mecze{% endblock %}
+{% block content %}
+<div class="row between">
+  <h1>Mecze</h1>
+  <a class="btn primary" href="/matches/new">+ Nowy mecz</a>
+</div>
+{% if not matches %}
+  <p class="muted">Nie ma jeszcze żadnego meczu. Dodaj mecz, wgraj nagranie i zacznij zaznaczać decyzje.</p>
+{% else %}
+<table>
+  <thead><tr><th>Data</th><th>Mecz</th><th>Poziom</th><th>Nagrania</th><th>Klipy</th></tr></thead>
+  <tbody>
+  {% for m in matches %}
+    <tr>
+      <td>{{ m.date.strftime("%d.%m.%Y") }}</td>
+      <td><a href="/matches/{{ m.id }}">{{ m.team_a_name or m.team_a_color }} – {{ m.team_b_name or m.team_b_color }}</a></td>
+      <td>{{ m.level }}</td>
+      <td>{{ m.videos|length }}</td>
+      <td><a href="/clips?match_id={{ m.id }}">{{ m.decisions|length }}</a></td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+{% endblock %}

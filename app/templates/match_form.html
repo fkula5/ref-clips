@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block title %}{{ "Edycja meczu" if match else "Nowy mecz" }}{% endblock %}
+{% block content %}
+<h1>{{ "Edycja meczu" if match else "Nowy mecz" }}</h1>
+<form method="post" action="{{ '/matches/%d' % match.id if match else '/matches' }}" class="card form">
+  <div class="grid2">
+    <label>Data meczu
+      <input type="date" name="date" required value="{{ match.date.isoformat() if match else today }}">
+    </label>
+    <label>Poziom rozgrywek
+      <input name="level" placeholder="np. II liga" value="{{ match.level if match else '' }}">
+    </label>
+  </div>
+  <div class="grid2">
+    <fieldset><legend>Drużyna A</legend>
+      <label>Nazwa <input name="team_a_name" value="{{ match.team_a_name if match else '' }}"></label>
+      <label>Kolor strojów <input name="team_a_color" value="{{ match.team_a_color if match else 'białe' }}"></label>
+    </fieldset>
+    <fieldset><legend>Drużyna B</legend>
+      <label>Nazwa <input name="team_b_name" value="{{ match.team_b_name if match else '' }}"></label>
+      <label>Kolor strojów <input name="team_b_color" value="{{ match.team_b_color if match else 'ciemne' }}"></label>
+    </fieldset>
+  </div>
+  <fieldset><legend>Obsada sędziowska</legend>
+    {% set refs = match.referees if match else [] %}
+    {% for i in range(4) %}
+      {% set mr = refs[i] if i < refs|length else None %}
+      <div class="row">
+        <input name="ref_name" placeholder="Imię (i nazwisko)" value="{{ mr.referee.name if mr else '' }}">
+        <select name="ref_role">
+          {% for key, label in MATCH_ROLES.items() %}
+            <option value="{{ key }}" {{ 'selected' if (mr and mr.role == key) or (not mr and key == ('crew_chief' if i == 0 else 'umpire')) }}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+    {% endfor %}
+    <p class="muted">Imiona z tej listy parser rozpoznaje w notatkach (bez względu na wielkość liter i polskie znaki).</p>
+  </fieldset>
+  <div class="row">
+    <button class="btn primary">Zapisz</button>
+    <a class="btn" href="{{ '/matches/%d' % match.id if match else '/' }}">Anuluj</a>
+  </div>
+</form>
+{% endblock %}

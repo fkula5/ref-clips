@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block title %}Notatki{% endblock %}
+{% block content %}
+<h1>Notatki do nagrania: {{ video.display_name }}</h1>
+<p><a href="/matches/{{ match.id }}">{{ match.title }}</a> · <a href="/videos/{{ video.id }}">odtwarzacz</a></p>
+
+<form method="post" action="/videos/{{ video.id }}/notes/preview" class="card form">
+  <label>Wklej notatki — jedna linia to jedna decyzja (czas w nagraniu, sędzia, tagi, uwagi)
+    <textarea name="text" rows="8" placeholder="2:54 Filip PTS&#10;3:17 Filip Dlaczego nie blok?&#10;1:02:15 Kasia kroki białe błąd">{{ text }}</textarea>
+  </label>
+  <p class="muted">Czas: m:ss, mm:ss lub h:mm:ss (dopuszczalne też 2.54 i 2,54). Obsada: {% for mr in match.referees %}{{ mr.referee.name }}{{ ', ' if not loop.last }}{% else %}brak — dodaj ją w edycji meczu{% endfor %}.</p>
+  <button class="btn primary">Podgląd</button>
+</form>
+
+{% if rows is not none %}
+  <h2>Podgląd ({{ rows|length }} {{ 'linia' if rows|length == 1 else 'linii' }})</h2>
+  {% if not rows %}<p class="muted">Nic do sparsowania.</p>{% else %}
+  <form method="post" action="/videos/{{ video.id }}/notes/commit">
+    <input type="hidden" name="count" value="{{ rows|length }}">
+    <table class="preview">
+      <thead><tr><th></th><th>Czas</th><th>Sędzia</th><th>Drużyna</th><th>Tagi</th><th>Opis</th><th>Uwagi</th></tr></thead>
+      <tbody>
+      {% for r in rows %}
+        <tr class="{{ 'bad' if not r.ok else ('warn' if r.warnings else '') }}">
+          <td><input type="checkbox" name="include_{{ loop.index0 }}" value="1" {{ 'checked' if r.ok }}></td>
+          <td><input name="time_{{ loop.index0 }}" size="7" value="{{ r.time_sec|clock if r.ok else '' }}" placeholder="m:ss"></td>
+          <td>
+            <select name="referee_{{ loop.index0 }}">
+              <option value="">—</option>
+              {% for mr in match.referees %}<option value="{{ mr.referee.id }}" {{ 'selected' if r.referee_id == mr.referee.id }}>{{ mr.referee.name }}</option>{% endfor %}
+            </select>
+          </td>
+          <td>
+            <select name="team_{{ loop.index0 }}">
+              <option value="">—</option>
+              <option value="a" {{ 'selected' if r.team == 'a' }}>{{ match.team_label('a') }}</option>
+              <option value="b" {{ 'selected' if r.team == 'b' }}>{{ match.team_label('b') }}</option>
+            </select>
+          </td>
+          <td><input name="tags_{{ loop.index0 }}" list="taglist" value="{{ r.tags|join(', ') }}" size="16"></td>
+          <td><input name="desc_{{ loop.index0 }}" value="{{ r.description }}" class="wide"></td>
+          <td class="warn-text">{% for w in r.warnings %}{{ w }}{{ '; ' if not loop.last }}{% endfor %}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    <datalist id="taglist">{% for t in all_tags %}<option value="{{ t.name }}">{% endfor %}</datalist>
+    <div class="row">
+      <button class="btn primary" {{ 'disabled' if not ffmpeg_ok() }}>Wytnij wszystkie zaznaczone</button>
+      {% if not ffmpeg_ok() %}<span class="error-text">{{ ffmpeg_message }}</span>{% endif %}
+    </div>
+    <p class="muted">Domyślnie każdy klip obejmuje {{ DEFAULT_MARGIN|int }} s przed i po decyzji (obcięte do granic nagrania). Odznaczone lub niepoprawne wiersze są pomijane.</p>
+  </form>
+  {% endif %}
+{% endif %}
+{% endblock %}

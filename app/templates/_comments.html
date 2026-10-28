@@ -1,0 +1,20 @@
+{% macro render_comment(c, reply=false) %}
+  <div class="comment {{ 'reply' if reply }}">
+    <div class="meta">
+      <strong>{{ c.author.name if c.author else '?' }}</strong>
+      <span class="muted">{{ c.created_at.strftime("%d.%m.%Y %H:%M") if c.created_at }}</span>
+      {% if c.at_sec is not none %}<a href="#" class="chip" onclick="seekClip({{ c.at_sec }}); return false;">⏱ {{ c.at_sec|round(1) }} s</a>{% endif %}
+    </div>
+    <div class="body">{{ c.body }}</div>
+    <div class="actions">
+      {% if not reply %}<a href="#" onclick="replyTo({{ c.id }}); return false;">Odpowiedz</a>{% endif %}
+      <a href="#" class="danger-link" hx-post="/comments/{{ c.id }}/delete" hx-target="#comments" hx-swap="innerHTML" hx-confirm="Usunąć komentarz?">Usuń</a>
+    </div>
+  </div>
+{% endmacro %}
+{% set top = d.comments|selectattr('parent_id', 'none')|list %}
+{% if not top %}<p class="muted">Brak komentarzy.</p>{% endif %}
+{% for c in top %}
+  {{ render_comment(c) }}
+  {% for r in d.comments if r.parent_id == c.id %}{{ render_comment(r, true) }}{% endfor %}
+{% endfor %}

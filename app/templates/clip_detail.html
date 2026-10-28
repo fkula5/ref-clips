@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+{% block title %}Klip {{ d.time_sec|clock }}{% endblock %}
+{% block content %}
+{% set start, end = clip_bounds(d) %}
+<div class="row between">
+  <div>
+    <h1>{{ d.match.team_a_name or d.match.team_a_color }} – {{ d.match.team_b_name or d.match.team_b_color }} · {{ d.time_sec|clock }}</h1>
+    <a href="/matches/{{ d.match_id }}">{{ d.match.title }}</a> ·
+    <a href="/videos/{{ d.video_id }}?t={{ d.time_sec }}">pokaż w pełnym nagraniu</a> ·
+    <a href="/clips?match_id={{ d.match_id }}">wszystkie klipy meczu</a>
+  </div>
+  <span class="badge {{ d.status }}">{{ DECISION_STATUSES.get(d.status, d.status) }}</span>
+</div>
+
+<div id="clip-area" {% if busy %}hx-get="/clips/{{ d.id }}" hx-trigger="every 3s" hx-select="#clip-area" hx-swap="outerHTML"{% endif %}>
+<div class="player-layout">
+  <section>
+    {% if d.status == 'cut' and d.clip_path %}
+      <video id="clip-video" src="/clips/{{ d.id }}/file?v={{ d.clip_version }}" controls preload="auto" playsinline></video>
+      <div class="row">
+        <a class="btn primary" href="/clips/{{ d.id }}/download">Pobierz MP4</a>
+        <span class="muted">{{ filename }}</span>
+      </div>
+    {% elif d.status == 'error' %}
+      <div class="banner error">Błąd wycinania: {{ d.error }}</div>
+      <form method="post" action="/clips/{{ d.id }}/recut"><button class="btn">Spróbuj ponownie</button></form>
+    {% else %}
+      <div class="banner">Klip czeka na wycięcie{% if not ffmpeg_ok() %} — {{ ffmpeg_message }}{% else %} (worker: <code>python -m app.worker</code>){% endif %}.</div>
+    {% endif %}
+
+    <form method="post" action="/clips/{{ d.id }}/adjust" class="card form" id="adjust-form">
+      <h3>Korekta klipu</h3>
+      <p class="muted">Decyzja w {{ d.time_sec|clock }}. Zmień początek lub koniec i wytnij ponownie.</p>
+      <div class="grid2">
+        <label>Początek
+          <div class="row"><button type="button" class="btn small" data-shift="start" data-by="-1">−1 s</button>
+          <input name="start" id="adj-start" value="{{ start|clock }}" size="7">
+          <button type="button" class="btn small" data-shift="start" data-by="1">+1 s</button></div>
+        </label>
+        <label>Koniec
+          <div class="row"><button type="button" class="btn small" data-shift="end" data-by="-1">−1 s</button>
+          <input name="end" id="adj-end" value="{{ end|clock }}" size="7">
+          <button type="button" class="btn small" data-shift="end" data-by="1">+1 s</button></div>
+        </label>
+      </div>
+      <button class="btn primary" {{ 'disabled' if not ffmpeg_ok() }}>Wytnij ponownie</button>
+      <small class="muted">Czas w nagraniu źródłowym (m:ss lub sekundy).</small>
+    </form>
+  </section>
+
+  <aside>
+    <form method="post" action="/clips/{{ d.id }}/update" class="card form">
+      <h3>Opis</h3>
+      <label>Sędzia
+        <select name="referee_id"><option value="">—</option>
+          {% for r in referees %}<option value="{{ r.id }}" {{ 'selected' if d.referee_id == r.id }}>{{ r.name }}</option>{% endfor %}</select></label>
+      <label>Drużyna
+        <select name="team"><option value="">—</option>
+          <option value="a" {{ 'selected' if d.team == 'a' }}>{{ d.match.team_label('a') }}</option>
+          <option value="b" {{ 'selected' if d.team == 'b' }}>{{ d.match.team_label('b') }}</option></select></label>
+      <label>Tagi (po przecinku)
+        <input name="tags" list="taglist" value="{{ tags_text }}"></label>
+      <datalist id="taglist">{% for t in all_tags %}<option value="{{ t.name }}">{% endfor %}</datalist>
+      <label>Ocena
+        <select name="rating"><option value="">—</option>
+          {% for k, v in RATINGS.items() %}<option value="{{ k }}" {{ 'selected' if d.rating == k }}>{{ v }}</option>{% endfor %}</select></label>
+      <label>Widoczność
+        <select name="visibility">{% for k, v in VISIBILITIES.items() %}<option value="{{ k }}" {{ 'selected' if d.visibility == k }}>{{ v }}</option>{% endfor %}</select></label>
+      <label>Opis
+        <textarea name="description" rows="3">{{ d.description }}</textarea></label>
+      <p class="muted">Kwarta: <strong>{{ period_for(d) or 'brak znacznika' }}</strong></p>
+      <button class="btn primary">Zapisz opis</button>
+    </form>
+  </aside>
+</div>
+</div>
+
+<h2>Komentarze</h2>
+<div id="comments-box">
+  <div id="comments">{% include "_comments.html" %}</div>
+  <form class="card form" hx-post="/clips/{{ d.id }}/comments" hx-target="#comments" hx-swap="innerHTML" hx-on::after-request="this.reset(); clearCommentForm()">
+    <label>Nowy komentarz<textarea name="body" rows="2" required></textarea></label>
+    <input type="hidden" name="at_sec" id="at_sec">
+    <input type="hidden" name="parent_id" id="parent_id">
+    <span id="reply-label" class="muted"></span>
+    <div class="row">
+      <button class="btn primary">Dodaj komentarz</button>
+      <button type="button" class="btn small" id="pin-btn">📌 Przypnij do bieżącej sekundy klipu</button>
+      <span id="pin-label" class="muted"></span>
+    </div>
+  </form>
+</div>
+<form method="post" action="/clips/{{ d.id }}/delete" onsubmit="return confirm('Usunąć klip?')"><button class="btn danger small">Usuń klip</button></form>
+{% endblock %}
+{% block scripts %}<script src="/static/clip.js"></script>{% endblock %}
