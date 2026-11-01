@@ -162,3 +162,38 @@ def test_inactive_category_not_offered():
 def test_time_only_line():
     r = parse("2:54")[0]
     assert r.ok and r.referee_id is None and any("Brak opisu" in w for w in r.warnings)
+
+
+# --- notatki przy wgrywaniu (przykłady ze specyfikacji) ---------------------------------------
+UPLOAD_NOTES = "2:54 Filip PTS\n3:17 U1 dlaczego nie blok?\n\n# rozgrzewka\n  1:02:15   CC  faul techniczny na ławce  \n"
+
+
+def test_upload_notes_examples_from_the_spec():
+    rows = parse(UPLOAD_NOTES)
+    assert [r.line_no for r in rows] == [1, 2, 5]        # numery linii z oryginalnego tekstu
+    assert [r.time_sec for r in rows] == [174, 197, 3735]
+    assert [r.referee_id for r in rows] == [1, 2, 1]
+    # „PTS” to nie kategoria ze słownika: zostaje w opisie, bez ostrzeżenia
+    assert rows[0].category is None and rows[0].warnings == [] and rows[0].description == "2:54 Filip PTS"
+    assert rows[1].category == "blok / szarża"
+    assert rows[2].category == "techniczny"
+
+
+def test_windows_line_endings_and_trailing_blank_lines():
+    rows = parse("2:54 Filip kroki\r\n3:17 U1 aut\r\n\r\n")
+    assert [r.time_sec for r in rows] == [174, 197] and all(not r.warnings for r in rows)
+
+
+def test_each_line_is_independent_when_some_are_broken():
+    rows = parse("2:54 Filip kroki\nnic tu nie ma\n99:99 Filip kroki\n4:00\n5:00 Zenek aut")
+    assert [r.ok for r in rows] == [True, False, False, True, True]
+    assert rows[1].warnings == ["Nie rozpoznano czasu na początku linii"]
+    assert "Niepoprawny czas" in rows[2].warnings[0]
+    assert rows[3].warnings == ["Brak opisu po czasie"]
+    assert any("Nieznany sędzia" in w for w in rows[4].warnings) and rows[4].category == "aut"
+
+
+def test_referee_and_category_recognised_without_function_prefix_variants():
+    rows = parse("0:30 Łukasz 3 s\n0:45 u2 24 sek\n1:10 Kasi bez gwizdka")
+    assert [r.referee_id for r in rows] == [3, 3, 2]
+    assert [r.category for r in rows] == ["3 s", "24 s", "brak gwizdka (powinien być)"]

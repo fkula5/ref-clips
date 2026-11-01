@@ -10,8 +10,9 @@ Dokumentacja projektu: [specyfikacja MVP](docs/specyfikacja-mvp.md),
 logowanie, role, obsada CC/U1/U2, nowy model danych; segment 2 („Mecze i obsada”) — lista meczów
 z filtrami i stanem, strona meczu, błędy w formularzach; segment 3 („Wgrywanie i konwersja”) —
 wznawialne wgrywanie (tus), deklaracja zawartości pliku, usuwanie oryginału po konwersji;
-segment 2a („Docker lokalnie”) — obraz i Compose do testów na innych komputerach.
-Kolejne segmenty (znaczniki „Zaznacz”, ekran opisywania, oceny, retencja, wdrożenie) opisuje plan.
+segment 2a („Docker lokalnie”) — obraz i Compose do testów na innych komputerach;
+segment 4 („Znaczniki”) — klawisz „Zaznacz”, początki kwart wg deklaracji pliku, notatki przy wgrywaniu.
+Kolejne segmenty (ekran opisywania, oceny, retencja, wdrożenie) opisuje plan.
 
 ## Wymagania i instalacja
 
@@ -246,22 +247,48 @@ i ustawieniem hasła wymaga zalogowania (strony przekierowują na `/login`, API 
    zostaje — „Ponów konwersję” działa tylko dopóki oryginał istnieje. Pełne nagranie dostaje
    termin ważności (`retention_days`, domyślnie 30). Szacunek czasu konwersji: patrz
    [plan techniczny](docs/plan-techniczny.md), rozdz. 6.2.
-3. **Odtwarzacz** — skróty klawiszowe:
+3. **Odtwarzacz** — przeglądasz nagranie i zaznaczasz momenty, opisujesz je później. Skróty
+   (pomoc pod klawiszem `?` na stronie):
 
    | Klawisz | Działanie |
    |---|---|
+   | `Z` (przycisk „Zaznacz”) | **znacznik w bieżącym czasie, bez zatrzymywania odtwarzania** — nieopisany klip (po 15 s przed i po), od razu w kolejce do cięcia; błysk na obrazie i licznik znaczników |
+   | `Backspace` | cofnij swój ostatni nieopisany znacznik (usuwa też plik klipu) |
+   | `M` | znacznik z notatką: pauza i pole tekstowe (sędzia, kategoria, opis jak w notatkach) |
+   | `Q` | ustaw początek następnej brakującej kwarty w bieżącym czasie |
+   | `F` | pełny ekran (kontener z wideo — znaczniki, błysk i przycisk „Zaznacz” działają także w pełnym ekranie) |
    | Spacja | start / pauza |
    | ← / → | ±1 s (z Shift ±5 s) |
    | `,` / `.` | klatka wstecz / naprzód |
    | `[` / `]` | wolniejsze / szybsze tempo (0.25×–2×, także lista wyboru) |
-   | `M` | dodaj klip w bieżącym czasie — wpisz np. `Filip kroki` i Enter |
-   | `Q` | znacznik początku kwarty (kolejno Q1, Q2, Q3, Q4, OT1…) |
+   | `?` | pomoc ze skrótami |
+
+   **Znaczniki** są widoczne na liście obok odtwarzacza: czas w nagraniu (kliknięcie przewija),
+   kwarta i czas od jej początku albo „kwarta nieustalona”, stan cięcia, opisany/nieopisany i
+   usunięcie (×; klip już opisany wymaga potwierdzenia). Dwa znaczniki tego samego autora w
+   tym samym nagraniu w odstępie krótszym niż sekunda to podwójne kliknięcie — serwer ignoruje drugi.
+   Przycisk „Zaznacz” widzą i mogą używać administrator, szkoleniowiec oraz sędzia z obsady meczu
+   (serwer egzekwuje to także dla żądań z pominięciem interfejsu). Nagranie, którego pełną wersję
+   usunięto (retencja), nie ma odtwarzacza ani znaczników — strona pokazuje komunikat, a wycięte klipy zostają.
+   Uwaga: w przeglądarkach bez `requestFullscreen` na kontenerze (np. Safari na iPhonie) pełny ekran
+   natywnego odtwarzacza nie pokazuje błysku — klawisz `Z` nadal działa, ale potwierdzenie widać dopiero po wyjściu.
+
+   **Początki kwart.** Panel „Początki kwart” wypisuje kwarty z deklaracji pliku: cały mecz
+   Q1–Q4 (wymagane) i OT1–OT3 (opcjonalne), kilka kwart — tylko zadeklarowane, jedna kwarta —
+   tylko ta (jej znacznik 0:00 powstaje sam i można go przesunąć, ale nie usunąć). Przy każdej kwarcie jest
+   „Ustaw tutaj” / „Ustaw ponownie tutaj” (bieżący czas nagrania) i usunięcie; `Q` ustawia następną
+   brakującą w kolejności deklaracji. Serwer odrzuca kwarty spoza deklaracji i kolejność
+   niezgodną z chronologią (Q2 nie może zaczynać się przed Q1; jedna kwarta = jeden znacznik).
+   Dopóki plik z wieloma kwartami nie ma kompletu znaczników, strona meczu i odtwarzacz pokazują baner
+   „Ustaw początki kwart, żeby klipy miały kwartę i czas” z linkiem; klipy mają wtedy kwartę
+   „nieustaloną”, a wycinanie działa. Zmiana deklaracji w „Edytuj” przy nagraniu, która usunęłaby
+   znaczniki kwart, najpierw pokazuje ich listę i wymaga potwierdzenia.
 
    Kwarta każdego klipu jest liczona ze znaczników początku kwart w czasie nagrania
    (ostatni znacznik nie późniejszy niż klip), a nie z odczytu zegara. W opisie klipu widać ją
    wprost, np. „Q2 · 4:12 od początku kwarty (czas nagrania)”. Znaczniki można w każdej chwili
    poprawić lub usunąć — kwarty klipów przeliczą się same.
-4. **Notatki** — „Wklej notatki” przy nagraniu. Jedna linia to jeden moment:
+4. **Notatki** — przy wgrywaniu albo później („Wklej notatki” przy gotowym nagraniu). Jedna linia to jeden moment:
    ```
    2:54 Filip kroki
    3:17 U1 dlaczego nie blok?
@@ -272,6 +299,17 @@ i ustawieniem hasła wymaga zalogowania (strony przekierowują na `/login`, API 
    Kategoria jest rozpoznawana ze słownika kategorii i jego aliasów; reszta linii trafia do
    opisu. Pokazuje się tabela podglądu z ostrzeżeniami (nieznany sędzia, nierozpoznany czas,
    kilka kategorii) — każdą linię można poprawić — i przycisk **Wytnij wszystkie zaznaczone**.
+
+   **Notatki przy wgrywaniu.** W formularzu wgrywania każdy plik ma opcjonalne pole „Notatki do tego
+   pliku” i przycisk **Podgląd** (tabela z obsadą meczu i słownikiem kategorii oraz ostrzeżeniami,
+   przed wysłaniem; tekst można poprawić i ponowić podgląd). Notatki jadą na serwer osobnym żądaniem
+   `POST /uploads/{id}/notes` zaraz po utworzeniu sesji tus (zapis w `upload_sessions.notes`, nie w
+   nagłówku `Upload-Metadata`; limit 20 000 znaków i 300 linii) i nie zależą od kolejności względem
+   ostatniego bajtu. Po zakończeniu wgrywania z linii z poprawnym czasem powstają **nieopisane klipy**
+   (sędzia i kategoria ustawione, jeśli parser je rozpoznał; opis zatwierdza się później), a cięcie
+   czeka na gotową wersję roboczą. Długość nagrania jest znana dopiero po konwersji, więc klip z
+   momentem poza nagraniem dostaje stan błędu „Moment poza nagraniem” zamiast cichego obcięcia.
+   Do czasu ustawienia znaczników kwart klipy mają kwartę „nieustaloną”.
 5. **Klipy** — lista z filtrami (mecz, sędzia, kategoria, kwarta). Na stronie klipu: odtwarzanie,
    opis (sędzia z obsady albo „cały zespół”, kategoria ze słownika lub „własna”, tekst),
    komentarze, pobranie MP4. Klip bez opisu jest oznaczony jako „nieopisany”.

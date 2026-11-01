@@ -24,10 +24,19 @@
 
 ## Uwagi z segmentu 3 (drobne, odłożone)
 
-- [ ] Znaczniki kwart w UI i klawisz „Zaznacz” (segment 4): `services.next_period` nie zna deklaracji zawartości — dla pliku z jedną kwartą (np. Q3, automatyczny znacznik Q3@0:00) „następną kwartą” wyjdzie Q1; przy dodawaniu znaczników uwzględnić `Video.content`.
-- [ ] Zmiana deklaracji zawartości na jedną kwartę zostawia tylko najwcześniejszy znacznik (pozostałe są usuwane, kwarty klipów się przeliczają) — rozważyć ostrzeżenie w formularzu edycji, gdy znaczniki są usuwane.
+- [x] Znaczniki kwart w UI i klawisz „Zaznacz” (segment 4): `services.next_period` nie zna deklaracji zawartości. *(segment 4: `next_period(marks, content)` wg deklaracji — cały mecz Q1→…→OT1, kilka kwart tylko zadeklarowane, jedna kwarta przesuwa swój znacznik)*
+- [x] Zmiana deklaracji zawartości na jedną kwartę zostawia tylko najwcześniejszy znacznik — ostrzeżenie w formularzu edycji, gdy znaczniki są usuwane. *(segment 4: lista usuwanych znaczników i potwierdzenie; zostaje znacznik tej kwarty, jeśli istnieje, inaczej najwcześniejszy przemianowany)*
 - [ ] Po zmianie deklaracji wznowionego uploadu obowiązuje deklaracja z pierwszego POST (metadane zapisane po stronie serwera); poprawka przez „Edytuj” przy nagraniu.
 - [ ] Wgrywanie wznowione bez zapamiętanego adresu (np. inna przeglądarka): ten sam plik (mecz, nazwa, rozmiar) startuje od zera, stary niedokończony upload jest wtedy usuwany.
 - [ ] Panel admina: ostrzeżenie o odrzuconych uploadach z braku miejsca (plan 6.1) — na razie tylko wpis w logu serwera (segment 7).
 - [ ] Pomiar czasu konwersji powtórzyć na prawdziwym VPS i na prawdziwym nagraniu (4K/HEVC), patrz plan 6.2 (segment 8).
 - [ ] Wgrywanie w przeglądarce (`app/static/upload.js`) nie ma testów automatycznych: sprawdzono zgodność `tus-js-client` z serwerem skryptem w Node z podstawionym XHR (wznowienie, przerwanie), ale formularz z paskiem postępu wymaga ręcznego przejrzenia w przeglądarce.
+
+## Uwagi z segmentu 4 (drobne, odłożone)
+
+- [ ] Interfejs odtwarzacza (`app/static/player.js`) i podglądu notatek w formularzu wgrywania (`upload.js`) nie ma testów automatycznych w przeglądarce (sprawdzono składnię i całe API ścieżką ręczną); skróty `Z`/`Backspace`/`F`/`?`, błysk i pełny ekran wymagają ręcznego przejrzenia w Chrome i Safari.
+- [ ] Pełny ekran działa przez kontener `.video-wrap` (własny przycisk i klawisz `F`; natywny przycisk pełnego ekranu jest ukryty przez `controlsList="nofullscreen"`, co obsługuje Chrome). W Safari natywny pełny ekran wideo nie pokazuje błysku ani toastów.
+- [ ] „Cofnij ostatni znacznik” (Backspace) usuwa ostatni własny nieopisany klip w nagraniu, także utworzony z notatek przy wgrywaniu lub klawiszem `M`; rozważyć ograniczenie do znaczników z bieżącej sesji odtwarzacza.
+- [ ] Ochrona przed podwójnym kliknięciem używa blokady w procesie (`services.MARKER_LOCK`); przy kilku procesach uvicorn wystarcza sprawdzenie czasu w bazie, ale dwa żądania w tej samej milisekundzie do różnych procesów mogłyby oba przejść.
+- [ ] Usunięcie znacznika w trakcie cięcia go przez worker może zostawić osierocony plik klipu (jak przy usuwaniu klipu na jego stronie); posprzątać w zadaniu `cleanup` (segment 7).
+- [ ] Notatki przy wgrywaniu: podgląd nie zna długości nagrania, więc „moment poza nagraniem” wychodzi dopiero po konwersji (klip w stanie błędu, „Spróbuj ponownie” nie pomoże — usuń klip).

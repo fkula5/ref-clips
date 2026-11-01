@@ -11,6 +11,7 @@ from app import config, services, uploads, video as vid
 from app.db import SessionLocal
 from app.models import Clip, Job, Video
 from app.storage import storage
+from app.textutil import format_clock
 from app.timeutil import utcnow
 
 log = logging.getLogger("worker")
@@ -78,6 +79,10 @@ def run_cut(db: Session, job: Job) -> None:
     if clip is None:
         return
     video = clip.video
+    if video.duration is not None and clip.time_sec > video.duration + config.CUT_OUTSIDE_TOLERANCE:
+        # np. moment z notatek wpisanych przy wgrywaniu, zanim znaliśmy długość nagrania
+        raise ValueError(f"Moment poza nagraniem: {format_clock(clip.time_sec)} "
+                         f"(nagranie trwa {format_clock(video.duration)})")
     start, end = services.clip_range(clip)
     version = clip.clip_version + 1
     key = f"clips/{clip.id}_v{version}.mp4"

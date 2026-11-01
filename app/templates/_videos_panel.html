@@ -1,4 +1,16 @@
 <div id="videos-panel" {% if busy %}hx-get="/matches/{{ match.id }}" hx-trigger="every 3s" hx-select="#videos-panel" hx-swap="outerHTML"{% endif %}>
+{% set pending_marks = [] %}
+{% for v in match.videos %}{% set miss = missing_periods_of(v) %}{% if miss %}{% set _ = pending_marks.append((v, miss)) %}{% endif %}{% endfor %}
+{% if pending_marks %}
+<div class="banner warn" id="marks-banner">
+  <strong>Ustaw początki kwart, żeby klipy miały kwartę i czas.</strong>
+  Do tego czasu klipy z tych nagrań mają kwartę „nieustaloną” (wycinanie działa).
+  {% for v, miss in pending_marks %}
+    <div><a href="/videos/{{ v.id }}">{{ v.display_name }}</a> — brakuje: {{ miss|join(', ') }}
+      · <a href="/videos/{{ v.id }}#poczatki-kwart">ustaw w odtwarzaczu</a></div>
+  {% endfor %}
+</div>
+{% endif %}
 {% if not match.videos %}
   <p class="muted">Brak nagrań. Wgraj plik poniżej.</p>
 {% endif %}
@@ -17,12 +29,13 @@
           {% else %}<span class="muted">czeka na worker (python -m app.worker)</span>{% endif %}
         {% endif %}
         {% if v.status == 'queued' or v.status == 'processing' %}<div class="muted small-note">Po konwersji oryginał jest usuwany — zostaje wersja robocza.</div>{% endif %}
+        {% if v.purged_at %}<div class="muted small-note">Pełne nagranie zostało usunięte; klipy zostają.</div>{% endif %}
         {% if v.error %}<div class="error-text">{{ v.error }}</div>{% endif %}
         {% if v.status == 'error' and not v.original_path %}<div class="error-text">Oryginał został już usunięty — ponowna konwersja jest niemożliwa. Usuń nagranie i wgraj plik jeszcze raz.</div>{% endif %}
       </div>
     </div>
     <div class="row">
-      {% if v.status == 'ready' %}
+      {% if v.status == 'ready' and not v.purged_at %}
         <a class="btn primary" href="/videos/{{ v.id }}">Odtwarzacz</a>
         {% if perm.can_manage_clips(user, match) %}<a class="btn" href="/videos/{{ v.id }}/notes">Wklej notatki</a>{% endif %}
       {% endif %}
