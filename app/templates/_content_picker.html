@@ -1,0 +1,13 @@
+{# Deklaracja zawartości pliku: wybór rodzaju + kwarty dla opcji „kilka kwart”. #}
+{% macro content_picker(kind="full", checked=()) %}
+<div class="content-picker">
+  <select name="content_kind" class="content-kind" aria-label="Co zawiera plik">
+    <option value="full" {{ 'selected' if kind == 'full' }}>Cały mecz</option>
+    {% for p in PERIODS %}<option value="{{ p }}" {{ 'selected' if kind == p }}>Jedna kwarta: {{ p }}</option>{% endfor %}
+    <option value="multi" {{ 'selected' if kind == 'multi' }}>Kilka kwart (zaznacz które)</option>
+  </select>
+  <span class="content-periods">
+    {% for p in PERIODS %}<label class="inline"><input type="checkbox" name="periods" value="{{ p }}" {{ 'checked' if p in checked }}> {{ p }}</label> {% endfor %}
+  </span>
+</div>
+{% endmacro %}

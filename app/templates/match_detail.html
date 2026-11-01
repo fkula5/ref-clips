@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_content_picker.html" import content_picker %}
 {% block title %}{{ match.title }}{% endblock %}
 {% block content %}
 {% macro team(name, color) %}
@@ -36,17 +37,22 @@
 
 {% if perm.can_upload_to_match(user, match) %}
 <h3>Dodaj nagranie</h3>
-<form id="upload-form" class="card form" data-match="{{ match.id }}">
+<form id="upload-form" class="card form" data-match="{{ match.id }}" data-max-gb="{{ max_upload_gb()|round(1) }}">
   <div class="grid2">
-    <label>Pliki wideo (można kilka, np. osobne kwarty)
+    <label>Pliki wideo (można kilka, np. osobne kwarty; maks. {{ max_upload_gb()|round(1) }} GB każdy)
       <input type="file" id="upload-files" accept="video/*,.mkv,.mov,.mp4,.avi,.ts" multiple required>
     </label>
     <label>Etykieta (opcjonalnie)
-      <input id="upload-label" placeholder="np. Całość / Q1–Q2">
+      <input id="upload-label" placeholder="np. Całość / Q1–Q2" maxlength="100">
     </label>
   </div>
+  <div id="upload-files-list" class="muted-list"></div>
+  <p class="muted small-note">Przy każdym pliku wskaż, co zawiera: cały mecz, jedną kwartę albo kilka kwart.
+    Wgrywanie można przerwać i wznowić: po zerwaniu połączenia lub odświeżeniu strony wybierz ten sam plik
+    i kliknij „Wgraj” — dalej pójdzie od miejsca przerwania. Po konwersji oryginał jest usuwany.</p>
   <button class="btn primary" type="submit">Wgraj</button>
   <div id="upload-progress"></div>
+  <template id="content-template">{{ content_picker() }}</template>
 </form>
 {% else %}
 <p class="muted">Wgrywać nagrania do tego meczu mogą administratorzy, szkoleniowcy i sędziowie z obsady.</p>
@@ -82,4 +88,4 @@
 {# Komentarze do meczu: segment 6 (tabela comments i reguły w permissions gotowe, brak tras i widoku). #}
 <section id="komentarze"></section>
 {% endblock %}
-{% block scripts %}<script src="/static/upload.js"></script>{% endblock %}
+{% block scripts %}<script src="/static/vendor/tus-js-client-4.3.1.min.js"></script><script src="/static/upload.js"></script>{% endblock %}

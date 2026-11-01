@@ -39,6 +39,28 @@ TRUST_PROXY = _flag("REFCLIPS_TRUST_PROXY")
 # Ukryte w MVP: korekta granic klipu i eksport ZIP (wracają w wersji 2).
 ENABLE_V2_FEATURES = _flag("REFCLIPS_V2_FEATURES")
 
+# --- wgrywanie (tus) i konwersja ----------------------------------------------------
+GB = 1024 ** 3
+
+
+def _gb(name: str, default: float) -> int:
+    try:
+        return int(float(os.environ.get(name, default)) * GB)
+    except ValueError:
+        return int(default * GB)
+
+
+UPLOAD_MAX_BYTES = _gb("REFCLIPS_UPLOAD_MAX_GB", 8)           # maks. rozmiar jednego pliku
+DRAFT_RESERVE_BYTES = _gb("REFCLIPS_DRAFT_RESERVE_GB", 1.5)    # miejsce na wersję roboczą
+DISK_SAFETY_BYTES = _gb("REFCLIPS_DISK_SAFETY_GB", 3)          # zapas wolnego miejsca po uploadzie
+UPLOAD_STALE_HOURS = 24                                        # nieaktywny upload jest usuwany
+UPLOAD_CLEANUP_SECONDS = 3600                                  # co ile worker sprząta uploady
+TRANSCODE_MAX_FPS = 30
+try:
+    FFMPEG_NICE = int(os.environ.get("REFCLIPS_FFMPEG_NICE", "10"))  # 0 = bez obniżania priorytetu
+except ValueError:
+    FFMPEG_NICE = 10
+
 FFMPEG_MISSING_MESSAGE = "Brak ffmpeg — uruchom: sudo apt install ffmpeg"
 
 

@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% from "_content_picker.html" import content_picker %}
+{% block title %}Nagranie: {{ video.display_name }}{% endblock %}
+{% block content %}
+<h1>Nagranie: {{ video.display_name }}</h1>
+<p class="muted"><a href="/matches/{{ match.id }}#nagrania">← {{ match.title }}</a></p>
+{% if error %}<div class="banner error">{{ error }}</div>{% endif %}
+<form method="post" action="/videos/{{ video.id }}/update" class="card form">
+  {{ csrf_input() }}
+  <label>Etykieta (opcjonalnie)
+    <input name="label" value="{{ video.label }}" maxlength="100" placeholder="np. Całość / Q1–Q2">
+  </label>
+  <label>Co zawiera plik
+    {{ content_picker(kind, checked) }}
+  </label>
+  <p class="muted small-note">Plik z jedną kwartą nie wymaga znaczników (kwarta zaczyna się od 0:00). Plik z całym meczem
+    albo z kilkoma kwartami wymaga znaczników początku kwart. Zmiana deklaracji przelicza kwarty klipów.</p>
+  <div class="row">
+    <button class="btn primary">Zapisz</button>
+    <a class="btn" href="/matches/{{ match.id }}">Anuluj</a>
+  </div>
+</form>
+{% endblock %}

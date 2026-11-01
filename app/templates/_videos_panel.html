@@ -6,7 +6,7 @@
   <div class="card video-row">
     <div class="grow">
       <strong>{{ v.display_name }}</strong>
-      <span class="muted">{% if v.size_bytes %}· {{ (v.size_bytes / 1048576)|round(0)|int }} MB{% endif %}{% if v.duration %} · {{ v.duration|clock }}{% endif %}</span>
+      <span class="muted">{% if v.size_bytes %}· {{ (v.size_bytes / 1048576)|round(0)|int }} MB{% endif %}{% if v.duration %} · {{ v.duration|clock }}{% endif %} · zawiera: {{ content_label(v.content) }}</span>
       <div>
         <span class="badge {{ v.status }}">{{ VIDEO_STATUSES.get(v.status, v.status) }}</span>
         {% if v.status in ('queued', 'processing') %}
@@ -16,7 +16,9 @@
           {% elif not ffmpeg_ok() %}<span class="muted">czeka na ffmpeg</span>
           {% else %}<span class="muted">czeka na worker (python -m app.worker)</span>{% endif %}
         {% endif %}
+        {% if v.status == 'queued' or v.status == 'processing' %}<div class="muted small-note">Po konwersji oryginał jest usuwany — zostaje wersja robocza.</div>{% endif %}
         {% if v.error %}<div class="error-text">{{ v.error }}</div>{% endif %}
+        {% if v.status == 'error' and not v.original_path %}<div class="error-text">Oryginał został już usunięty — ponowna konwersja jest niemożliwa. Usuń nagranie i wgraj plik jeszcze raz.</div>{% endif %}
       </div>
     </div>
     <div class="row">
@@ -24,7 +26,8 @@
         <a class="btn primary" href="/videos/{{ v.id }}">Odtwarzacz</a>
         {% if perm.can_manage_clips(user, match) %}<a class="btn" href="/videos/{{ v.id }}/notes">Wklej notatki</a>{% endif %}
       {% endif %}
-      {% if v.status == 'error' and perm.can_upload_to_match(user, match) %}
+      {% if perm.can_upload_to_match(user, match) %}<a class="btn" href="/videos/{{ v.id }}/edit">Edytuj</a>{% endif %}
+      {% if v.status == 'error' and v.original_path and perm.can_upload_to_match(user, match) %}
         <form method="post" action="/videos/{{ v.id }}/retry">{{ csrf_input() }}<button class="btn">Ponów konwersję</button></form>
       {% endif %}
       {% if perm.can_delete_video(user, v) %}

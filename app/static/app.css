@@ -111,3 +111,9 @@ tr.inactive td { color: var(--muted); }
   table.responsive td.main-cell { font-weight: 600; font-size: 16px; }
   .match-filters label { flex: 1 1 140px; } .match-filters input, .match-filters select { width: 100%; }
 }
+
+/* wgrywanie: deklaracja zawartości plików */
+.file-row { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; margin: 6px 0; }
+.content-picker { display: inline-flex; flex-wrap: wrap; gap: 6px 12px; align-items: center; }
+.content-picker label.inline { display: inline-block; margin: 0; font-weight: 400; }
+.upload-row { flex-wrap: wrap; }
