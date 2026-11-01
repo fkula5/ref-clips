@@ -3,15 +3,15 @@ from __future__ import annotations
 
 import logging
 import time
-from datetime import datetime
 
 from sqlalchemy import and_, exists, or_, select, update
 from sqlalchemy.orm import Session
 
 from app import services, video as vid
 from app.db import SessionLocal
-from app.models import Decision, Job, Video
+from app.models import Clip, Job, Video
 from app.storage import storage
+from app.timeutil import utcnow
 
 log = logging.getLogger("worker")
 POLL_SECONDS = 2.0
@@ -29,7 +29,7 @@ def claim_next(db: Session) -> Job | None:
         return None
     claimed = db.execute(
         update(Job).where(Job.id == candidate, Job.status == "pending")
-        .values(status="running", started_at=datetime.now())
+        .values(status="running", started_at=utcnow())
     )
     db.commit()
     return db.get(Job, candidate) if claimed.rowcount else None
@@ -61,17 +61,17 @@ def run_transcode(db: Session, job: Job) -> None:
 
 
 def run_cut(db: Session, job: Job) -> None:
-    decision = db.get(Decision, job.decision_id)
-    if decision is None:
+    clip = db.get(Clip, job.clip_id)
+    if clip is None:
         return
-    video = decision.video
-    start, end = services.decision_bounds(decision)
-    version = decision.clip_version + 1
-    key = f"clips/{decision.id}_v{version}.mp4"
+    video = clip.video
+    start, end = services.clip_range(clip)
+    version = clip.clip_version + 1
+    key = f"clips/{clip.id}_v{version}.mp4"
     vid.cut_clip(storage.local_path(video.proxy_path), storage.local_path(key), start, end - start)
-    old = decision.clip_path
-    decision.clip_path, decision.clip_version = key, version
-    decision.status, decision.error = "cut", None
+    old = clip.clip_path
+    clip.clip_path, clip.clip_version = key, version
+    clip.status, clip.error = "cut", None
     db.flush()
     if old and old != key:
         storage.delete(old)
@@ -91,9 +91,9 @@ def process_job(db: Session, job: Job) -> None:
         job.status, job.error = "error", str(exc)[:2000]
         if job.type == "transcode" and (video := db.get(Video, job.video_id)):
             video.status, video.error = "error", job.error
-        if job.type == "cut" and (decision := db.get(Decision, job.decision_id)):
-            decision.status, decision.error = "error", job.error
-    job.finished_at = datetime.now()
+        if job.type == "cut" and (clip := db.get(Clip, job.clip_id)):
+            clip.status, clip.error = "error", job.error
+    job.finished_at = utcnow()
     db.commit()
 
 
