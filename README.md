@@ -91,7 +91,9 @@ instalować Pythona ani ffmpeg — wszystko jest w obrazie.
 
 - Windows: [Docker Desktop](https://www.docker.com/products/docker-desktop/) z włączonym WSL2
   (instalator sam to proponuje); macOS: Docker Desktop; Linux: Docker Engine z wtyczką
-  Compose (`docker compose version` musi działać).
+  Compose (`docker compose version` musi działać). Potrzebny Docker Compose w wersji
+  **2.24 lub nowszej** (Docker Desktop z 2024 r. lub nowszy) — sprawdź poleceniem
+  `docker compose version`; starszy Compose zgłosi błąd o nieznanym polu `required` w `compose.yaml`.
 - Git oraz dostęp do prywatnego repozytorium: przyjmij zaproszenie na GitHubie (mail od
   właściciela), a potem zaloguj się do GitHuba w Git (na Windowsie otworzy się okno logowania).
 - Ok. 2 GB wolnego miejsca na obraz, plus miejsce na nagrania.
@@ -114,6 +116,13 @@ docker compose run --rm app python -m app.create_admin
 
 (albo bez pytań: `docker compose run --rm -T app python -m app.create_admin --email szef@example.com --name "Jan Kowalski" --password '...'`).
 Otwórz **http://localhost:8000** i zaloguj się.
+
+**Dostęp tylko z tego komputera.** Aplikacja nasłuchuje wyłącznie na `127.0.0.1`, więc nie jest
+widoczna dla innych urządzeń w sieci (Wi-Fi, akademik, praca). Żeby wejść z telefonu w domowej sieci,
+trzeba to zmienić świadomie: w `.env` ustaw `REFCLIPS_BIND=0.0.0.0`, wykonaj `docker compose up -d`
+i otwórz `http://<adres komputera w sieci>:8000` na telefonie. Uwaga: to zwykłe HTTP, bez
+szyfrowania, a w aplikacji są nagrania z wizerunkiem zawodników (także niepełnoletnich) —
+włączaj tylko w zaufanej sieci i po teście wróć do `127.0.0.1`.
 
 **Zapraszanie kolejnych osób.** W aplikacji: *Użytkownicy* → dodaj konto → skopiuj link
 zaproszenia. Uwaga: link zaczyna się od `http://localhost:8000`, więc działa tylko na tym

@@ -30,7 +30,8 @@ services:
     <<: *aplikacja
     command: ["python", "-m", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
     ports:
-      - "${REFCLIPS_PORT:-8000}:8000"
+      # Domyślnie tylko ten komputer (127.0.0.1); zmiana REFCLIPS_BIND otwiera aplikację w sieci.
+      - "${REFCLIPS_BIND:-127.0.0.1}:${REFCLIPS_PORT:-8000}:8000"
     restart: unless-stopped
     depends_on:
       init:
