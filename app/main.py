@@ -25,7 +25,8 @@ async def lifespan(_app: FastAPI):
     yield
 
 
-app = FastAPI(title="ref-clips", lifespan=lifespan)
+# Bez publicznej dokumentacji API: każda strona poza logowaniem wymaga sesji.
+app = FastAPI(title="ref-clips", lifespan=lifespan, docs_url=None, redoc_url=None, openapi_url=None)
 app.add_middleware(SessionRefreshMiddleware)
 app.mount("/static", StaticFiles(directory=BASE / "static"), name="static")
 

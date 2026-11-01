@@ -197,6 +197,11 @@ def test_static_files_are_public(anon_client):
     assert anon_client.get("/static/app.css").status_code == 200
 
 
+def test_api_docs_are_not_exposed(anon_client):
+    for path in ("/docs", "/redoc", "/openapi.json"):
+        assert anon_client.get(path, follow_redirects=False).status_code == 404
+
+
 # --- CSRF ---------------------------------------------------------------------------
 def test_csrf_missing_or_wrong_token_is_rejected(make_client, db):
     client, _ = make_client("admin")
