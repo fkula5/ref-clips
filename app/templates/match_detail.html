@@ -37,7 +37,7 @@
 
 {% if perm.can_upload_to_match(user, match) %}
 <h3>Dodaj nagranie</h3>
-<form id="upload-form" class="card form" data-match="{{ match.id }}" data-max-gb="{{ max_upload_gb()|round(1) }}"
+<form id="upload-form" class="card form" data-match="{{ match.id }}" data-max-gb="{{ max_upload_gb()|round(1) }}" data-chunk-bytes="{{ upload_chunk_bytes }}"
       data-can-notes="{{ 1 if perm.can_manage_clips(user, match) else 0 }}" data-notes-chars="{{ NOTES_MAX_CHARS }}" data-notes-lines="{{ NOTES_MAX_LINES }}">
   <div class="grid2">
     <label>Pliki wideo (można kilka, np. osobne kwarty; maks. {{ max_upload_gb()|round(1) }} GB każdy)

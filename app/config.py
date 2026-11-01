@@ -61,6 +61,13 @@ DRAFT_RESERVE_BYTES = _gb("REFCLIPS_DRAFT_RESERVE_GB", 1.5)    # miejsce na wers
 DISK_SAFETY_BYTES = _gb("REFCLIPS_DISK_SAFETY_GB", 3)          # zapas wolnego miejsca po uploadzie
 UPLOAD_STALE_HOURS = 24                                        # nieaktywny upload jest usuwany
 UPLOAD_CLEANUP_SECONDS = 3600                                  # co ile worker sprząta uploady
+# Rozmiar kawałka tus w przeglądarce. Tylko do testów interfejsu (E2E): mały kawałek pozwala przerwać
+# wgrywanie krótkiego pliku w połowie. Bez zmiennej (produkcja) zostaje 50 MB.
+UPLOAD_CHUNK_BYTES = 50 * 1024 * 1024
+try:
+    UPLOAD_CHUNK_BYTES = int(os.environ.get("REFCLIPS_TEST_UPLOAD_CHUNK_KB", "")) * 1024 or UPLOAD_CHUNK_BYTES
+except ValueError:
+    pass
 TRANSCODE_MAX_FPS = 30
 # Weryfikacja konwersji: czas wideo wyniku może różnić się od oryginału o max(2 s, 1% długości).
 VERIFY_MIN_SECONDS = float(os.environ.get("REFCLIPS_VERIFY_MIN_SECONDS", "2"))

@@ -13,7 +13,7 @@
   const MAX_CHARS = parseInt(form.dataset.notesChars || "20000", 10);
   const MAX_LINES = parseInt(form.dataset.notesLines || "300", 10);
   const csrf = document.querySelector('meta[name="csrf-token"]').content;
-  const CHUNK = 50 * 1024 * 1024;
+  const CHUNK = parseInt(form.dataset.chunkBytes || "", 10) || 50 * 1024 * 1024;  // mniejszy tylko w trybie testowym (E2E)
   let busy = false, rows = [];
 
   const mb = (n) => (n / 1048576).toFixed(n >= 10485760 ? 0 : 1);
