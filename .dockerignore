@@ -1,0 +1,21 @@
+# Poza obrazem: środowisko lokalne, dane, repozytorium, testy i dokumentacja.
+.venv/
+data/
+.git/
+.gitignore
+.env
+.env.*
+**/__pycache__/
+*.pyc
+.pytest_cache/
+*.egg-info/
+tests/
+docs/
+scripts/
+*.md
+run.sh
+pytest.ini
+requirements-dev.txt
+Dockerfile
+compose.yaml
+.dockerignore

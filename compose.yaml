@@ -1,0 +1,58 @@
+# ref-clips w Dockerze (testy lokalne). Start: docker compose up -d --build
+# Ustawienia: skopiuj .env.example do .env i dostosuj (bez .env działają wartości domyślne).
+name: ref-clips
+
+x-aplikacja: &aplikacja
+  image: ${REFCLIPS_IMAGE:-ref-clips:local}
+  build: .
+  env_file:
+    - path: .env          # opcjonalny — bez pliku .env używane są wartości domyślne
+      required: false
+  environment:
+    # Dane zawsze na wspólnym woluminie, niezależnie od .env.
+    REFCLIPS_DATA_DIR: /data
+  volumes:
+    - dane:/data
+  init: true               # poprawne zamykanie procesów (SIGTERM) i sprzątanie po ffmpeg
+  stop_grace_period: 30s
+
+services:
+  # Jednorazowo przed resztą: migracje bazy i dane początkowe. Dzięki temu app i worker
+  # nigdy nie wystartują na niezmigrowanej bazie.
+  init:
+    <<: *aplikacja
+    command: ["python", "-m", "app.initdb"]
+    restart: "no"
+    healthcheck:
+      disable: true        # HEALTHCHECK z obrazu dotyczy serwera WWW
+
+  app:
+    <<: *aplikacja
+    command: ["python", "-m", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+    ports:
+      - "${REFCLIPS_PORT:-8000}:8000"
+    restart: unless-stopped
+    depends_on:
+      init:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/login', timeout=4).status == 200 else 1)"]
+      interval: 15s
+      timeout: 5s
+      start_period: 30s
+      retries: 5
+
+  worker:
+    <<: *aplikacja
+    command: ["python", "-m", "app.worker"]
+    restart: unless-stopped
+    healthcheck:
+      disable: true        # HEALTHCHECK z obrazu dotyczy serwera WWW; worker nie ma portu
+    depends_on:
+      init:
+        condition: service_completed_successfully
+      app:
+        condition: service_healthy
+
+volumes:
+  dane:
