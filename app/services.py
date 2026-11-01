@@ -1,8 +1,9 @@
 """Logika biznesowa: obsada, kwarty, granice klipów, nazwy plików, tworzenie klipów, kolejka."""
 from __future__ import annotations
 
+import threading
 from collections.abc import Iterable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import timedelta
 
 from sqlalchemy import select, update
@@ -248,47 +249,101 @@ def content_label(content: str | None) -> str:
     return f"kwarta {declared[0]}" if len(declared) == 1 else f"kwarty {', '.join(declared)}"
 
 
-def set_content(db: Session, video: Video, content: str) -> None:
-    """Zapisuje deklarację zawartości i dopasowuje do niej znacznik domyślny.
+def allowed_periods(content: str | None) -> list[str]:
+    """Kwarty, które mogą mieć znacznik początku: cały mecz = Q1–Q4 i OT1–OT3, w pozostałych
+    przypadkach tylko zadeklarowane."""
+    declared = declared_periods(content)
+    return list(PERIODS) if declared is None else declared
 
-    Plik z jedną kwartą dostaje od razu znacznik startu 0:00 (spec: znacznik opcjonalny,
-    domyślnie 0:00; można go przesunąć), więc kwarta jego klipów jest znana bez ręcznych
-    znaczników. Przy zmianie deklaracji: na jedną kwartę zostaje najwcześniejszy znacznik
-    (przemianowany; ewentualnie przesunięty przez użytkownika), pozostałe są usuwane; z jednej
-    kwarty na inną deklarację znika samotny znacznik 0:00 pasujący do starej deklaracji,
-    jeśli nowa deklaracja go nie obejmuje."""
-    old = declared_periods(video.content)
-    video.content = content = normalize_content(content)
-    new = declared_periods(content)
-    marks = sorted(video.marks, key=lambda m: m.time_sec)
-    if new is not None and len(new) == 1:
-        if not marks:
-            video.marks.append(PeriodMark(period=new[0], time_sec=0.0))
-            return
-        keep, rest = marks[0], marks[1:]
-        for mark in rest:
-            video.marks.remove(mark)
-        db.flush()
-        keep.period = new[0]
-    elif old is not None and len(old) == 1 and len(marks) == 1:
-        wanted = new if new is not None else FULL_MATCH_PERIODS
-        if marks[0].time_sec == 0 and marks[0].period not in wanted:
-            video.marks.remove(marks[0])
+
+def required_periods(content: str | None) -> list[str]:
+    """Kwarty, którym musi być ustawiony znacznik: cały mecz Q1–Q4, kilka kwart wszystkie
+    zadeklarowane, jedna kwarta żadna (domyślnie zaczyna się od 0:00)."""
+    declared = declared_periods(content)
+    if declared is None:
+        return list(FULL_MATCH_PERIODS)
+    return declared if len(declared) > 1 else []
 
 
 def missing_periods(content: str | None, marked: Iterable[str]) -> list[str]:
-    """Kwarty, którym brakuje znacznika początku. Plik z jedną kwartą nie wymaga znaczników
-    (domyślnie zaczyna się od 0:00); cały mecz wymaga Q1–Q4, plik z kilkoma kwartami wszystkich
-    zadeklarowanych."""
-    declared = declared_periods(content)
-    if declared is None:
-        required = FULL_MATCH_PERIODS
-    elif len(declared) > 1:
-        required = declared
-    else:
-        return []
+    """Kwarty, którym brakuje znacznika początku (patrz `required_periods`)."""
     have = set(marked)
-    return [p for p in required if p not in have]
+    return [p for p in required_periods(content) if p not in have]
+
+
+@dataclass
+class ContentChange:
+    """Skutki zmiany deklaracji zawartości dla znaczników kwart (ostrzeżenie przed zapisem)."""
+    add_default: str | None = None   # brak znaczników: dodajemy 0:00 dla jedynej kwarty
+    removed: list[PeriodMark] = field(default_factory=list)       # znaczniki ustawione przez użytkownika
+    renamed: list[tuple[PeriodMark, str]] = field(default_factory=list)
+    dropped_default: list[PeriodMark] = field(default_factory=list)  # automatyczne 0:00, bez ostrzeżenia
+
+    @property
+    def needs_confirmation(self) -> bool:
+        """Ostrzegamy przed utratą znaczników; zmiana nazwy jedynego znacznika (z zachowaniem
+        czasu) i automatyczne 0:00 nie wymagają potwierdzenia."""
+        return bool(self.removed)
+
+    @property
+    def token(self) -> str:
+        """Podpis planu: potwierdzenie dotyczy dokładnie tych znaczników, a nie innych."""
+        return ",".join(sorted(f"x{m.id}" for m in self.removed))
+
+    def warnings(self) -> list[str]:
+        return [f"{m.period} (początek w {format_clock(m.time_sec)}) — znacznik zostanie usunięty"
+                for m in self.removed]
+
+
+def plan_content_change(video: Video, content: str) -> ContentChange:
+    """Co zrobi zmiana deklaracji ze znacznikami kwart (bez zapisu).
+
+    Jedna kwarta: zostaje znacznik tej kwarty (inaczej najwcześniejszy, przemianowany), reszta
+    znika; bez znaczników powstaje 0:00. Cały mecz / kilka kwart: znikają znaczniki kwart spoza
+    deklaracji; samotny automatyczny 0:00 po pliku z jedną kwartą zostaje tylko dla pierwszej
+    kwarty nowej deklaracji (inaczej uniemożliwiłby ustawienie wcześniejszych kwart)."""
+    content = normalize_content(content)
+    old, new = declared_periods(video.content), declared_periods(content)
+    marks = sorted(video.marks, key=lambda m: m.time_sec)
+    change = ContentChange()
+    if new is not None and len(new) == 1:
+        target = new[0]
+        keep = next((m for m in marks if m.period == target), marks[0] if marks else None)
+        if keep is None:
+            change.add_default = target
+            return change
+        change.removed = [m for m in marks if m is not keep]
+        if keep.period != target:
+            change.renamed.append((keep, target))
+        return change
+    allowed = allowed_periods(content)
+    first = allowed[0] if new is not None else FULL_MATCH_PERIODS[0]
+    auto_default = old is not None and len(old) == 1 and len(marks) == 1 and marks[0].time_sec == 0
+    for mark in marks:
+        if auto_default:
+            if mark.period != first:
+                change.dropped_default.append(mark)
+        elif mark.period not in allowed:
+            change.removed.append(mark)
+    return change
+
+
+def set_content(db: Session, video: Video, content: str) -> None:
+    """Zapisuje deklarację zawartości i dopasowuje do niej znaczniki kwart (`plan_content_change`).
+
+    Plik z jedną kwartą dostaje od razu znacznik startu 0:00 (spec: znacznik opcjonalny,
+    domyślnie 0:00; można go przesunąć), więc kwarta jego klipów jest znana bez ręcznych
+    znaczników."""
+    content = normalize_content(content)
+    change = plan_content_change(video, content)
+    video.content = content
+    for mark in [*change.removed, *change.dropped_default]:
+        video.marks.remove(mark)
+    db.flush()  # usunięte okresy przed zmianą nazwy (unikalność video + kwarta)
+    for mark, period in change.renamed:
+        mark.period = period
+    if change.add_default:
+        video.marks.append(PeriodMark(period=change.add_default, time_sec=0.0))
 
 
 def match_state(videos: Iterable[Video], queue: Mapping[int, int] | None = None) -> MatchState:
@@ -369,13 +424,48 @@ def period_short(marks: list[PeriodMark], time_sec: float) -> str:
     return "nieustalona" if pos is None else f"{pos[0]} · {format_clock(pos[1])}"
 
 
-def next_period(marks: list[PeriodMark]) -> str:
-    """Następna kwarta po ostatnio dodanej (Q1 -> Q2 ... -> Q4 -> OT1 ...)."""
+def next_period(marks: list[PeriodMark], content: str | None = "full") -> str | None:
+    """Następna kwarta bez znacznika według deklaracji zawartości: cały mecz Q1 -> Q2 -> Q3 -> Q4
+    -> OT1 ..., kilka kwart tylko zadeklarowane w kolejności, jedna kwarta tylko ta (Q przesuwa
+    jej znacznik). None, gdy wszystkie dozwolone kwarty mają już znacznik."""
     used = {m.period for m in marks}
-    for p in PERIODS:
-        if p not in used:
-            return p
-    return PERIODS[-1]
+    allowed = allowed_periods(content)
+    for period in allowed:
+        if period not in used:
+            return period
+    return allowed[0] if len(allowed) == 1 else None
+
+
+class PeriodMarkError(ValueError):
+    """Niepoprawny znacznik początku kwarty (komunikat po polsku; HTTP 422)."""
+
+
+def check_period_mark(content: str | None, marks: Iterable[PeriodMark], period: str, time_sec: float,
+                      duration: float | None = None) -> None:
+    """Kwarta dozwolona przez deklarację, czas w nagraniu i kolejność chronologiczna
+    (Q2 nie może zaczynać się przed Q1 itd.). Znacznik tej samej kwarty jest pomijany (przesuwanie)."""
+    if period not in PERIODS:
+        raise PeriodMarkError("Nieznana kwarta.")
+    allowed = allowed_periods(content)
+    if period not in allowed:
+        raise PeriodMarkError(
+            f"Kwarta {period} nie pasuje do deklaracji zawartości pliku ({content_label(content)}). "
+            "Jeśli plik zawiera tę kwartę, zmień deklarację (Edytuj przy nagraniu).")
+    if time_sec < 0 or (duration and time_sec > duration + config.CUT_OUTSIDE_TOLERANCE):
+        raise PeriodMarkError("Czas znacznika jest poza nagraniem.")
+    index = PERIODS.index(period)
+    for other in marks:
+        if other.period == period or other.period not in PERIODS:
+            continue
+        before = PERIODS.index(other.period) < index
+        if before and time_sec <= other.time_sec:
+            raise PeriodMarkError(
+                f"{period} nie może zaczynać się przed {other.period} ({format_clock(other.time_sec)}) — "
+                "kwarty muszą następować po sobie w kolejności.")
+        if not before and time_sec >= other.time_sec:
+            raise PeriodMarkError(
+                f"{period} nie może zaczynać się po {other.period} ({format_clock(other.time_sec)}) — "
+                "kwarty muszą następować po sobie w kolejności.")
 
 
 # --- granice klipu --------------------------------------------------------------
@@ -422,6 +512,20 @@ def category_defs(db: Session) -> list[CategoryDef]:
 
 def referee_defs(match: Match) -> list[RefereeDef]:
     return [RefereeDef(o.id, o.display_name, o.function) for o in match.officials]
+
+
+class NotesTooLong(ValueError):
+    """Notatki przekraczają limit długości (HTTP 413)."""
+
+
+def clean_notes(text: str | None) -> str:
+    """Notatki z formularza lub uploadu: jednolite końce linii i limit długości."""
+    text = (text or "").replace("\r\n", "\n").replace("\r", "\n").rstrip()
+    if len(text) > config.NOTES_MAX_CHARS:
+        raise NotesTooLong(f"Notatki są za długie (maksymalnie {config.NOTES_MAX_CHARS} znaków).")
+    if text.count("\n") + 1 > config.NOTES_MAX_LINES:
+        raise NotesTooLong(f"Notatki mają za dużo linii (maksymalnie {config.NOTES_MAX_LINES}).")
+    return text
 
 
 def parse_for_match(db: Session, match: Match, text: str) -> list[ParsedLine]:
@@ -473,11 +577,54 @@ def create_clip(db: Session, video: Video, author: User | None, *, time_sec: flo
         match_id=video.match_id, video_id=video.id, author_id=author.id if author else None,
         official_id=official_id, category_id=category_id, time_sec=time_sec,
         description=description, margin_before=margin_before, margin_after=margin_after,
-        status="new")
+        status="new", created_at=utcnow())  # z mikrosekundami: ochrona przed podwójnym kliknięciem
     db.add(clip)
     db.flush()
     if cut:
         queue_cut(db, clip)
+    return clip
+
+
+# --- znaczniki („Zaznacz”) --------------------------------------------------------
+MARKER_LOCK = threading.Lock()  # sprawdzenie podwójnego kliknięcia + zapis w jednym kroku
+
+
+def recent_clip(db: Session, video: Video, user: User) -> Clip | None:
+    """Klip tego autora w tym nagraniu dodany przed chwilą (podwójne kliknięcie)."""
+    since = utcnow() - timedelta(seconds=config.MARKER_DEBOUNCE_SECONDS)
+    return db.scalar(select(Clip).where(
+        Clip.video_id == video.id, Clip.author_id == user.id, Clip.created_at > since)
+        .order_by(Clip.id.desc()))
+
+
+def add_marker(db: Session, video: Video, user: User, time_sec: float) -> tuple[Clip, bool]:
+    """Znacznik = nieopisany klip w podanym czasie nagrania (cięcie od razu w kolejce).
+    Drugi znacznik tego samego autora w odstępie krótszym niż sekunda jest ignorowany:
+    zwraca (klip, utworzono)."""
+    with MARKER_LOCK:
+        recent = recent_clip(db, video, user)
+        if recent is not None:
+            return recent, False
+        clip = create_clip(db, video, user, time_sec=clamp_time(time_sec, video.duration))
+        db.commit()
+        return clip, True
+
+
+def clamp_time(time_sec: float, duration: float | None) -> float:
+    time_sec = max(0.0, time_sec)
+    return min(time_sec, duration) if duration else time_sec
+
+
+def undo_marker(db: Session, video: Video, user: User) -> Clip | None:
+    """Usuwa ostatni własny nieopisany znacznik w nagraniu (wraz z plikiem klipu); None, gdy brak."""
+    clip = db.scalar(select(Clip).where(
+        Clip.video_id == video.id, Clip.author_id == user.id, Clip.described_at.is_(None))
+        .order_by(Clip.id.desc()))
+    if clip is None:
+        return None
+    remove_clip_files(clip)
+    db.delete(clip)
+    db.commit()
     return clip
 
 

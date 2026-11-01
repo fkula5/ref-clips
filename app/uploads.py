@@ -18,7 +18,7 @@ from datetime import timedelta
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app import config, services
+from app import config, permissions, services
 from app.models import Match, UploadSession, User, Video
 from app.storage import storage
 from app.textutil import safe_filename
@@ -154,10 +154,55 @@ def finish(db: Session, up: UploadSession) -> Video | None:
     services.set_content(db, video, info.get("content", "full"))
     services.queue_transcode(db, video)
     info["video_id"] = video.id
+    apply_notes(db, up, video, info)
     up.metadata_json = json.dumps(info)
     up.updated_at = utcnow()
     db.commit()
     return video
+
+
+# --- notatki przy wgrywaniu -------------------------------------------------------
+def set_notes(db: Session, up: UploadSession, text: str) -> None:
+    """Zapisuje notatki do uploadu (osobne żądanie po utworzeniu sesji; nie w nagłówkach tus,
+    które mają limity rozmiaru). Notatki zamieniają się w klipy po zakończeniu wgrywania; jeśli
+    plik jest już wgrany (mały plik wyprzedził żądanie), klipy powstają od razu."""
+    try:
+        text = services.clean_notes(text)
+    except services.NotesTooLong as exc:
+        raise UploadError(413, str(exc)) from None
+    info = meta(up)
+    if info.get("notes_applied") is not None:
+        raise UploadError(409, "Notatki z tego wgrywania zostały już zamienione na klipy — "
+                               "dodaj kolejne przyciskiem „Wklej notatki” przy nagraniu")
+    up.notes = text
+    video = db.get(Video, info["video_id"]) if info.get("video_id") else None
+    if video is not None:
+        apply_notes(db, up, video, info)
+        up.metadata_json = json.dumps(info)
+    db.commit()
+
+
+def apply_notes(db: Session, up: UploadSession, video: Video, info: dict) -> int:
+    """Klipy z notatek uploadu: nieopisane (opis zatwierdza się później), z sędzią i kategorią,
+    jeśli parser je rozpoznał. Cięcie czeka na gotową wersję roboczą; moment poza nagraniem
+    (długość znana dopiero po konwersji) kończy się błędem klipu. Idempotentne (flaga w metadanych)."""
+    if info.get("notes_applied") is not None or not up.notes.strip():
+        return 0
+    user = db.get(User, up.user_id)
+    if user is None or not permissions.can_manage_clips(user, video.match):
+        log.warning("Pominięto notatki uploadu %s: brak uprawnień autora do klipów meczu", up.id)
+        info["notes_applied"] = 0
+        return 0
+    created = 0
+    for row in services.parse_for_match(db, video.match, up.notes):
+        if not row.ok:
+            continue
+        category = services.category_by_name(db, row.category)
+        services.create_clip(db, video, user, time_sec=row.time_sec, official_id=row.referee_id,
+                             category_id=category.id if category else None, description=row.description)
+        created += 1
+    info["notes_applied"] = created
+    return created
 
 
 # --- sprzątanie -----------------------------------------------------------------

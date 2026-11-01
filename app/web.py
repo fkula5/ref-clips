@@ -58,6 +58,9 @@ env.globals.update(
     period_short=lambda c: services.period_short(c.video.marks, c.time_sec),
     color_hex=color_hex,
     content_label=services.content_label,
+    missing_periods_of=lambda v: (services.missing_periods(v.content, (mk.period for mk in v.marks))
+                                  if v.status == "ready" and v.purged_at is None else []),
+    NOTES_MAX_CHARS=config.NOTES_MAX_CHARS, NOTES_MAX_LINES=config.NOTES_MAX_LINES,
     max_upload_gb=lambda: config.UPLOAD_MAX_BYTES / config.GB,
     clip_bounds=services.clip_range,
     DEFAULT_MARGIN=config.DEFAULT_MARGIN_BEFORE,
@@ -96,17 +99,20 @@ def back_url(request: Request) -> str | None:
 
 def clip_json(c: m.Clip) -> dict:
     start, end = services.clip_range(c)
+    position = services.period_position(c.video.marks, c.time_sec)
     return {
         "id": c.id,
         "video_id": c.video_id,
         "time_sec": c.time_sec,
         "clock": format_clock(c.time_sec),
-        "period": services.period_for(c.video.marks, c.time_sec),
+        "period": position[0] if position else None,
+        "period_clock": format_clock(position[1]) if position else None,  # od początku kwarty
         "official": c.official_label or None,
         "category": c.category_label or None,
         "described": c.is_described,
         "description": c.description,
         "status": c.status,
+        "error": c.error,
         "clip_start": start,
         "clip_end": end,
     }

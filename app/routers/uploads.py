@@ -12,6 +12,7 @@ from datetime import UTC
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.concurrency import run_in_threadpool
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import InvalidRequestError
 from sqlalchemy.orm.exc import StaleDataError
@@ -119,6 +120,31 @@ def create_upload(request: Request, db: Session = Depends(get_db), user: User = 
         raise _fail(exc) from None
     return Response(status_code=201, headers=_headers(**{
         "Location": f"/uploads/{up.id}", "Upload-Expires": _http_date(uploads.expires_at(up))}))
+
+
+class NotesIn(BaseModel):
+    text: str = ""
+
+
+def notes_size_guard(request: Request) -> None:
+    """Zbyt duże żądanie z notatkami odpada przed walidacją treści (limit znaków × 4 bajty UTF-8)."""
+    if int(request.headers.get("content-length") or 0) > 4 * config.NOTES_MAX_CHARS + 100:
+        raise _fail(UploadError(413, "Notatki są za długie"))
+
+
+@router.post("/uploads/{upload_id}/notes", dependencies=[Depends(notes_size_guard)])
+def upload_notes(body: NotesIn, upload_id: str, db: Session = Depends(get_db), user: User = uploader):
+    """Notatki do wgrywanego pliku (jedna linia = jeden moment). Klipy powstają po zakończeniu
+    wgrywania; ponowne wysłanie przed końcem zastępuje poprzedni tekst."""
+    up = _own_upload(db, user, upload_id)
+    match = _match_of(db, user, up)
+    if not permissions.can_manage_clips(user, match):
+        raise _fail(UploadError(403, "Brak uprawnień do tworzenia klipów w tym meczu"))
+    try:
+        uploads.set_notes(db, up, body.text)
+    except UploadError as exc:
+        raise _fail(exc) from None
+    return {"saved": True, "lines": len([ln for ln in up.notes.splitlines() if ln.strip()])}
 
 
 @router.head("/uploads/{upload_id}", dependencies=[Depends(tus_version)])

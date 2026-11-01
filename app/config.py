@@ -15,6 +15,12 @@ DEFAULT_MARGIN_BEFORE = 15.0
 DEFAULT_MARGIN_AFTER = 15.0
 MAX_MARGIN = 120.0
 
+# --- znaczniki i notatki -----------------------------------------------------------
+MARKER_DEBOUNCE_SECONDS = 1.0    # dwa znaczniki tego samego autora w tym odstępie = podwójne kliknięcie
+CUT_OUTSIDE_TOLERANCE = 1.0      # klip dalej niż tyle za końcem nagrania to błąd, a nie obcięcie
+NOTES_MAX_CHARS = 20_000         # notatki przy wgrywaniu i na stronie notatek
+NOTES_MAX_LINES = 300
+
 # --- konta i sesje ----------------------------------------------------------------
 SESSION_COOKIE = "rc_session"
 CSRF_COOKIE = "rc_csrf"  # tylko dla formularzy bez sesji (logowanie, ustawienie hasła)

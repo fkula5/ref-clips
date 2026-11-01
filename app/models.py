@@ -223,6 +223,8 @@ class UploadSession(Base):
     offset_bytes: Mapped[int] = mapped_column(BigInteger, default=0)
     reserved_bytes: Mapped[int] = mapped_column(BigInteger, default=0)
     metadata_json: Mapped[str] = mapped_column(Text, default="{}")
+    # Notatki do pliku (jedna linia = jeden moment); zamieniane na klipy po zakończeniu wgrywania.
+    notes: Mapped[str] = mapped_column(Text, default="", server_default="")
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())
 
