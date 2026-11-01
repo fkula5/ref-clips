@@ -11,7 +11,8 @@ logowanie, role, obsada CC/U1/U2, nowy model danych; segment 2 („Mecze i obsad
 z filtrami i stanem, strona meczu, błędy w formularzach; segment 3 („Wgrywanie i konwersja”) —
 wznawialne wgrywanie (tus), deklaracja zawartości pliku, usuwanie oryginału po konwersji;
 segment 2a („Docker lokalnie”) — obraz i Compose do testów na innych komputerach;
-segment 4 („Znaczniki”) — klawisz „Zaznacz”, początki kwart wg deklaracji pliku, notatki przy wgrywaniu.
+segment 4 („Znaczniki”) — klawisz „Zaznacz”, początki kwart wg deklaracji pliku, notatki przy wgrywaniu;
+segment 4a („Testy interfejsu”) — automatyczne testy w przeglądarce (Playwright, Chromium).
 Kolejne segmenty (ekran opisywania, oceny, retencja, wdrożenie) opisuje plan.
 
 ## Wymagania i instalacja
@@ -81,6 +82,7 @@ Zmienne środowiskowe:
 | `REFCLIPS_DRAFT_RESERVE_GB` | miejsce rezerwowane na wersję roboczą przy przyjmowaniu uploadu (domyślnie 1,5) |
 | `REFCLIPS_DISK_SAFETY_GB` | zapas wolnego miejsca, którego upload nie może zająć (domyślnie 3) |
 | `REFCLIPS_FFMPEG_NICE` | priorytet (`nice`) ffmpeg w workerze (domyślnie 10, `0` = bez zmiany) |
+| `REFCLIPS_TEST_UPLOAD_CHUNK_KB` | **tylko testy interfejsu:** rozmiar kawałka tus w KB (domyślnie 50 MB); nie ustawiaj w produkcji |
 | `REFCLIPS_V2_FEATURES` | `1` włącza ukryte funkcje wersji 2 (korekta granic klipu, eksport ZIP) |
 
 ## Uruchomienie w Dockerze (testy lokalne)
@@ -335,6 +337,30 @@ prawdziwego ffmpeg i są pomijane, gdy go brak. Testy uprawnień (`tests/test_pe
 obejmują każdy wiersz tabeli uprawnień ze specyfikacji dla każdej roli i ich kombinacji oraz
 żądania wysyłane wprost do API, które serwer ma odrzucić (403).
 
+## Testy interfejsu (E2E)
+
+Testy w prawdziwej przeglądarce (Chromium sterowany przez [Playwright](https://playwright.dev/python/)):
+logowanie, konta i zaproszenia, formularz meczu, wgrywanie (tus, przerwanie i wznowienie, notatki
+z podglądem), odtwarzacz i skróty klawiszowe, znaczniki, uprawnienia w interfejsie, strona klipu
+z komentarzami (HTMX), lista meczów (filtry, paginacja, widok mobilny) i strony błędów.
+Test uruchamia prawdziwy serwer (uvicorn) i worker na wolnym porcie z tymczasowym katalogiem danych,
+konta zakłada kodem aplikacji, a wideo próbne generuje ffmpeg-iem. Każdy test kończy się porażką,
+gdy w konsoli przeglądarki pojawi się błąd JavaScript (poza jawnie dopuszczonymi).
+
+```bash
+.venv/bin/pip install -r requirements-dev.txt      # także playwright i pytest-playwright
+.venv/bin/playwright install chromium              # jednorazowo: przeglądarka (ok. 120 MB w ~/.cache/ms-playwright)
+scripts/e2e.sh                                     # albo: .venv/bin/python -m pytest -m e2e
+scripts/e2e.sh -k upload                           # wybrane testy; E2E_KEEP=1 zostawia katalog danych
+```
+
+Całość trwa ok. 1,5 minuty. Zwykłe `pytest` pomija testy `e2e` (są wolne), więc szybkie testy jednostkowe
+zostają szybkie. Przy porażce zrzut ekranu, log konsoli przeglądarki i logi serwera i workera zapisują się
+w `/tmp/refclips-e2e-artifacts/<data>/<test>/`, a ścieżka jest w komunikacie błędu. Jeśli Chromium nie
+startuje z powodu brakujących bibliotek systemowych, doinstaluj je: `sudo .venv/bin/playwright install-deps chromium`.
+Pełnego ekranu „na prawdziwym monitorze”, Safari i iPhone'a w ten sposób nie sprawdzimy (Chromium headless
+sprawdza tylko API pełnego ekranu i układ w wąskim oknie 390×844).
+
 ## Struktura
 
 ```
@@ -353,7 +379,8 @@ app/storage.py         magazyn plików (lokalny; interfejs pod przyszłe S3)
 app/worker.py          pętla zadań z tabeli jobs
 Dockerfile, compose.yaml, .env.example   obraz i uruchomienie w Dockerze (app, worker, init)
 scripts/docker-smoke.sh                  test dymny Dockera
+scripts/e2e.sh, tests/e2e/               testy interfejsu w przeglądarce (Playwright)
 app/services.py        obsada, kwarty, granice klipów, nazwy plików, kolejka
 app/templates, static  interfejs (Jinja2, HTMX 2.0.4 w static/vendor, czysty JS)
-tests/                 pytest
+tests/                 pytest (testy jednostkowe i API; interfejs: tests/e2e)
 ```

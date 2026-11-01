@@ -28,7 +28,7 @@
       {% else %}<span class="muted">brak</span>{% endfor %}
     </dd>
     <dt>Dodał(a)</dt><dd>{{ match.creator.name if match.creator else '—' }}, {{ match.created_at.strftime("%d.%m.%Y") }}</dd>
-    <dt>Stan</dt><dd><span class="badge state-{{ state.code }}">{{ state.label }}</span> {% if state.detail %}<small class="muted">{{ state.detail }}</small>{% endif %}</dd>
+    <dt>Stan</dt><dd id="match-state"><span class="badge state-{{ state.code }}">{{ state.label }}</span> {% if state.detail %}<small class="muted">{{ state.detail }}</small>{% endif %}</dd>
   </dl>
 </div>
 
@@ -37,7 +37,7 @@
 
 {% if perm.can_upload_to_match(user, match) %}
 <h3>Dodaj nagranie</h3>
-<form id="upload-form" class="card form" data-match="{{ match.id }}" data-max-gb="{{ max_upload_gb()|round(1) }}"
+<form id="upload-form" class="card form" data-match="{{ match.id }}" data-max-gb="{{ max_upload_gb()|round(1) }}" data-chunk-bytes="{{ upload_chunk_bytes }}"
       data-can-notes="{{ 1 if perm.can_manage_clips(user, match) else 0 }}" data-notes-chars="{{ NOTES_MAX_CHARS }}" data-notes-lines="{{ NOTES_MAX_LINES }}">
   <div class="grid2">
     <label>Pliki wideo (można kilka, np. osobne kwarty; maks. {{ max_upload_gb()|round(1) }} GB każdy)
@@ -73,6 +73,7 @@
 <p class="muted">Wgrywać nagrania do tego meczu mogą administratorzy, szkoleniowcy i sędziowie z obsady.</p>
 {% endif %}
 
+<div id="clips-section">
 <div class="row between">
   <h2 id="klipy">Klipy ({{ clips|length }}{% if undescribed %}, nieopisane: {{ undescribed }}{% endif %})</h2>
   {% if clips %}<a class="btn small" href="/clips?match_id={{ match.id }}">Filtry klipów</a>{% endif %}
@@ -99,6 +100,7 @@
 </table>
 <p class="muted small-note">Czas w kolumnie „Kwarta” liczony jest od początku kwarty w nagraniu — to nie jest zegar meczowy.</p>
 {% endif %}
+</div>
 
 {# Komentarze do meczu: segment 6 (tabela comments i reguły w permissions gotowe, brak tras i widoku). #}
 <section id="komentarze"></section>

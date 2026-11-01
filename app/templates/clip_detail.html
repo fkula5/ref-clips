@@ -8,11 +8,11 @@
     <a href="/videos/{{ c.video_id }}?t={{ c.time_sec }}">pokaż w pełnym nagraniu</a> ·
     <a href="/clips?match_id={{ c.match_id }}">wszystkie klipy meczu</a>
   </div>
-  <span class="badge {{ c.status }}">{{ CLIP_STATUSES.get(c.status, c.status) }}</span>
+  <span id="clip-status" class="badge {{ c.status }}">{{ CLIP_STATUSES.get(c.status, c.status) }}</span>
 </div>
 
 <div class="player-layout">
-  <section id="clip-area" {% if busy %}hx-get="/clips/{{ c.id }}" hx-trigger="every 3s" hx-select="#clip-area" hx-swap="outerHTML"{% endif %}>
+  <section id="clip-area" {% if busy %}hx-get="/clips/{{ c.id }}" hx-trigger="every 3s" hx-select="#clip-area" hx-select-oob="#clip-status" hx-swap="outerHTML"{% endif %}>
     {% if c.status == 'cut' and c.clip_path %}
       <video id="clip-video" src="/clips/{{ c.id }}/file?v={{ c.clip_version }}" controls preload="auto" playsinline></video>
       <div class="row">

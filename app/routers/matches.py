@@ -121,8 +121,10 @@ def create_match(request: Request, db: Session = Depends(get_db),
 @router.get("/matches/{match_id}")
 def match_detail(request: Request, match: Match = Depends(get_match),
                  db: Session = Depends(get_db), user: User = require(permissions.can_view)):
-    busy = any(v.status in ("uploading", "queued", "processing") for v in match.videos)
     clips = sorted(match.clips, key=lambda c: (c.video_id, c.time_sec))
+    # Strona odświeża panel nagrań, stan meczu i klipy, dopóki trwa konwersja albo cięcie klipów.
+    busy = (any(v.status in ("uploading", "queued", "processing") for v in match.videos)
+            or any(c.status in ("new", "queued") for c in clips))
     return render(request, "match_detail.html", match=match, busy=busy, clips=clips,
                   state=services.match_state(match.videos, services.transcode_queue(db)),
                   undescribed=sum(1 for c in clips if not c.is_described))

@@ -62,6 +62,7 @@ env.globals.update(
                                   if v.status == "ready" and v.purged_at is None else []),
     NOTES_MAX_CHARS=config.NOTES_MAX_CHARS, NOTES_MAX_LINES=config.NOTES_MAX_LINES,
     max_upload_gb=lambda: config.UPLOAD_MAX_BYTES / config.GB,
+    upload_chunk_bytes=config.UPLOAD_CHUNK_BYTES,
     clip_bounds=services.clip_range,
     DEFAULT_MARGIN=config.DEFAULT_MARGIN_BEFORE,
 )
