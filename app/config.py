@@ -11,9 +11,33 @@ DATABASE_URL = os.environ.get("DATABASE_URL", f"sqlite:///{DATA_DIR / 'ref-clips
 FFMPEG_PATH = os.environ.get("FFMPEG_PATH", "ffmpeg")
 FFPROBE_PATH = os.environ.get("FFPROBE_PATH", "ffprobe")
 
-DEFAULT_MARGIN_BEFORE = 10.0
-DEFAULT_MARGIN_AFTER = 10.0
+DEFAULT_MARGIN_BEFORE = 15.0
+DEFAULT_MARGIN_AFTER = 15.0
 MAX_MARGIN = 120.0
+
+# --- konta i sesje ----------------------------------------------------------------
+SESSION_COOKIE = "rc_session"
+CSRF_COOKIE = "rc_csrf"  # tylko dla formularzy bez sesji (logowanie, ustawienie hasła)
+SESSION_DAYS = 30
+INVITE_DAYS = 7
+LOGIN_MAX_ATTEMPTS = 5
+LOGIN_WINDOW_MINUTES = 15
+MIN_PASSWORD_LENGTH = 10
+
+
+def _flag(name: str, default: bool = False) -> bool:
+    value = os.environ.get(name)
+    return default if value is None else value.strip().lower() in ("1", "true", "yes", "on")
+
+
+# Secure ustawiaj za HTTPS (produkcja); lokalnie po http musi być wyłączone.
+COOKIE_SECURE = _flag("REFCLIPS_COOKIE_SECURE")
+# Adres, pod którym aplikacja jest widoczna (do linków zaproszeń); domyślnie z żądania.
+PUBLIC_URL = os.environ.get("REFCLIPS_PUBLIC_URL", "").rstrip("/")
+# Za reverse proxy (Caddy) adres klienta pochodzi z X-Forwarded-For.
+TRUST_PROXY = _flag("REFCLIPS_TRUST_PROXY")
+# Ukryte w MVP: korekta granic klipu i eksport ZIP (wracają w wersji 2).
+ENABLE_V2_FEATURES = _flag("REFCLIPS_V2_FEATURES")
 
 FFMPEG_MISSING_MESSAGE = "Brak ffmpeg — uruchom: sudo apt install ffmpeg"
 
