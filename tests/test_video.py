@@ -4,14 +4,15 @@ from datetime import date
 
 import pytest
 
-from app import services, video as vid
-from app.models import Decision, Match, PeriodMark, Video
+from app import config, services, video as vid
+from app.models import Clip, Match, MatchOfficial, PeriodMark, Video
 from tests.conftest import needs_ffmpeg
 
 
 # --- czyste funkcje (bez ffmpeg) -------------------------------------------------
 def test_clip_bounds_default_margins():
-    assert services.clip_bounds(174, 10, 10, 600) == (164, 184)
+    assert services.clip_bounds(174, 15, 15, 600) == (159, 189)
+    assert config.DEFAULT_MARGIN_BEFORE == config.DEFAULT_MARGIN_AFTER == 15
 
 
 def test_clip_bounds_clamped_to_recording():
@@ -33,18 +34,20 @@ def test_commands_have_expected_flags():
 
 
 def test_clip_filename(db):
+    from app.models import Category
     match = Match(date=date(2026, 10, 28), team_a_name="A", team_b_name="B")
     video = Video(match=match, status="ready", duration=900)
     video.marks = [PeriodMark(period="Q1", time_sec=0), PeriodMark(period="Q2", time_sec=100)]
-    d = Decision(match=match, video=video, time_sec=174, margin_before=10, margin_after=10)
-    from app.models import Referee, Tag
-    d.referee = Referee(name="Filip Kowalski")
-    d.tags = [Tag(name="PTS"), Tag(name="brak gwizdka")]
-    assert services.clip_filename(d) == "2026-10-28_Q2_02m54s_Filip_PTS-brak-gwizdka.mp4"
-    d.referee, d.tags, d.time_sec = None, [], 3735
-    assert services.clip_filename(d) == "2026-10-28_Q2_62m15s.mp4"
+    clip = Clip(match=match, video=video, time_sec=174)
+    clip.official = MatchOfficial(function="CC", name="Filip Kowalski")
+    clip.category = Category(group_name="Bez gwizdka", name="brak gwizdka (powinien być)")
+    assert services.clip_filename(clip) == "2026-10-28_Q2_02m54s_CC_brak-gwizdka-powinien-byc.mp4"
+    clip.whole_team, clip.category = True, None
+    assert services.clip_filename(clip) == "2026-10-28_Q2_02m54s_zespol.mp4"
+    clip.official, clip.whole_team, clip.time_sec = None, False, 3735
+    assert services.clip_filename(clip) == "2026-10-28_Q2_62m15s.mp4"
     video.marks = []
-    assert "_Qx_" in services.clip_filename(d)
+    assert "_Qx_" in services.clip_filename(clip)
 
 
 def test_worker_waits_when_ffmpeg_missing(db, monkeypatch):
@@ -90,26 +93,26 @@ def test_worker_pipeline_with_fake_ffmpeg(db, monkeypatch):
     db.add(video)
     db.flush()
     services.enqueue(db, "transcode", video_id=video.id)
-    # decyzja utworzona przed końcem konwersji: cięcie ma poczekać na gotowe nagranie
-    decision = services.create_decision(db, video, None, time_sec=5)
+    # klip utworzony przed końcem konwersji: cięcie ma poczekać na gotowe nagranie
+    clip = services.create_clip(db, video, None, time_sec=5)
     db.commit()
 
     assert worker.run_once() is True       # transcode
     assert worker.run_once() is True       # cut
     assert worker.run_once() is False
     db.refresh(video)
-    db.refresh(decision)
+    db.refresh(clip)
     assert video.status == "ready" and video.duration == 120.0
-    assert decision.status == "cut" and storage.exists(decision.clip_path)
-    assert calls == [(0, 15)]  # początek obcięty do 0: 0..15 s
+    assert clip.status == "cut" and storage.exists(clip.clip_path)
+    assert calls == [(0, 20)]  # początek obcięty do 0: 0..20 s (5 s + margines 15 s)
 
-    services.queue_cut(db, decision)       # korekta -> nowa wersja, stary plik usunięty
-    decision.margin_before, decision.margin_after = 3, 4
+    services.queue_cut(db, clip)       # korekta -> nowa wersja, stary plik usunięty
+    clip.margin_before, clip.margin_after = 3, 4
     db.commit()
-    old = decision.clip_path
+    old = clip.clip_path
     assert worker.run_once() is True
-    db.refresh(decision)
-    assert decision.clip_version == 2 and decision.clip_path != old and not storage.exists(old)
+    db.refresh(clip)
+    assert clip.clip_version == 2 and clip.clip_path != old and not storage.exists(old)
     assert calls[-1] == (2, 7)
 
 
@@ -222,12 +225,10 @@ def test_cut_failure_leaves_no_partial_file(tmp_path):
 
 
 @needs_ffmpeg
-def test_end_to_end_upload_transcode_cut_export(client, db, source):
-    """Upload przez API -> worker (konwersja, cięcie) -> klip w ZIP."""
-    import io
-    import zipfile
-
+def test_end_to_end_upload_transcode_cut(client, db, source):
+    """Upload przez API -> worker (konwersja, cięcie) -> pobranie klipu o długości 30 s."""
     from app import worker
+    from app.storage import storage
     from tests.helpers import make_match
 
     match = make_match(db)
@@ -240,15 +241,31 @@ def test_end_to_end_upload_transcode_cut_export(client, db, source):
     assert client.get(f"/videos/{vid_id}/stream", headers={"Range": "bytes=0-99"}).status_code == 206
 
     client.post(f"/api/videos/{vid_id}/marks", json={"time_sec": 0})
-    d = client.post(f"/api/videos/{vid_id}/quick-decision", json={"time_sec": 9, "text": "Filip PTS"}).json()["decision"]
+    c = client.post(f"/api/videos/{vid_id}/quick-clip", json={"time_sec": 9, "text": "CC kroki"}).json()["clip"]
     assert worker.run_once() is True
-    clip = client.get(f"/clips/{d['id']}/download")
+    clip = client.get(f"/clips/{c['id']}/download")
     assert clip.status_code == 200 and clip.content[4:8] == b"ftyp"
-    z = client.get("/clips/export.zip", params={"match_id": match.id})
-    with zipfile.ZipFile(io.BytesIO(z.content)) as zf:
-        assert "2026-10-28_Q1_00m09s_Filip_PTS.mp4" in zf.namelist()
-    # klip 0..19 s (9 +/- 10, obcięty do początku)
-    out = db.get(Decision, d["id"])
+    assert "2026-10-28_Q1_00m09s_CC_kroki.mp4" in clip.headers["content-disposition"]
+    # klip 0..24 s (9 +/- 15, obcięty do początku i do końca nagrania 20 s)
+    out = db.get(Clip, c["id"])
     db.refresh(out)
+    assert vid.probe(storage.local_path(out.clip_path))["duration"] == pytest.approx(20, abs=0.3)
+
+
+@needs_ffmpeg
+def test_default_clip_is_30_seconds_in_the_middle_of_a_recording(client, db, tmp_path):
+    """Znacznik w środku nagrania: 15 s przed i 15 s po daje klip ok. 30 s."""
+    from app import worker
     from app.storage import storage
-    assert vid.probe(storage.local_path(out.clip_path))["duration"] == pytest.approx(19, abs=0.3)
+    from tests.helpers import make_match
+
+    long_source = _make_source(tmp_path / "long.mp4", seconds=50)
+    match = make_match(db)
+    vid_id = client.post(f"/matches/{match.id}/upload", params={"filename": "long.mp4"},
+                         content=long_source.read_bytes()).json()["id"]
+    assert worker.run_once() is True
+    c = client.post(f"/api/videos/{vid_id}/quick-clip", json={"time_sec": 25, "text": ""}).json()["clip"]
+    assert worker.run_once() is True
+    out = db.get(Clip, c["id"])
+    db.refresh(out)
+    assert vid.probe(storage.local_path(out.clip_path))["duration"] == pytest.approx(30, abs=0.4)

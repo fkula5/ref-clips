@@ -6,7 +6,7 @@
   <div class="card video-row">
     <div class="grow">
       <strong>{{ v.display_name }}</strong>
-      <span class="muted">· {{ VIDEO_SOURCES.get(v.source, v.source) }}{% if v.size_bytes %} · {{ (v.size_bytes / 1048576)|round(0)|int }} MB{% endif %}{% if v.duration %} · {{ v.duration|clock }}{% endif %}</span>
+      <span class="muted">{% if v.size_bytes %}· {{ (v.size_bytes / 1048576)|round(0)|int }} MB{% endif %}{% if v.duration %} · {{ v.duration|clock }}{% endif %}</span>
       <div>
         <span class="badge {{ v.status }}">{{ VIDEO_STATUSES.get(v.status, v.status) }}</span>
         {% if v.status in ('queued', 'processing') %}
@@ -22,12 +22,14 @@
     <div class="row">
       {% if v.status == 'ready' %}
         <a class="btn primary" href="/videos/{{ v.id }}">Odtwarzacz</a>
-        <a class="btn" href="/videos/{{ v.id }}/notes">Wklej notatki</a>
+        {% if perm.can_manage_clips(user, match) %}<a class="btn" href="/videos/{{ v.id }}/notes">Wklej notatki</a>{% endif %}
       {% endif %}
-      {% if v.status == 'error' %}
-        <form method="post" action="/videos/{{ v.id }}/retry"><button class="btn">Ponów konwersję</button></form>
+      {% if v.status == 'error' and perm.can_upload_to_match(user, match) %}
+        <form method="post" action="/videos/{{ v.id }}/retry">{{ csrf_input() }}<button class="btn">Ponów konwersję</button></form>
       {% endif %}
-      <form method="post" action="/videos/{{ v.id }}/delete" onsubmit="return confirm('Usunąć nagranie wraz z klipami?')"><button class="btn danger small">Usuń</button></form>
+      {% if perm.can_delete_video(user, v) %}
+        <form method="post" action="/videos/{{ v.id }}/delete" onsubmit="return confirm('Usunąć nagranie wraz z klipami?')">{{ csrf_input() }}<button class="btn danger small">Usuń</button></form>
+      {% endif %}
     </div>
   </div>
 {% endfor %}

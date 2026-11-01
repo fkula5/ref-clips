@@ -1,9 +1,9 @@
 """Parser notatek: czysta funkcja zamieniająca blok tekstu na listę decyzji.
 
-Przykładowe linie:
-    2:54 Filip PTS
-    3:17 Filip Dlaczego nie blok?
-    1:02:15 Kasia kroki białe błąd
+Przykładowe linie (sędzia: imię, nazwisko albo funkcja CC/U1/U2; kategoria ze słownika):
+    2:54 Filip kroki
+    3:17 U1 dlaczego nie blok?
+    1:02:15 CC faul techniczny na ławce
 """
 from __future__ import annotations
 
@@ -20,20 +20,15 @@ _WORD = re.compile(r"[^\W_]+", re.UNICODE)
 
 @dataclass(frozen=True)
 class RefereeDef:
-    id: int
+    id: int  # id pozycji w obsadzie meczu
     name: str
+    function: str = ""  # CC / U1 / U2
 
 
 @dataclass(frozen=True)
-class TagDef:
+class CategoryDef:
     name: str
     aliases: tuple[str, ...] = ()
-
-
-@dataclass(frozen=True)
-class TeamDef:
-    key: str  # "a" / "b"
-    keywords: tuple[str, ...]  # nazwa drużyny, kolor ("białe") itp.
 
 
 @dataclass
@@ -43,8 +38,7 @@ class ParsedLine:
     time_sec: float | None = None
     referee_id: int | None = None
     referee_name: str | None = None
-    tags: list[str] = field(default_factory=list)
-    team: str | None = None
+    category: str | None = None
     description: str = ""
     warnings: list[str] = field(default_factory=list)
 
@@ -97,6 +91,10 @@ def _match_referee(words: list[str], referees: list[RefereeDef]) -> tuple[Refere
     """Zwraca (sędzia, liczba zużytych słów, czy niejednoznaczne)."""
     if not words or not referees:
         return None, 0, False
+    function = normalize(_clean_token(words[0]))
+    for r in referees:  # funkcja w obsadzie: CC / U1 / U2
+        if r.function and normalize(r.function) == function:
+            return r, 1, False
     # pełne imię i nazwisko (dwa słowa)
     if len(words) >= 2:
         pair = normalize(f"{_clean_token(words[0])} {_clean_token(words[1])}")
@@ -119,18 +117,18 @@ def _match_referee(words: list[str], referees: list[RefereeDef]) -> tuple[Refere
     return None, 0, False
 
 
-def find_tags(text: str, tags: list[TagDef]) -> list[str]:
-    """Znajduje tagi ze słownika (nazwa tagu jest też aliasem), w kolejności słownika."""
+def find_categories(text: str, categories: list[CategoryDef]) -> list[str]:
+    """Znajduje kategorie ze słownika (nazwa kategorii jest też aliasem), w kolejności słownika."""
     norm = f" {normalize(text)} "
     original_words = set(_WORD.findall(text))
     found: dict[str, int] = {}
-    entries: list[tuple[str, str, bool]] = []  # (alias znormalizowany/surowy, tag, wielkość liter ma znaczenie)
-    for tag in tags:
-        for alias in (tag.name, *tag.aliases):
+    entries: list[tuple[str, str, bool]] = []  # (alias, kategoria, wielkość liter ma znaczenie)
+    for category in categories:
+        for alias in (category.name, *category.aliases):
             if len(alias) <= 2 and alias.isalpha():
-                entries.append((alias, tag.name, True))  # np. U, T, D tylko wielką literą
+                entries.append((alias, category.name, True))  # np. U, T, D tylko wielką literą
             elif normalize(alias):
-                entries.append((normalize(alias), tag.name, False))
+                entries.append((normalize(alias), category.name, False))
     for alias, name, case_sensitive in entries:
         if case_sensitive and alias in original_words:
             found.setdefault(name, 0)
@@ -142,32 +140,12 @@ def find_tags(text: str, tags: list[TagDef]) -> list[str]:
         if pattern.search(norm):
             found.setdefault(name, 0)
             norm = pattern.sub(" ", norm)
-    order = {t.name: i for i, t in enumerate(tags)}
+    order = {c.name: i for i, c in enumerate(categories)}
     return sorted(found, key=lambda n: order.get(n, 999))
 
 
-def find_team(text: str, teams: list[TeamDef]) -> tuple[str | None, bool]:
-    """Zwraca (klucz drużyny, czy niejednoznaczne)."""
-    words = normalize(text).split()
-    matched: set[str] = set()
-    for team in teams:
-        for keyword in team.keywords:
-            kw = normalize(keyword)
-            if not kw:
-                continue
-            kw_words = kw.split()
-            if len(kw_words) > 1 and f" {kw} " in f" {' '.join(words)} ":
-                matched.add(team.key)
-            for kw_word in kw_words:
-                if len(kw_word) >= 3 and any(_loose_equal(w, kw_word, 4) for w in words):
-                    matched.add(team.key)
-    if len(matched) == 1:
-        return next(iter(matched)), False
-    return None, len(matched) > 1
-
-
-def parse_line(line_no: int, raw: str, referees: list[RefereeDef], tags: list[TagDef],
-               teams: list[TeamDef]) -> ParsedLine:
+def parse_line(line_no: int, raw: str, referees: list[RefereeDef],
+               categories: list[CategoryDef]) -> ParsedLine:
     line = raw.strip()
     result = ParsedLine(line_no=line_no, raw=line, description=line)
     m = _TIME_AT_START.match(line)
@@ -194,27 +172,25 @@ def parse_line(line_no: int, raw: str, referees: list[RefereeDef], tags: list[Ta
         result.warnings.append(f"Niejednoznaczny sędzia: „{_clean_token(words[0])}”")
     else:
         first = words[0]
-        looks_like_keyword = bool(find_tags(first, tags)) or find_team(first, teams)[0] is not None
-        if looks_like_keyword:
+        if find_categories(first, categories):
             result.warnings.append("Brak sędziego w linii")
         else:
             result.warnings.append(f"Nieznany sędzia: „{_clean_token(first)}”")
 
-    result.tags = find_tags(rest, tags)
-    team, team_ambiguous = find_team(rest, teams)
-    result.team = team
-    if team_ambiguous:
-        result.warnings.append("Niejednoznaczna drużyna (pasują obie)")
+    found = find_categories(rest, categories)
+    if found:
+        result.category = found[0]
+    if len(found) > 1:
+        result.warnings.append(f"Kilka kategorii ({', '.join(found)}) — wybrano pierwszą")
     return result
 
 
-def parse_notes(text: str, referees: list[RefereeDef], tags: list[TagDef],
-                teams: list[TeamDef] | None = None) -> list[ParsedLine]:
+def parse_notes(text: str, referees: list[RefereeDef],
+                categories: list[CategoryDef]) -> list[ParsedLine]:
     """Parsuje cały blok notatek. Puste linie i linie zaczynające się od '#' są pomijane."""
-    teams = teams or []
     results = []
     for i, raw in enumerate(text.splitlines(), start=1):
         if not raw.strip() or raw.strip().startswith("#"):
             continue
-        results.append(parse_line(i, raw, referees, tags, teams))
+        results.append(parse_line(i, raw, referees, categories))
     return results

@@ -1,4 +1,4 @@
-// Odtwarzacz z skrótami klawiszowymi, znacznikami kwart i szybkim dodawaniem decyzji.
+// Odtwarzacz z skrótami klawiszowymi, znacznikami kwart i szybkim dodawaniem klipów.
 (function () {
   const state = JSON.parse(document.getElementById("init-state").textContent);
   const video = document.getElementById("player");
@@ -25,7 +25,10 @@
   async function api(method, url, body) {
     const res = await fetch(url, {
       method,
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        "X-CSRF-Token": document.querySelector('meta[name="csrf-token"]').content,
+      },
       body: body ? JSON.stringify(body) : undefined,
     });
     if (!res.ok) throw new Error(`${res.status} ${await res.text()}`);
@@ -51,30 +54,33 @@
       row.innerHTML = `<a href="#" class="chip">${mk.period}</a><a href="#">${mk.clock}</a>`;
       row.querySelectorAll("a").forEach((a) =>
         a.addEventListener("click", (e) => { e.preventDefault(); seek(mk.time_sec); }));
-      const del = document.createElement("button");
-      del.className = "btn small danger"; del.type = "button"; del.textContent = "×";
-      del.addEventListener("click", async () => {
-        Object.assign(state, await api("DELETE", `/api/marks/${mk.id}`));
-        render();
-      });
-      row.appendChild(del);
+      if (window.CAN_MARK) {
+        const del = document.createElement("button");
+        del.className = "btn small danger"; del.type = "button"; del.textContent = "×";
+        del.addEventListener("click", async () => {
+          Object.assign(state, await api("DELETE", `/api/marks/${mk.id}`));
+          render();
+        });
+        row.appendChild(del);
+      }
       marks.appendChild(row);
     });
-    if (!state.marks.length) marks.innerHTML = '<p class="muted">Brak znaczników — naciśnij Q na początku każdej kwarty.</p>';
-    $("next-period").textContent = state.next_period;
-    $("mark-period").value = state.next_period;
+    if (!state.marks.length) marks.innerHTML = '<p class="muted">Brak znaczników kwart.</p>';
+    if ($("next-period")) $("next-period").textContent = state.next_period;
+    if ($("mark-period")) $("mark-period").value = state.next_period;
 
     const list = $("decisions");
     list.innerHTML = "";
-    state.decisions.forEach((d) => {
+    state.clips.forEach((d) => {
       const li = document.createElement("li");
-      const meta = [d.period, d.referee, d.tags.join(", ")].filter(Boolean).join(" · ");
-      li.innerHTML = `<a href="#" class="t">${d.clock}</a> <span>${meta || "—"}</span>
+      const meta = [d.period, d.official, d.category].filter(Boolean).join(" · ");
+      li.innerHTML = `<a href="#" class="t">${d.clock}</a> <span></span>
         <a class="muted" href="/clips/${d.id}">klip (${d.status === "cut" ? "gotowy" : "w kolejce"})</a>`;
+      li.querySelector("span").textContent = meta || "—";  // tekst, nie HTML
       li.querySelector(".t").addEventListener("click", (e) => { e.preventDefault(); seek(d.time_sec); });
       list.appendChild(li);
     });
-    $("dec-count").textContent = `(${state.decisions.length})`;
+    $("dec-count").textContent = `(${state.clips.length})`;
     renderTimeline();
   }
 
@@ -89,7 +95,7 @@
       bar.appendChild(el);
     };
     state.marks.forEach((mk) => add(mk.time_sec, "tl-mark", `${mk.period} ${mk.clock}`));
-    state.decisions.forEach((d) => add(d.time_sec, "tl-dec", `${d.clock} ${d.referee || ""}`));
+    state.clips.forEach((d) => add(d.time_sec, "tl-dec", `${d.clock} ${d.official || ""}`));
   }
 
   // --- akcje ---
@@ -104,6 +110,7 @@
   }
 
   function openQuick() {
+    if (!$("quick-form")) return;
     video.pause();
     $("quick-form").classList.remove("hidden");
     $("quick-form").dataset.time = video.currentTime;
@@ -117,17 +124,17 @@
     $("quick-text").blur();
   }
 
-  $("quick-form").addEventListener("submit", async (e) => {
+  if ($("quick-form")) $("quick-form").addEventListener("submit", async (e) => {
     e.preventDefault();
     const time = parseFloat($("quick-form").dataset.time);
     try {
-      const res = await api("POST", `/api/videos/${state.video_id}/quick-decision`,
+      const res = await api("POST", `/api/videos/${state.video_id}/quick-clip`,
         { time_sec: time, text: $("quick-text").value });
-      Object.assign(state, { decisions: res.decisions, marks: res.marks, next_period: res.next_period });
+      Object.assign(state, { clips: res.clips, marks: res.marks, next_period: res.next_period });
       render();
       closeQuick();
-      toast(res.warnings.length ? `Dodano (${res.warnings.join("; ")})` : `Dodano decyzję w ${clock(time)} — klip w kolejce`);
-    } catch (err) { toast("Nie udało się dodać decyzji", true); }
+      toast(res.warnings.length ? `Dodano (${res.warnings.join("; ")})` : `Dodano klip w ${clock(time)} — w kolejce do wycięcia`);
+    } catch (err) { toast("Nie udało się dodać klipu", true); }
   });
 
   function stepFrame(dir) {
@@ -153,14 +160,14 @@
       case "[": setSpeed(SPEEDS[Math.max(0, SPEEDS.indexOf(video.playbackRate) - 1)] ?? 1); break;
       case "]": setSpeed(SPEEDS[Math.min(SPEEDS.length - 1, SPEEDS.indexOf(video.playbackRate) + 1)] ?? 1); break;
       case "m": case "M": e.preventDefault(); openQuick(); break;
-      case "q": case "Q": e.preventDefault(); addMark(); break;
+      case "q": case "Q": e.preventDefault(); if (window.CAN_MARK) addMark(); break;
     }
   });
 
   $("speed").addEventListener("change", (e) => setSpeed(parseFloat(e.target.value)));
-  $("btn-m").addEventListener("click", openQuick);
-  $("btn-q").addEventListener("click", () => addMark());
-  $("btn-mark").addEventListener("click", () => addMark($("mark-period").value));
+  if ($("btn-m")) $("btn-m").addEventListener("click", openQuick);
+  if ($("btn-q")) $("btn-q").addEventListener("click", () => addMark());
+  if ($("btn-mark")) $("btn-mark").addEventListener("click", () => addMark($("mark-period").value));
   $("timeline").addEventListener("click", (e) => {
     const rect = e.currentTarget.getBoundingClientRect();
     seek(((e.clientX - rect.left) / rect.width) * (video.duration || 0));

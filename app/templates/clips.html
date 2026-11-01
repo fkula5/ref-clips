@@ -3,17 +3,15 @@
 {% block content %}
 <h1>Klipy</h1>
 {% if created is not none %}
-  <div class="banner ok">Dodano {{ created }} decyzji do wycięcia{% if skipped %} (pominięto {{ skipped }} z niepoprawnym czasem){% endif %}.</div>
+  <div class="banner ok">Dodano {{ created }} klipów do wycięcia{% if skipped %} (pominięto {{ skipped }} z niepoprawnym czasem){% endif %}.</div>
 {% endif %}
 <form method="get" class="row filters">
   <select name="match_id"><option value="">Wszystkie mecze</option>
     {% for m in matches %}<option value="{{ m.id }}" {{ 'selected' if f.match_id == m.id }}>{{ m.title }}</option>{% endfor %}</select>
-  <select name="referee_id"><option value="">Wszyscy sędziowie</option>
-    {% for r in referees %}<option value="{{ r.id }}" {{ 'selected' if f.referee_id == r.id }}>{{ r.name }}</option>{% endfor %}</select>
-  <select name="tag"><option value="">Wszystkie tagi</option>
-    {% for t in tags %}<option {{ 'selected' if f.tag == t.name }}>{{ t.name }}</option>{% endfor %}</select>
-  <select name="rating"><option value="">Każda ocena</option>
-    {% for k, v in RATINGS.items() %}<option value="{{ k }}" {{ 'selected' if f.rating == k }}>{{ v }}</option>{% endfor %}</select>
+  <select name="person"><option value="">Wszyscy sędziowie</option>
+    {% for key, name in people %}<option value="{{ key }}" {{ 'selected' if f.person == key }}>{{ name }}</option>{% endfor %}</select>
+  <select name="category_id"><option value="">Wszystkie kategorie</option>
+    {% for c in categories %}<option value="{{ c.id }}" {{ 'selected' if f.category_id == c.id }}>{{ c.group_name }}: {{ c.name }}</option>{% endfor %}</select>
   <select name="period"><option value="">Każda kwarta</option>
     {% for p in PERIODS %}<option {{ 'selected' if f.period == p }}>{{ p }}</option>{% endfor %}</select>
   {% if f.video_id %}<input type="hidden" name="video_id" value="{{ f.video_id }}">{% endif %}
@@ -21,27 +19,26 @@
   <a class="btn" href="/clips">Wyczyść</a>
 </form>
 
-<form method="get" action="/clips/export.zip">
 <div id="clips-table" {% if pending %}hx-get="/clips?{{ query }}" hx-trigger="every 3s" hx-select="#clips-table" hx-swap="outerHTML"{% endif %}>
-{% if not decisions %}
+{% if not clips %}
   <p class="muted">Brak klipów dla wybranych filtrów.</p>
 {% else %}
   <table>
-    <thead><tr><th></th><th>Mecz</th><th>Czas</th><th>Kwarta</th><th>Sędzia</th><th>Tagi</th><th>Ocena</th><th>Status</th><th></th></tr></thead>
+    <thead><tr><th>Mecz</th><th>Czas w nagraniu</th><th>Kwarta</th><th>Sędzia</th><th>Kategoria</th><th>Status</th><th></th></tr></thead>
     <tbody>
-    {% for d in decisions %}
+    {% for c in clips %}
       <tr>
-        <td><input type="checkbox" name="ids" value="{{ d.id }}"></td>
-        <td>{{ d.match.date.strftime("%d.%m.%Y") }} {{ d.match.team_a_name or d.match.team_a_color }}–{{ d.match.team_b_name or d.match.team_b_color }}</td>
-        <td><a href="/clips/{{ d.id }}">{{ d.time_sec|clock }}</a></td>
-        <td>{{ period_for(d) or '—' }}</td>
-        <td>{{ d.referee.name if d.referee else '—' }}</td>
-        <td>{% for t in d.tags %}<span class="chip">{{ t.name }}</span>{% endfor %}</td>
-        <td>{{ RATINGS.get(d.rating, '—') if d.rating else '—' }}</td>
-        <td><span class="badge {{ d.status }}">{{ DECISION_STATUSES.get(d.status, d.status) }}</span>{% if d.comments %} <span class="chip">💬 {{ d.comments|length }}</span>{% endif %}</td>
+        <td>{{ c.match.date.strftime("%d.%m.%Y") }} {{ c.match.team_a_name or c.match.team_a_color }}–{{ c.match.team_b_name or c.match.team_b_color }}</td>
+        <td><a href="/clips/{{ c.id }}">{{ c.time_sec|clock }}</a></td>
+        <td>{{ period_for(c) or '—' }}</td>
+        <td>{{ c.official_label or '—' }}</td>
+        <td>{% if c.category_label %}<span class="chip">{{ c.category_label }}</span>{% else %}—{% endif %}</td>
+        <td><span class="badge {{ c.status }}">{{ CLIP_STATUSES.get(c.status, c.status) }}</span>
+          {% if not c.is_described %}<span class="chip">nieopisany</span>{% endif %}
+          {% if c.comments %} <span class="chip">💬 {{ c.comments|length }}</span>{% endif %}</td>
         <td class="row">
-          <a class="btn small" href="/clips/{{ d.id }}">Odtwórz</a>
-          {% if d.status == 'cut' %}<a class="btn small" href="/clips/{{ d.id }}/download">MP4</a>{% endif %}
+          <a class="btn small" href="/clips/{{ c.id }}">Odtwórz</a>
+          {% if c.status == 'cut' %}<a class="btn small" href="/clips/{{ c.id }}/download">MP4</a>{% endif %}
         </td>
       </tr>
     {% endfor %}
@@ -49,11 +46,4 @@
   </table>
 {% endif %}
 </div>
-{% if decisions %}
-<div class="row">
-  <button class="btn">Eksportuj zaznaczone (ZIP + CSV)</button>
-  <a class="btn" href="/clips/export.zip?{{ query }}">Eksportuj wszystkie z filtra (ZIP + CSV)</a>
-</div>
-{% endif %}
-</form>
 {% endblock %}

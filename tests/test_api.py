@@ -1,39 +1,70 @@
-import io
-import zipfile
-
 from sqlalchemy import select
 
-from app.models import Decision, Job, Match, Video
+from app.models import Category, Clip, Comment, Job, Match, Video
 from app.storage import storage
-from tests.helpers import make_match, make_ready_video
+from tests.helpers import make_match, make_ready_video, make_user
 
 MATCH_FORM = {
     "date": "2026-10-28", "level": "II liga", "team_a_name": "Legia", "team_a_color": "białe",
     "team_b_name": "Wisła", "team_b_color": "ciemne",
-    "ref_name": ["Filip Kowalski", "Kasia", ""], "ref_role": ["crew_chief", "umpire", "umpire"],
+    "cc_name": "Filip Kowalski", "u1_name": "Kasia Żółć",
 }
+
+
+def category_id(db, name):
+    return db.scalar(select(Category.id).where(Category.name == name))
+
+
+def quick(client, video_id, time_sec, text=""):
+    return client.post(f"/api/videos/{video_id}/quick-clip", json={"time_sec": time_sec, "text": text})
 
 
 def test_home_page(client):
     r = client.get("/")
-    assert r.status_code == 200 and "Mecze" in r.text
+    assert r.status_code == 200 and "Mecze" in r.text and "Admin Testowy" in r.text
 
 
-def test_create_match(client, db):
-    r = client.post("/matches", data=MATCH_FORM, follow_redirects=False)
+def test_create_and_edit_match_with_officials(client, db):
+    ref = make_user(db, ["referee"], email="r@example.com", name="Robert Sędzia")
+    form = {**MATCH_FORM, "cc_user": str(ref.id), "cc_name": "ignorowane", "u2_name": "Zenon Trzeci"}
+    r = client.post("/matches", data=form, follow_redirects=False)
     assert r.status_code == 303
     match = db.scalar(select(Match))
-    assert match.date.isoformat() == "2026-10-28"
-    assert [(mr.referee.name, mr.role) for mr in match.referees] == [
-        ("Filip Kowalski", "crew_chief"), ("Kasia", "umpire")]
+    assert match.date.isoformat() == "2026-10-28" and match.created_by is not None
+    got = {o.function: (o.user_id, o.name, o.display_name) for o in match.officials}
+    assert got == {"CC": (ref.id, None, "Robert Sędzia"), "U1": (None, "Kasia Żółć", "Kasia Żółć"),
+                   "U2": (None, "Zenon Trzeci", "Zenon Trzeci")}
     page = client.get(r.headers["location"])
-    assert page.status_code == 200 and "Filip Kowalski" in page.text
-    # edycja obsady
-    form = {**MATCH_FORM, "ref_name": ["Kasia"], "ref_role": ["crew_chief"]}
+    assert page.status_code == 200 and "Robert Sędzia" in page.text and "Zenon Trzeci" in page.text
+    # edycja: usunięcie U2, zmiana CC na wpisane nazwisko
+    form = {**MATCH_FORM, "cc_name": "Ktoś Inny"}
     assert client.post(f"/matches/{match.id}", data=form, follow_redirects=False).status_code == 303
     db.refresh(match)
-    assert [mr.referee.name for mr in match.referees] == ["Kasia"]
-    assert match.referees[0].role == "crew_chief"
+    assert {o.function: o.display_name for o in match.officials} == {"CC": "Ktoś Inny", "U1": "Kasia Żółć"}
+
+
+def test_match_form_validation(client, db):
+    r = client.post("/matches", data={**MATCH_FORM, "u1_name": ""})
+    assert r.status_code == 422 and "U1" in r.text
+    r = client.post("/matches", data={**MATCH_FORM, "cc_user": "999"})
+    assert r.status_code == 422
+    coach = make_user(db, ["coach"], email="c@example.com")  # nie jest sędzią -> nie do obsady
+    r = client.post("/matches", data={**MATCH_FORM, "cc_user": str(coach.id)})
+    assert r.status_code == 422
+    ref = make_user(db, ["referee"], email="r@example.com")
+    r = client.post("/matches", data={**MATCH_FORM, "cc_user": str(ref.id), "u1_user": str(ref.id)})
+    assert r.status_code == 422
+    r = client.post("/matches", data={**MATCH_FORM, "date": "nie-data"})
+    assert r.status_code == 422
+    assert db.scalar(select(Match)) is None
+
+
+def test_new_match_form_prefills_referee(make_client, db):
+    ref_client, ref = make_client("referee", name="Rafał Sędzia")
+    page = ref_client.get("/matches/new").text
+    assert f'<option value="{ref.id}" selected>' in page
+    admin_client, _ = make_client("admin")
+    assert "selected>Rafał" not in admin_client.get("/matches/new").text
 
 
 def test_upload_streams_to_disk_and_queues_transcode(client, db):
@@ -44,6 +75,7 @@ def test_upload_streams_to_disk_and_queues_transcode(client, db):
     assert r.status_code == 200 and r.json()["size"] == len(payload)
     video = db.scalar(select(Video))
     assert video.status == "queued" and video.size_bytes == len(payload)
+    assert video.created_by is not None and video.expires_at is not None  # retencja 30 dni
     assert storage.size(video.original_path) == len(payload)
     assert video.original_path.startswith("uploads/") and " " not in video.original_path
     job = db.scalar(select(Job))
@@ -80,90 +112,104 @@ def test_stream_not_ready(client, db):
 
 def test_notes_parse_api(client, db):
     video = make_ready_video(db, make_match(db))
-    text = "2:54 Filip PTS\n3:17 Kasia Dlaczego nie blok?\n4:00 Zenek kroki białe"
+    text = "2:54 Filip kroki\n3:17 U1 Dlaczego nie blok?\n4:00 Zenek aut"
     rows = client.post(f"/api/videos/{video.id}/notes/parse", json={"text": text}).json()
     assert [r["time_sec"] for r in rows] == [174, 197, 240]
-    assert rows[0]["referee"] == "Filip" and rows[0]["tags"] == ["PTS"]
-    assert rows[1]["tags"] == ["blok"]
-    assert rows[2]["referee"] is None and rows[2]["team"] == "a"
+    assert rows[0]["official"] == "Filip Kowalski" and rows[0]["category"] == "kroki"
+    assert rows[1]["official"] == "Kasia Żółć" and rows[1]["category"] == "blok / szarża"
+    assert rows[2]["official"] is None and rows[2]["category"] == "aut"
     assert any("Nieznany sędzia" in w for w in rows[2]["warnings"])
 
 
-def test_notes_preview_and_commit_creates_decisions(client, db):
+def test_notes_preview_and_commit_creates_clips(client, db):
     video = make_ready_video(db, make_match(db))
-    ref_id = video.match.referees[0].referee_id
-    text = "2:54 Filip PTS\n99:00 Filip poza nagraniem"
+    cc = video.match.official("CC")
+    text = "2:54 CC kroki\n99:00 Filip poza nagraniem"
     preview = client.post(f"/videos/{video.id}/notes/preview", data={"text": text})
     assert preview.status_code == 200 and "Czas poza nagraniem" in preview.text
-    form = {"count": "2", "include_0": "1", "time_0": "2:54", "referee_0": str(ref_id), "team_0": "a",
-            "tags_0": "PTS, blok", "desc_0": "2:54 Filip PTS",
-            "include_1": "1", "time_1": "99:00", "referee_1": "", "tags_1": "", "desc_1": "x"}
+    assert "Naruszenia: kroki" in preview.text
+    form = {"count": "2", "include_0": "1", "time_0": "2:54", "referee_0": str(cc.id),
+            "category_0": str(category_id(db, "kroki")), "desc_0": "2:54 CC kroki",
+            "include_1": "1", "time_1": "99:00", "referee_1": "", "category_1": "", "desc_1": "x"}
     r = client.post(f"/videos/{video.id}/notes/commit", data=form, follow_redirects=False)
     assert r.status_code == 303 and "created=1" in r.headers["location"] and "skipped=1" in r.headers["location"]
-    d = db.scalar(select(Decision))
-    assert d.time_sec == 174 and d.referee_id == ref_id and d.team == "a"
-    assert {t.name for t in d.tags} == {"PTS", "blok"}
-    assert (d.margin_before, d.margin_after) == (10, 10) and d.status == "queued"
+    c = db.scalar(select(Clip))
+    assert c.time_sec == 174 and c.official_id == cc.id and c.category.name == "kroki"
+    assert (c.margin_before, c.margin_after) == (15, 15) and c.status == "queued"
+    assert c.described_at is None and c.author_id is not None
     job = db.scalar(select(Job).where(Job.type == "cut"))
-    assert job.decision_id == d.id
+    assert job.clip_id == c.id
 
 
 def test_quarter_from_period_marks(client, db):
     video = make_ready_video(db, make_match(db), duration=4000)
     url = f"/api/videos/{video.id}"
     # bez znaczników kwarta jest nieznana
-    d0 = client.post(f"{url}/quick-decision", json={"time_sec": 50, "text": "Filip PTS"}).json()
-    assert d0["decision"]["period"] is None
-    # Q key: kolejne znaczniki dostają kolejne kwarty
+    assert quick(client, video.id, 50, "Filip kroki").json()["clip"]["period"] is None
+    # kolejne znaczniki dostają kolejne kwarty
     assert client.post(f"{url}/marks", json={"time_sec": 30}).json()["period"] == "Q1"
     assert client.post(f"{url}/marks", json={"time_sec": 1000}).json()["period"] == "Q2"
     state = client.post(f"{url}/marks", json={"time_sec": 2000}).json()
     assert state["next_period"] == "Q4"
 
     def period_at(t):
-        return client.post(f"{url}/quick-decision", json={"time_sec": t, "text": "Filip PTS"}).json()["decision"]["period"]
+        return quick(client, video.id, t, "Filip kroki").json()["clip"]["period"]
 
     assert period_at(10) is None
     assert period_at(30) == "Q1"
     assert period_at(999) == "Q1"
     assert period_at(1000) == "Q2"
     assert period_at(2500) == "Q3"
-    # istniejąca kwarta jest przesuwana, a okres starych decyzji liczy się na nowo
+    # istniejąca kwarta jest przesuwana, a okres starych klipów liczy się na nowo
     client.post(f"{url}/marks", json={"time_sec": 40, "period": "Q1"})
-    decisions = client.get(f"{url}/state").json()["decisions"]
-    assert next(d for d in decisions if d["time_sec"] == 50)["period"] == "Q1"
-    # usunięcie znacznika Q3 -> decyzja z 2500 wraca do Q2
+    clips = client.get(f"{url}/state").json()["clips"]
+    assert next(c for c in clips if c["time_sec"] == 50)["period"] == "Q1"
+    # usunięcie znacznika Q3 -> klip z 2500 wraca do Q2
     q3 = next(m for m in state["marks"] if m["period"] == "Q3")
     after = client.delete(f"/api/marks/{q3['id']}").json()
-    assert next(d for d in after["decisions"] if d["time_sec"] == 2500)["period"] == "Q2"
+    assert next(c for c in after["clips"] if c["time_sec"] == 2500)["period"] == "Q2"
 
 
-def test_quick_decision_parses_line_and_clamps(client, db):
+def test_period_label_shows_time_since_period_start(client, db):
+    video = make_ready_video(db, make_match(db), duration=4000)
+    client.post(f"/api/videos/{video.id}/marks", json={"time_sec": 1000})
+    clip_id = quick(client, video.id, 1252, "Filip kroki").json()["clip"]["id"]
+    assert "Q1 · 4:12 od początku kwarty (czas nagrania)" in client.get(f"/clips/{clip_id}").text
+
+
+def test_quick_clip_parses_line_and_clamps(client, db):
     video = make_ready_video(db, make_match(db), duration=100)
-    res = client.post(f"/api/videos/{video.id}/quick-decision",
-                      json={"time_sec": 500, "text": "kasia kroki ciemne"}).json()
-    d = res["decision"]
-    assert d["time_sec"] == 100 and d["referee"] == "Kasia" and d["tags"] == ["kroki"]
-    assert d["team"] == "Wisła" and d["status"] == "queued"
-    assert (d["clip_start"], d["clip_end"]) == (90, 100)  # obcięte do końca nagrania
-    res = client.post(f"/api/videos/{video.id}/quick-decision", json={"time_sec": 5, "text": "Ktoś PTS"}).json()
-    assert res["decision"]["referee"] is None and res["warnings"]
+    res = quick(client, video.id, 500, "kasia kroki").json()
+    c = res["clip"]
+    assert c["time_sec"] == 100 and c["official"] == "U1 · Kasia Żółć" and c["category"] == "kroki"
+    assert c["status"] == "queued" and c["described"] is False
+    assert (c["clip_start"], c["clip_end"]) == (85, 100)  # 15 s przed, obcięte do końca nagrania
+    res = quick(client, video.id, 5, "Ktoś kroki").json()
+    assert res["clip"]["official"] is None and res["warnings"]
 
 
-def test_adjust_clip_requeues_cut(client, db):
+def test_describe_clip(client, db):
     video = make_ready_video(db, make_match(db))
-    d = client.post(f"/api/videos/{video.id}/quick-decision", json={"time_sec": 100, "text": "Filip PTS"}).json()["decision"]
-    r = client.post(f"/clips/{d['id']}/adjust", data={"start": "1:30", "end": "1:50"}, follow_redirects=False)
+    clip_id = quick(client, video.id, 100, "").json()["clip"]["id"]
+    clip = db.get(Clip, clip_id)
+    cc = video.match.official("CC")
+    r = client.post(f"/clips/{clip_id}/update", follow_redirects=False, data={
+        "official": str(cc.id), "category_id": str(category_id(db, "kroki")),
+        "description": " Za późno "})
     assert r.status_code == 303
-    dec = db.get(Decision, d["id"])
-    db.refresh(dec)
-    assert (dec.margin_before, dec.margin_after) == (10, 10)
-    client.post(f"/clips/{d['id']}/adjust", data={"start": "85", "end": "2:00"})
-    db.refresh(dec)
-    assert (dec.margin_before, dec.margin_after) == (15, 20)
-    assert db.scalars(select(Job).where(Job.type == "cut", Job.status == "pending")).all().__len__() == 1
-    bad = client.post(f"/clips/{d['id']}/adjust", data={"start": "2:00", "end": "2:10"})
-    assert bad.status_code == 422
+    db.refresh(clip)
+    assert clip.official_id == cc.id and clip.category.name == "kroki" and clip.description == "Za późno"
+    assert clip.is_described and not clip.whole_team
+    # cały zespół + kategoria „własna” wymaga nazwy
+    own = str(category_id(db, "własna"))
+    assert client.post(f"/clips/{clip_id}/update", data={"official": "team", "category_id": own}).status_code == 422
+    client.post(f"/clips/{clip_id}/update", data={"official": "team", "category_id": own,
+                                                  "custom_category": "kontakt z trenerem"})
+    db.refresh(clip)
+    assert clip.whole_team and clip.official_id is None
+    assert clip.category_label == "kontakt z trenerem"
+    page = client.get(f"/clips/{clip_id}").text
+    assert "cały zespół" in page and "Mechanika" in page  # grupy kategorii w formularzu
 
 
 def test_clips_filters(client, db):
@@ -172,11 +218,8 @@ def test_clips_filters(client, db):
     client.post(f"{url}/marks", json={"time_sec": 0})
     client.post(f"{url}/marks", json={"time_sec": 300})
     ids = {}
-    for t, text in ((100, "Filip PTS"), (400, "Kasia kroki")):
-        ids[t] = client.post(f"{url}/quick-decision", json={"time_sec": t, "text": text}).json()["decision"]["id"]
-    d = db.get(Decision, ids[400])
-    d.rating = "incorrect"
-    db.commit()
+    for t, text in ((100, "Filip kroki"), (400, "Kasia aut")):
+        ids[t] = quick(client, video.id, t, text).json()["clip"]["id"]
 
     def listed(**params):
         html = client.get("/clips", params=params).text
@@ -185,61 +228,38 @@ def test_clips_filters(client, db):
     assert len(listed()) == 2
     assert listed(period="Q2") == [ids[400]]
     assert listed(period="Q1") == [ids[100]]
-    assert listed(tag="PTS") == [ids[100]]
-    assert listed(rating="incorrect") == [ids[400]]
-    ref = video.match.referees[1].referee_id
-    assert listed(referee_id=ref) == [ids[400]]
+    assert listed(category_id=category_id(db, "kroki")) == [ids[100]]
+    assert listed(person="nkasia zolc") == [ids[400]]
     assert len(listed(match_id=video.match_id)) == 2
+    assert listed(match_id=video.match_id + 1) == []
 
 
-def test_comments_and_clip_page(client, db):
+def test_comments_and_clip_page(client, db, admin):
     video = make_ready_video(db, make_match(db))
-    d = client.post(f"/api/videos/{video.id}/quick-decision", json={"time_sec": 100, "text": "Filip PTS"}).json()["decision"]
-    page = client.get(f"/clips/{d['id']}")
-    assert page.status_code == 200
-    r = client.post(f"/clips/{d['id']}/comments", data={"body": "Za późno gwizdek", "at_sec": "9.5"})
-    assert "Za późno gwizdek" in r.text and "9.5 s" in r.text
-    dec = db.get(Decision, d["id"])
-    cid = dec.comments[0].id
-    client.post(f"/clips/{d['id']}/comments", data={"body": "Zgoda", "parent_id": str(cid)})
-    db.refresh(dec)
-    assert len(dec.comments) == 2 and dec.comments[1].parent_id == cid
-    r = client.post(f"/comments/{cid}/delete")
-    assert "Za późno gwizdek" not in r.text
+    clip_id = quick(client, video.id, 100, "Filip kroki").json()["clip"]["id"]
+    assert client.get(f"/clips/{clip_id}").status_code == 200
+    r = client.post(f"/clips/{clip_id}/comments", data={"body": "Za późno gwizdek"})
+    assert r.status_code == 200 and "Za późno gwizdek" in r.text and "Admin Testowy" in r.text
+    comment = db.scalar(select(Comment))
+    assert comment.clip_id == clip_id and comment.match_id is None and comment.author_id == admin[1].id
+    r = client.post(f"/comments/{comment.id}/delete")
+    assert "Za późno gwizdek" not in r.text and db.scalar(select(Comment)) is None
 
 
-def test_download_and_zip_export(client, db):
+def test_download(client, db):
     video = make_ready_video(db, make_match(db))
     client.post(f"/api/videos/{video.id}/marks", json={"time_sec": 0})
-    ids = []
-    for t in (100, 100):  # dwie takie same nazwy -> unikalne w paczce
-        ids.append(client.post(f"/api/videos/{video.id}/quick-decision",
-                               json={"time_sec": t, "text": "Filip PTS"}).json()["decision"]["id"])
-    for i in ids:
-        d = db.get(Decision, i)
-        d.clip_path, d.status = f"clips/{i}_v1.mp4", "cut"
-        with storage.open_write(d.clip_path) as fh:
-            fh.write(b"clip%d" % i)
+    clip_id = quick(client, video.id, 100, "CC kroki").json()["clip"]["id"]
+    assert client.get(f"/clips/{clip_id}/download").status_code == 404  # jeszcze niewycięty
+    clip = db.get(Clip, clip_id)
+    clip.clip_path, clip.status = f"clips/{clip_id}_v1.mp4", "cut"
+    with storage.open_write(clip.clip_path) as fh:
+        fh.write(b"clip")
     db.commit()
-    dl = client.get(f"/clips/{ids[0]}/download")
+    dl = client.get(f"/clips/{clip_id}/download")
     assert dl.status_code == 200
-    assert 'filename="2026-10-28_Q1_01m40s_Filip_PTS.mp4"' in dl.headers["content-disposition"]
-    z = client.get("/clips/export.zip", params={"match_id": video.match_id})
-    assert z.status_code == 200
-    with zipfile.ZipFile(io.BytesIO(z.content)) as zf:
-        names = sorted(zf.namelist())
-        assert names == ["2026-10-28_Q1_01m40s_Filip_PTS.mp4", "2026-10-28_Q1_01m40s_Filip_PTS_2.mp4", "opisy.csv"]
-        csv_text = zf.read("opisy.csv").decode("utf-8-sig")
-        assert "Filip" in csv_text and "Q1" in csv_text and csv_text.startswith("plik;")
-    assert client.get("/clips/export.zip", params={"ids": [9999]}).status_code == 404
-
-
-def test_tags_page_crud(client, db):
-    assert "kroki" in client.get("/tags").text
-    client.post("/tags", data={"name": "faul w ataku", "aliases": "faul atak"})
-    r = client.post("/tags", data={"name": "FAUL W ATAKU"})
-    assert r.status_code == 422
-    assert "faul w ataku" in client.get("/tags").text
+    assert 'filename="2026-10-28_Q1_01m40s_CC_kroki.mp4"' in dl.headers["content-disposition"]
+    assert client.get(f"/clips/{clip_id}/file").content == b"clip"
 
 
 def test_delete_match_cleans_files(client, db):
@@ -251,5 +271,20 @@ def test_delete_match_cleans_files(client, db):
     assert db.scalar(select(Match)) is None
 
 
+def test_delete_clip(client, db):
+    video = make_ready_video(db, make_match(db))
+    clip_id = quick(client, video.id, 100, "Filip kroki").json()["clip"]["id"]
+    r = client.post(f"/clips/{clip_id}/delete", follow_redirects=False)
+    assert r.status_code == 303 and db.get(Clip, clip_id) is None
+
+
 def test_status_endpoint(client):
     assert "ffmpeg" in client.get("/api/status").json()
+
+
+def test_v2_features_are_not_routed():
+    """Korekta granic klipu i eksport ZIP są ukryte w MVP (REFCLIPS_V2_FEATURES=0)."""
+    from app.main import app
+    paths = {getattr(r, "path", "") for r in app.routes}
+    assert "/clips/export.zip" not in paths and "/clips/{clip_id}/adjust" not in paths
+    assert "/tags" not in paths

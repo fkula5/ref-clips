@@ -1,0 +1,7 @@
+{% extends "base.html" %}
+{% block title %}Błąd{% endblock %}
+{% block content %}
+<h1>Nie można wykonać operacji</h1>
+<div class="banner error">{{ message }}</div>
+<p>{% if user %}<a href="/">Wróć do listy meczów</a>{% else %}<a href="/login">Zaloguj się</a>{% endif %}</p>
+{% endblock %}

@@ -4,8 +4,8 @@
 <div class="row between">
   <h1>{{ match.title }}</h1>
   <div class="row">
-    <a class="btn" href="/matches/{{ match.id }}/edit">Edytuj</a>
-    <a class="btn" href="/clips?match_id={{ match.id }}">Klipy ({{ match.decisions|length }})</a>
+    {% if perm.can_edit_match(user, match) %}<a class="btn" href="/matches/{{ match.id }}/edit">Edytuj</a>{% endif %}
+    <a class="btn" href="/clips?match_id={{ match.id }}">Klipy ({{ match.clips|length }})</a>
   </div>
 </div>
 <p class="muted">
@@ -13,12 +13,13 @@
   {{ match.team_a_name or '—' }} ({{ match.team_a_color }}) vs {{ match.team_b_name or '—' }} ({{ match.team_b_color }})
 </p>
 <p>Obsada:
-  {% for mr in match.referees %}<span class="chip">{{ mr.referee.name }} <small>{{ 'R' if mr.role == 'crew_chief' else 'U' }}</small></span>{% else %}<span class="muted">brak</span>{% endfor %}
+  {% for o in match.officials %}<span class="chip">{{ o.display_name }} <small>{{ o.function }}</small></span>{% else %}<span class="muted">brak</span>{% endfor %}
 </p>
 
 <h2>Nagrania</h2>
 {% include "_videos_panel.html" %}
 
+{% if perm.can_upload_to_match(user, match) %}
 <h3>Dodaj nagranie</h3>
 <form id="upload-form" class="card form" data-match="{{ match.id }}">
   <div class="grid2">
@@ -29,15 +30,18 @@
       <input id="upload-label" placeholder="np. Całość / Q1–Q2">
     </label>
   </div>
-  <label>Źródło
-    <select id="upload-source">{% for k, v in VIDEO_SOURCES.items() if k != 'youtube' %}<option value="{{ k }}">{{ v }}</option>{% endfor %}</select>
-  </label>
   <button class="btn primary" type="submit">Wgraj</button>
   <div id="upload-progress"></div>
 </form>
+{% else %}
+<p class="muted">Wgrywać nagrania do tego meczu mogą administratorzy, szkoleniowcy i sędziowie z obsady.</p>
+{% endif %}
 
+{% if perm.can_delete_match(user, match) %}
 <form method="post" action="/matches/{{ match.id }}/delete" onsubmit="return confirm('Usunąć mecz razem z nagraniami i klipami?')">
+  {{ csrf_input() }}
   <button class="btn danger small">Usuń mecz</button>
 </form>
+{% endif %}
 {% endblock %}
 {% block scripts %}<script src="/static/upload.js"></script>{% endblock %}

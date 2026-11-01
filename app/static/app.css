@@ -62,3 +62,21 @@ kbd { background: #e9edf5; border: 1px solid #c3c9d6; border-radius: 4px; paddin
 .comment.reply { margin-left: 32px; }
 .comment .meta { display: flex; gap: 10px; align-items: center; } .comment .actions { font-size: 13px; display: flex; gap: 12px; }
 .danger-link { color: var(--danger); }
+
+/* konta i logowanie */
+.top .who { margin-left: auto; display: flex; align-items: center; gap: 12px; color: #c9d3e6; }
+form.inline { display: inline; margin: 0; }
+.linklike { background: none; border: 0; padding: 0; font: inherit; color: #9db8ee; cursor: pointer; }
+.linklike:hover { text-decoration: underline; }
+.auth-box { max-width: 420px; margin: 40px auto; }
+.auth-box input { width: 100%; }
+label.inline { display: inline-block; margin: 0 10px 0 0; font-weight: 400; }
+label.inline input { display: inline-block; margin: 0 4px 0 0; }
+tr.inactive td { color: var(--muted); }
+.invite-box { border-color: #b6ccf7; background: #f1f6ff; }
+.invite-box input { flex: 1; min-width: 260px; }
+.official-row { display: grid; grid-template-columns: 70px 1fr 1fr; gap: 12px; align-items: end; margin: 6px 0; }
+.official-row .fn { padding-bottom: 8px; }
+.official-row label { margin: 0; }
+@media (max-width: 960px) { .official-row { grid-template-columns: 1fr; } }
+.facts dt { font-weight: 600; margin-top: 6px; } .facts dd { margin: 0; }

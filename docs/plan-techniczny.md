@@ -156,7 +156,7 @@ wdrożenie ──► review ──► są uwagi? ──tak──► poprawa bł�
 ```
 
 - **Wdrożenie:** implementacja segmentu razem z testami (agent Sonnet 5.5, effort high), na osobnej gałęzi `segment-N`.
-- **Review:** niezależny przegląd zmian: zgodność ze specyfikacją i planem, błędy logiczne, uprawnienia i bezpieczeństwo, testy. Każda uwaga dostaje wagę: **blokująca** (musi być poprawiona) lub **drobna**.
+- **Review:** niezależny przegląd zmian (Opus 5.5): zgodność ze specyfikacją i planem, błędy logiczne, uprawnienia i bezpieczeństwo, testy. Każda uwaga dostaje wagę: **blokująca** (musi być poprawiona) lub **drobna**.
 - **Poprawa błędów:** usunięcie wszystkich uwag blokujących (drobne według uznania), po czym kolejne review. Pętla trwa, dopóki review nie zwróci żadnej uwagi blokującej, a wszystkie testy przechodzą.
 - **Zamknięcie segmentu:** krótki raport (co zrobiono, wynik testów, lista drobnych uwag odłożonych na później) i scalenie gałęzi do `master`.
 - Odłożone drobne uwagi i pomysły trafiają do `TODO.md`.

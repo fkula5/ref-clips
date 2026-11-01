@@ -7,7 +7,7 @@
     <a href="/matches/{{ match.id }}">{{ match.title }}</a>
   </div>
   <div class="row">
-    <a class="btn" href="/videos/{{ video.id }}/notes">Wklej notatki</a>
+    {% if perm.can_manage_clips(user, match) %}<a class="btn" href="/videos/{{ video.id }}/notes">Wklej notatki</a>{% endif %}
     <a class="btn" href="/clips?video_id={{ video.id }}">Klipy tego nagrania</a>
   </div>
 </div>
@@ -28,17 +28,19 @@
           {% for s in [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2] %}<option value="{{ s }}" {{ 'selected' if s == 1 }}>{{ s }}×</option>{% endfor %}
         </select>
       </label>
-      <button class="btn" id="btn-m" type="button">M · Dodaj decyzję</button>
-      <button class="btn" id="btn-q" type="button">Q · Znacznik kwarty (<span id="next-period">Q1</span>)</button>
+      {% if perm.can_manage_clips(user, match) %}<button class="btn" id="btn-m" type="button">M · Dodaj klip</button>{% endif %}
+      {% if perm.can_upload_to_match(user, match) %}<button class="btn" id="btn-q" type="button">Q · Znacznik kwarty (<span id="next-period">Q1</span>)</button>{% endif %}
     </div>
+    {% if perm.can_manage_clips(user, match) %}
     <form id="quick-form" class="card hidden" autocomplete="off">
-      <label>Decyzja w <strong id="quick-time">0:00</strong> — wpisz np. „Filip PTS” lub „Kasia kroki białe”
-        <input id="quick-text" placeholder="sędzia, tagi, uwagi — Enter zapisuje, Esc anuluje">
+      <label>Klip w <strong id="quick-time">0:00</strong> — wpisz np. „Filip kroki” lub „U1 faul techniczny”
+        <input id="quick-text" placeholder="sędzia (imię, nazwisko, CC/U1/U2), kategoria, uwagi — Enter zapisuje, Esc anuluje">
       </label>
     </form>
+    {% endif %}
     <p class="muted shortcuts">
       Skróty: <kbd>Spacja</kbd> start/pauza · <kbd>←</kbd><kbd>→</kbd> ±1 s · <kbd>Shift</kbd>+<kbd>←</kbd><kbd>→</kbd> ±5 s ·
-      <kbd>,</kbd><kbd>.</kbd> klatka wstecz/naprzód · <kbd>[</kbd><kbd>]</kbd> tempo · <kbd>M</kbd> decyzja · <kbd>Q</kbd> kwarta
+      <kbd>,</kbd><kbd>.</kbd> klatka wstecz/naprzód · <kbd>[</kbd><kbd>]</kbd> tempo · <kbd>M</kbd> klip · <kbd>Q</kbd> kwarta
     </p>
   </section>
 
@@ -46,14 +48,16 @@
     <div class="card">
       <h3>Znaczniki kwart</h3>
       <div id="marks"></div>
+      {% if perm.can_upload_to_match(user, match) %}
       <div class="row">
         <select id="mark-period">{% for p in PERIODS %}<option>{{ p }}</option>{% endfor %}</select>
         <button class="btn small" id="btn-mark" type="button">Ustaw w bieżącej chwili</button>
       </div>
-      <p class="muted">Kwarta każdego klipu wynika z tych znaczników.</p>
+      {% endif %}
+      <p class="muted">Kwarta każdego klipu wynika z tych znaczników (czas nagrania, nie zegar meczowy).</p>
     </div>
     <div class="card">
-      <h3>Decyzje <span id="dec-count" class="muted"></span></h3>
+      <h3>Klipy <span id="dec-count" class="muted"></span></h3>
       <ul id="decisions" class="dec-list"></ul>
     </div>
   </aside>
@@ -62,4 +66,4 @@
 <script type="application/json" id="init-state">{{ state|tojson }}</script>
 {% endif %}
 {% endblock %}
-{% block scripts %}{% if video.status == 'ready' %}<script>window.START_AT = {{ start_at }};</script><script src="/static/player.js"></script>{% endif %}{% endblock %}
+{% block scripts %}{% if video.status == 'ready' %}<script>window.CAN_MARK = {{ 'true' if perm.can_upload_to_match(user, match) else 'false' }};window.START_AT = {{ start_at }};</script><script src="/static/player.js"></script>{% endif %}{% endblock %}

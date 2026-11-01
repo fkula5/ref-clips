@@ -2,39 +2,44 @@
 {% block title %}{{ "Edycja meczu" if match else "Nowy mecz" }}{% endblock %}
 {% block content %}
 <h1>{{ "Edycja meczu" if match else "Nowy mecz" }}</h1>
+{% if error %}<div class="banner error">{{ error }}</div>{% endif %}
 <form method="post" action="{{ '/matches/%d' % match.id if match else '/matches' }}" class="card form">
+  {{ csrf_input() }}
   <div class="grid2">
     <label>Data meczu
-      <input type="date" name="date" required value="{{ match.date.isoformat() if match else today }}">
+      <input type="date" name="date" required value="{{ values.date }}">
     </label>
-    <label>Poziom rozgrywek
-      <input name="level" placeholder="np. II liga" value="{{ match.level if match else '' }}">
+    <label>Liga / poziom rozgrywek
+      <input name="level" placeholder="np. II liga" value="{{ values.level }}">
     </label>
   </div>
   <div class="grid2">
     <fieldset><legend>Drużyna A</legend>
-      <label>Nazwa <input name="team_a_name" value="{{ match.team_a_name if match else '' }}"></label>
-      <label>Kolor strojów <input name="team_a_color" value="{{ match.team_a_color if match else 'białe' }}"></label>
+      <label>Nazwa <input name="team_a_name" value="{{ values.team_a_name }}"></label>
+      <label>Kolor strojów <input name="team_a_color" value="{{ values.team_a_color }}"></label>
     </fieldset>
     <fieldset><legend>Drużyna B</legend>
-      <label>Nazwa <input name="team_b_name" value="{{ match.team_b_name if match else '' }}"></label>
-      <label>Kolor strojów <input name="team_b_color" value="{{ match.team_b_color if match else 'ciemne' }}"></label>
+      <label>Nazwa <input name="team_b_name" value="{{ values.team_b_name }}"></label>
+      <label>Kolor strojów <input name="team_b_color" value="{{ values.team_b_color }}"></label>
     </fieldset>
   </div>
   <fieldset><legend>Obsada sędziowska</legend>
-    {% set refs = match.referees if match else [] %}
-    {% for i in range(4) %}
-      {% set mr = refs[i] if i < refs|length else None %}
-      <div class="row">
-        <input name="ref_name" placeholder="Imię (i nazwisko)" value="{{ mr.referee.name if mr else '' }}">
-        <select name="ref_role">
-          {% for key, label in MATCH_ROLES.items() %}
-            <option value="{{ key }}" {{ 'selected' if (mr and mr.role == key) or (not mr and key == ('crew_chief' if i == 0 else 'umpire')) }}>{{ label }}</option>
-          {% endfor %}
-        </select>
+    {% for function, label in OFFICIAL_FUNCTIONS.items() %}
+      {% set key = function|lower %}
+      <div class="official-row">
+        <strong class="fn">{{ function }}{% if function == 'U2' %} <small class="muted">(opcjonalnie)</small>{% endif %}</strong>
+        <label>Konto sędziego
+          <select name="{{ key }}_user">
+            <option value="">— wybierz konto —</option>
+            {% for r in referees %}<option value="{{ r.id }}" {{ 'selected' if values[key ~ '_user'] == r.id|string }}>{{ r.name }}</option>{% endfor %}
+          </select>
+        </label>
+        <label>albo imię i nazwisko (sędzia bez konta)
+          <input name="{{ key }}_name" value="{{ values[key ~ '_name'] }}" placeholder="np. Jan Kowalski">
+        </label>
       </div>
     {% endfor %}
-    <p class="muted">Imiona z tej listy parser rozpoznaje w notatkach (bez względu na wielkość liter i polskie znaki).</p>
+    <p class="muted">CC i U1 są wymagane. Gdy wybierzesz konto, wpisane nazwisko jest pomijane. Sędzia, który nie jest administratorem ani szkoleniowcem, musi być w obsadzie własnego meczu; formularz wstawił Cię na pozycję CC — możesz zmienić funkcję. Sędziego rozpoznasz w notatkach po imieniu, nazwisku albo funkcji (CC/U1/U2).</p>
   </fieldset>
   <div class="row">
     <button class="btn primary">Zapisz</button>
