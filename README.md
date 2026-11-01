@@ -183,9 +183,6 @@ app/video.py           ffprobe/ffmpeg: konwersja i wycinanie
 app/storage.py         magazyn plików (lokalny; interfejs pod przyszłe S3)
 app/worker.py          pętla zadań z tabeli jobs
 app/services.py        obsada, kwarty, granice klipów, nazwy plików, kolejka
-app/templates, static  interfejs (Jinja2, HTMX z CDN unpkg w wersji 2.0.4, czysty JS)
+app/templates, static  interfejs (Jinja2, HTMX 2.0.4 w static/vendor, czysty JS)
 tests/                 pytest
 ```
-
-Uwaga: HTMX jest ładowany z CDN (unpkg, wersja przypięta) — do odświeżania list i komentarzy
-potrzebny jest dostęp do internetu w przeglądarce (przypięcie pliku w `static/` zaplanowano w planie).

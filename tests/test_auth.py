@@ -106,6 +106,45 @@ def test_throttle_ignores_other_ip(db):
     assert accounts.is_throttled(db, "kto@example.com", "1.1.1.1")  # ten sam IP
 
 
+@pytest.mark.parametrize("target,expected", [
+    ("/ok?a=1", "/ok?a=1"), ("/", "/"), ("/clips?match_id=3&x=y", "/clips?match_id=3&x=y"),
+    ("/\t/evil.com", "/"), ("/\n/evil.com", "/"), ("/\r/evil.com", "/"), ("//evil.com", "/"),
+    ("/\\evil.com", "/"), ("https://evil.com", "/"), ("http:evil.com", "/"), (" /x", "/"),
+    ("/x ", "/"), ("\t/x", "/"), ("/\u00a0/evil.com", "/"), ("evil.com", "/"), ("", "/"),
+    ("/a\x00b", "/"),
+])
+def test_safe_next(target, expected):
+    from app.routers.auth import safe_next
+    assert safe_next(target) == expected
+
+
+def test_login_does_not_redirect_through_whitespace_trick(anon_client, db):
+    make_user(db, email="jan@example.com")
+    r = do_login(anon_client, "jan@example.com", next="/\t/evil.com")
+    assert r.headers["location"] == "/"
+    assert anon_client.get("/login?next=/%09/evil.com").text.count("evil.com") == 0
+
+
+def test_successful_login_clears_failure_counter_for_that_email(anon_client, db):
+    make_user(db, email="jan@example.com")
+    for _ in range(config.LOGIN_MAX_ATTEMPTS - 1):
+        do_login(anon_client, "jan@example.com", "zle-haslo-123")
+    assert do_login(anon_client, "jan@example.com").status_code == 303
+    assert db.query(LoginAttempt).filter_by(email="jan@example.com").count() == 0
+    anon_client.cookies.delete(config.SESSION_COOKIE)
+    assert do_login(anon_client, "jan@example.com", "zle-haslo-123").status_code == 401  # 1 błąd po sukcesie, bez blokady
+    assert not accounts.is_throttled(db, "jan@example.com", "1.2.3.4")
+
+
+def test_successful_login_keeps_ip_failures(db):
+    make_user(db, email="jan@example.com")
+    db.add(LoginAttempt(email="inny@example.com", ip="9.9.9.9", attempted_at=utcnow()))
+    db.add(LoginAttempt(email="jan@example.com", ip="9.9.9.9", attempted_at=utcnow()))
+    db.commit()
+    accounts.authenticate(db, "jan@example.com", PASSWORD, "9.9.9.9")
+    assert [a.email for a in db.scalars(select(LoginAttempt))] == ["inny@example.com"]
+
+
 def test_login_redirects_only_to_local_next(anon_client, db):
     make_user(db, email="jan@example.com")
     assert do_login(anon_client, "jan@example.com", next="/clips?match_id=1").headers["location"] == "/clips?match_id=1"
@@ -195,6 +234,7 @@ def test_every_route_requires_login_except_public_ones(anon_client):
 
 def test_static_files_are_public(anon_client):
     assert anon_client.get("/static/app.css").status_code == 200
+    assert anon_client.get("/static/vendor/htmx-2.0.4.min.js").status_code == 200  # HTMX lokalnie, bez CDN
 
 
 def test_api_docs_are_not_exposed(anon_client):

@@ -8,7 +8,8 @@
     return new Promise((resolve, reject) => {
       const row = document.createElement("div");
       row.className = "upload-row";
-      row.innerHTML = `<span>${file.name}</span> <progress max="100" value="0"></progress> <span class="pct">0%</span>`;
+      row.innerHTML = `<span class="fname"></span> <progress max="100" value="0"></progress> <span class="pct">0%</span>`;
+      row.querySelector(".fname").textContent = file.name;  // tekst, nie HTML
       box.appendChild(row);
       const bar = row.querySelector("progress"), pct = row.querySelector(".pct");
 

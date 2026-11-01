@@ -1,6 +1,8 @@
 """Logowanie, wylogowanie i ustawienie hasła z linku (zaproszenie / reset)."""
 from __future__ import annotations
 
+from urllib.parse import urlsplit
+
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
@@ -20,10 +22,18 @@ THROTTLE_MESSAGE = (f"Zbyt wiele nieudanych prób logowania. Spróbuj ponownie z
 
 
 def safe_next(target: str) -> str:
-    """Dopuszcza tylko adresy lokalne (bez przekierowania na obcą domenę)."""
-    if target.startswith("/") and not target.startswith("//") and "\\" not in target:
-        return target
-    return "/"
+    """Dopuszcza tylko adresy lokalne (bez przekierowania na obcą domenę).
+
+    Odrzuca znaki kontrolne, białe znaki i backslash (przeglądarki usuwają tab/CR/LF z adresu,
+    więc „/\\t/evil.com” stałoby się „//evil.com”) oraz wszystko z hostem lub schematem."""
+    if any(ch.isspace() or ord(ch) < 32 or ord(ch) == 127 or ch == "\\" for ch in target):
+        return "/"
+    if not target.startswith("/") or target.startswith("//"):
+        return "/"
+    parts = urlsplit(target)
+    if parts.scheme or parts.netloc:
+        return "/"
+    return target
 
 
 @public_router.get("/login")

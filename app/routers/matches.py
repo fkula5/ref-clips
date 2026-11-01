@@ -71,7 +71,7 @@ def _save(db: Session, user: User, match: Match, form: dict[str, str]) -> None:
     match.level = form["level"].strip()
     for field in TEAM_FIELDS:
         setattr(match, field, form[field].strip())
-    services.set_officials(match, officials)
+    services.set_officials(db, match, officials)
 
 
 @router.get("/")

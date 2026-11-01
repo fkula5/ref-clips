@@ -8,7 +8,7 @@
 
 ## Uwagi z segmentu 1 (drobne, odłożone)
 
-- [ ] HTMX jest nadal ładowany z CDN (unpkg); plan zakłada plik przypięty w `app/static/` (wymaga pobrania pliku).
+- [x] HTMX przypięty lokalnie: `app/static/vendor/htmx-2.0.4.min.js` (bez CDN).
 - [ ] Błędy 403/404/422 przy wysyłce formularza pokazują prostą stronę błędu; warto je zamienić na komunikaty w formularzach.
 - [ ] Komentarze do meczu (tabela gotowa, brak trasy i widoku) oraz edycja komentarza (reguła `can_edit_comment` gotowa) — segment 6.
 - [ ] Sędzia usunięty z obsady przestaje mieć dostęp do meczu, ale jego klipy zostają bez powiązania z pozycją (`official_id` = NULL).

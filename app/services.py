@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from datetime import timedelta
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from app import config
@@ -11,7 +11,7 @@ from app.models import (OFFICIAL_FUNCTIONS, PERIODS, Category, Clip, Job, Match,
                         PeriodMark, Setting, User, Video)
 from app.notes_parser import CategoryDef, ParsedLine, RefereeDef, parse_notes
 from app.storage import storage
-from app.textutil import format_clock, slugify
+from app.textutil import format_clock, normalize, slugify
 from app.timeutil import utcnow
 
 
@@ -72,17 +72,54 @@ def officials_from_form(db: Session, form: dict[str, str]) -> list[tuple[str, in
     return result
 
 
-def set_officials(match: Match, officials: list[tuple[str, int | None, str | None]]) -> None:
-    """Zastępuje obsadę meczu. Pozycje o tej samej funkcji są aktualizowane w miejscu,
-    dzięki czemu klipy opisane wcześniej nie tracą powiązania z sędzią."""
-    wanted = {function: (user_id, name) for function, user_id, name in officials}
+def _identity(user_id: int | None, name: str | None) -> tuple[str, object]:
+    """Tożsamość osoby w obsadzie: konto albo znormalizowane wpisane imię i nazwisko."""
+    return ("u", user_id) if user_id else ("n", normalize(name or ""))
+
+
+def set_officials(db: Session, match: Match, officials: list[tuple[str, int | None, str | None]]) -> None:
+    """Zastępuje obsadę meczu, zachowując powiązanie klipów z OSOBĄ, a nie z pozycją.
+
+    Istniejące pozycje dopasowujemy po tożsamości (konto albo imię i nazwisko). Osoba, która
+    zostaje, zachowuje klipy także przy zmianie funkcji (np. zamiana CC z U1); nowa osoba to
+    nowa pozycja; usunięta osoba traci pozycję, a jej klipy zostają bez przypisania
+    (official_id = NULL). Unikalność (mecz, funkcja) jest zachowana: pozycje zmieniające
+    funkcję są najpierw usuwane (z zapamiętaniem klipów), potem zakładane od nowa.
+    """
+    incoming = {_identity(user_id, name): (function, user_id, name) for function, user_id, name in officials}
+    # klipy pobieramy przed usuwaniem pozycji: usunięcie (autoflush) zeruje official_id w bazie
+    clips_of: dict[int, list[int]] = {}
+    old_ids = [o.id for o in match.officials if o.id is not None]
+    if old_ids:
+        for clip_id, official_id in db.execute(
+                select(Clip.id, Clip.official_id).where(Clip.official_id.in_(old_ids))):
+            clips_of.setdefault(official_id, []).append(clip_id)
+    moved: list[tuple[int, tuple[str, int | None, str | None]]] = []  # (stare id pozycji, nowe dane)
+    removed = False
     for official in list(match.officials):
-        if official.function in wanted:
-            official.user_id, official.name = wanted.pop(official.function)
+        target = incoming.pop(_identity(official.user_id, official.name), None)
+        if target is None:
+            match.officials.remove(official)          # osoba usunięta z obsady
+            removed = True
+        elif target[0] == official.function:
+            official.name = target[2]                  # bez zmian (ewentualnie poprawiona pisownia)
         else:
+            moved.append((official.id, target))
             match.officials.remove(official)
-    for function, (user_id, name) in wanted.items():
+    if moved or removed:
+        db.flush()  # zwolnione funkcje przed wstawieniem nowych (unikalność sprawdzana per instrukcja)
+    created: list[tuple[int, MatchOfficial]] = []
+    for old_id, (function, user_id, name) in moved:
+        fresh = MatchOfficial(function=function, user_id=user_id, name=name)
+        match.officials.append(fresh)
+        created.append((old_id, fresh))
+    for function, user_id, name in incoming.values():  # nowe osoby
         match.officials.append(MatchOfficial(function=function, user_id=user_id, name=name))
+    if moved:
+        db.flush()
+        for old_id, fresh in created:
+            if clips_of.get(old_id):
+                db.execute(update(Clip).where(Clip.id.in_(clips_of[old_id])).values(official_id=fresh.id))
 
 
 # --- kwarty ---------------------------------------------------------------------

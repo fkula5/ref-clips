@@ -67,6 +67,9 @@ def authenticate(db: Session, email: str, password: str, ip: str) -> User:
         db.add(LoginAttempt(email=email, ip=ip, attempted_at=now))
         db.commit()
         raise InvalidCredentials
+    # udane logowanie zeruje licznik błędów tego konta (licznik adresu IP zostaje)
+    db.execute(delete(LoginAttempt).where(LoginAttempt.email == email))
+    db.commit()
     if security.needs_rehash(user.password_hash):
         user.password_hash = security.hash_password(password)
         db.commit()
