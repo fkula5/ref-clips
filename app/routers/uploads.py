@@ -13,6 +13,7 @@ from datetime import UTC
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.concurrency import run_in_threadpool
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import InvalidRequestError
 from sqlalchemy.orm.exc import StaleDataError
 from starlette.requests import ClientDisconnect
 
@@ -155,6 +156,8 @@ async def append_upload(upload_id: str, request: Request, db: Session = Depends(
     if int(offset) != up.offset_bytes:
         raise _fail(UploadError(409, "Niezgodny offset — odpytaj o aktualny (HEAD) i wznów od niego",
                                 {"Upload-Offset": str(up.offset_bytes)}))
+    if uploads.is_complete(up):
+        raise _fail(UploadError(409, "Wgrywanie jest już zakończone", {"Upload-Offset": str(up.offset_bytes)}))
     remaining = up.size_bytes - up.offset_bytes
     declared = request.headers.get("content-length", "")
     if declared.isdigit() and int(declared) > remaining:
@@ -166,6 +169,19 @@ async def append_upload(upload_id: str, request: Request, db: Session = Depends(
             fcntl.flock(fh, fcntl.LOCK_EX | fcntl.LOCK_NB)  # jeden PATCH naraz dla uploadu
         except OSError:
             raise _fail(UploadError(409, "To wgrywanie jest właśnie dopisywane innym żądaniem")) from None
+        try:  # równoległy PATCH mógł się skończyć tuż przed uzyskaniem blokady
+            db.refresh(up)
+        except InvalidRequestError:  # wiersz usunięty (anulowanie / usunięcie meczu)
+            storage.delete(uploads.part_key(up.id))  # open_update mógł założyć pusty plik
+            raise _fail(UploadError(404, "Wgrywanie zostało przerwane")) from None
+        if uploads.is_complete(up):  # drugi PATCH dokończył upload (plik już przeniesiony)
+            storage.delete(uploads.part_key(up.id))
+            raise _fail(UploadError(409, "Wgrywanie jest już zakończone", {"Upload-Offset": str(up.offset_bytes)}))
+        if int(offset) != up.offset_bytes:
+            raise _fail(UploadError(409, "Niezgodny offset — odpytaj o aktualny (HEAD) i wznów od niego",
+                                    {"Upload-Offset": str(up.offset_bytes)}))
+        if declared.isdigit() and int(declared) > up.size_bytes - up.offset_bytes:
+            raise _fail(UploadError(413, "Dane przekraczają zadeklarowany rozmiar pliku"))
         fh.truncate(up.offset_bytes)  # odrzuca ewentualne resztki po przerwanym zapisie
         fh.seek(up.offset_bytes)
         overflow = disconnected = False

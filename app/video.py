@@ -66,6 +66,8 @@ def probe(path: Path) -> dict:
     avg_fps, nominal_fps = _parse_fraction(video.get("avg_frame_rate")), _parse_fraction(video.get("r_frame_rate"))
     return {
         "duration": float(duration) if duration else None,
+        # czas trwania samej ścieżki wideo (bez wpływu dłuższego audio, edit list ani start_time)
+        "video_duration": float(video.get("duration") or duration or 0) or None,
         "width": video.get("width"),
         "height": video.get("height"),
         "fps": avg_fps or nominal_fps,
@@ -97,19 +99,24 @@ def build_transcode_command(ffmpeg: str, src: Path, dst: Path, src_fps: float | 
     ]
 
 
-VERIFY_TOLERANCE = 1.0  # s: dopuszczalna różnica czasu trwania oryginału i wersji roboczej
+def verify_tolerance(duration: float) -> float:
+    """Dopuszczalna różnica czasu trwania: większa z VERIFY_MIN_SECONDS i VERIFY_RELATIVE długości."""
+    return max(config.VERIFY_MIN_SECONDS, config.VERIFY_RELATIVE * duration)
 
 
 def verify_conversion(source: dict, proxy: Path) -> dict:
-    """Sprawdza wynik konwersji: wersja robocza ma ścieżkę wideo, a jej czas trwania zgadza się
-    z oryginałem (±1 s). Zwraca probe wersji roboczej albo rzuca FFmpegError."""
+    """Sprawdza wynik konwersji: wersja robocza ma ścieżkę wideo, a czas trwania jej ścieżki wideo
+    zgadza się z oryginałem (porównujemy ścieżki wideo, nie formaty, bo nagrania z telefonów mają
+    audio dłuższe od wideo, edit listy i start_time różny od 0). Ucięty wynik jest odrzucany.
+    Zwraca probe wersji roboczej albo rzuca FFmpegError."""
     result = probe(proxy)  # rzuca FFmpegError bez ścieżki wideo
-    if not source.get("duration") or not result.get("duration"):
+    expected, actual = source.get("video_duration"), result.get("video_duration")
+    if not expected or not actual:
         raise FFmpegError("Nie udało się odczytać czasu trwania — wyniku nie można zweryfikować")
-    if abs(result["duration"] - source["duration"]) > VERIFY_TOLERANCE:
+    if abs(actual - expected) > verify_tolerance(expected):
         raise FFmpegError(
-            f"Czas trwania wersji roboczej ({result['duration']:.1f} s) różni się od oryginału "
-            f"({source['duration']:.1f} s)")
+            f"Czas trwania wideo wersji roboczej ({actual:.1f} s) różni się od oryginału "
+            f"({expected:.1f} s)")
     return result
 
 

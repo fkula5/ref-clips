@@ -75,7 +75,7 @@ def test_worker_pipeline_with_fake_ffmpeg(db, monkeypatch):
 
     calls = []
     monkeypatch.setattr(vid, "ffmpeg_available", lambda: True)
-    monkeypatch.setattr(vid, "probe", lambda p: {"duration": 120.0, "fps": 25.0, "width": 1280,
+    monkeypatch.setattr(vid, "probe", lambda p: {"duration": 120.0, "video_duration": 120.0, "fps": 25.0, "width": 1280,
                                                  "height": 720, "has_audio": True})
 
     def fake_transcode(src, dst, duration, on_progress=None, src_fps=None):

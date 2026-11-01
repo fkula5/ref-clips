@@ -92,21 +92,68 @@ def test_transcode_limits_60fps_to_30_and_keeps_lower_rates(tmp_path):
     assert _fps_of(out25) == pytest.approx(25, abs=0.1)  # niższej liczby klatek nie podnosimy
 
 
+def _ff(*args):
+    subprocess.run([vid.ffmpeg_bin(), "-y", "-loglevel", "error", *args], check=True)
+
+
+def _convert(src, dst):
+    vid.transcode_to_proxy(src, dst, vid.probe(src)["duration"], src_fps=vid.probe(src)["max_fps"])
+    return dst
+
+
 @needs_ffmpeg
-def test_verify_conversion(tmp_path):
+def test_verify_conversion_tolerance_and_streams(tmp_path):
     src = _make_source(tmp_path / "s.mp4", seconds=4)
     info = vid.probe(src)
     assert vid.verify_conversion(info, src)["duration"] == pytest.approx(4, abs=0.2)
-    assert vid.verify_conversion({**info, "duration": info["duration"] + 0.9}, src)
+    assert vid.verify_tolerance(10) == 2 and vid.verify_tolerance(3600) == 36  # max(2 s, 1%)
+    vid.verify_conversion({**info, "video_duration": info["video_duration"] + 1.9}, src)
     with pytest.raises(vid.FFmpegError, match="różni się"):
-        vid.verify_conversion({**info, "duration": info["duration"] + 1.5}, src)
+        vid.verify_conversion({**info, "video_duration": info["video_duration"] + 2.5}, src)
     with pytest.raises(vid.FFmpegError):
-        vid.verify_conversion({**info, "duration": None}, src)
+        vid.verify_conversion({**info, "video_duration": None}, src)
     audio_only = tmp_path / "a.m4a"
-    subprocess.run([vid.ffmpeg_bin(), "-y", "-loglevel", "error", "-f", "lavfi", "-i", "sine=duration=4",
-                    str(audio_only)], check=True)
+    _ff("-f", "lavfi", "-i", "sine=duration=4", str(audio_only))
     with pytest.raises(vid.FFmpegError, match="wideo"):
         vid.verify_conversion(info, audio_only)
+
+
+@needs_ffmpeg
+def test_verify_accepts_audio_longer_than_video(tmp_path):
+    """Telefon: audio dłuższe od wideo o 3 s nie może unieważnić poprawnej konwersji."""
+    src = tmp_path / "long_audio.mp4"
+    _ff("-f", "lavfi", "-i", "testsrc2=size=320x240:rate=25:duration=10",
+        "-f", "lavfi", "-i", "sine=frequency=440:duration=13",
+        "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", str(src))
+    info = vid.probe(src)
+    assert info["video_duration"] == pytest.approx(10, abs=0.2) and info["duration"] == pytest.approx(13, abs=0.3)
+    proxy = _convert(src, tmp_path / "p.mp4")
+    assert vid.verify_conversion(info, proxy)["video_duration"] == pytest.approx(10, abs=0.3)
+
+
+@needs_ffmpeg
+def test_verify_accepts_nonzero_start_time(tmp_path):
+    src = tmp_path / "offset.mp4"
+    _ff("-f", "lavfi", "-i", "testsrc2=size=320x240:rate=25:duration=8",
+        "-f", "lavfi", "-i", "sine=frequency=440:duration=8",
+        "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", "-output_ts_offset", "37.5", str(src))
+    start = float(subprocess.run([vid.ffprobe_bin(), "-v", "error", "-show_entries", "format=start_time",
+                                  "-of", "csv=p=0", str(src)], capture_output=True, text=True).stdout)
+    assert start > 30  # źródło naprawdę nie zaczyna się od 0
+    info = vid.probe(src)
+    proxy = _convert(src, tmp_path / "p.mp4")
+    assert vid.verify_conversion(info, proxy)["video_duration"] == pytest.approx(8, abs=0.3)
+
+
+@needs_ffmpeg
+def test_verify_rejects_truncated_result(tmp_path):
+    src = _make_source(tmp_path / "s.mp4", seconds=10)
+    info = vid.probe(src)
+    proxy = _convert(src, tmp_path / "p.mp4")
+    half = tmp_path / "half.mp4"
+    _ff("-i", str(proxy), "-t", "5", "-c", "copy", str(half))
+    with pytest.raises(vid.FFmpegError, match="różni się"):
+        vid.verify_conversion(info, half)
 
 
 @pytest.fixture(scope="module")

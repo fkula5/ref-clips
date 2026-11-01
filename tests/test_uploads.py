@@ -527,3 +527,81 @@ def test_delete_during_patch_does_not_crash(client, db, monkeypatch):
     assert tus_patch(client, url, 0, DATA[:1000]).status_code == 404
     monkeypatch.undo()
     assert client.head(url, headers=TUS).status_code == 404
+
+
+# --- poprawki po review ---------------------------------------------------------------------
+def test_offset_is_rechecked_after_acquiring_the_lock(client, db, monkeypatch):
+    """Równoległy PATCH kończy się tuż przed blokadą: nieaktualny offset daje 409, nic się nie dopisuje."""
+    from app.db import SessionLocal
+    from app.routers import uploads as router
+
+    url = tus_create(client, make_match(db).id, len(DATA)).headers["Location"]
+    upload_id = url.rsplit("/", 1)[1]
+    real = router.storage.open_update
+
+    def after_other_patch(key):
+        fh = real(key)
+        fh.write(DATA[:1000])   # „drugie żądanie” zdążyło dopisać 1000 B i zapisać offset
+        fh.flush()
+        with SessionLocal() as other:
+            other.get(UploadSession, upload_id).offset_bytes = 1000
+            other.commit()
+        return fh
+
+    monkeypatch.setattr(router.storage, "open_update", after_other_patch)
+    r = tus_patch(client, url, 0, DATA[:500])
+    assert r.status_code == 409 and r.headers["Upload-Offset"] == "1000"
+    monkeypatch.undo()
+    assert client.head(url, headers=TUS).headers["Upload-Offset"] == "1000"
+    assert storage.size(uploads.part_key(upload_id)) == 1000
+    assert tus_patch(client, url, 1000, DATA[1000:]).status_code == 204
+
+
+def test_two_patches_at_the_same_offset(client, db):
+    url = tus_create(client, make_match(db).id, len(DATA)).headers["Location"]
+    assert tus_patch(client, url, 0, DATA[:1000]).status_code == 204
+    r = tus_patch(client, url, 0, DATA[:1000])
+    assert r.status_code == 409 and r.headers["Upload-Offset"] == "1000"
+    assert storage.size(uploads.part_key(url.rsplit("/", 1)[1])) == 1000
+
+
+def test_patch_after_completion_is_409_and_leaves_no_part_file(client, db):
+    url = tus_upload(client, make_match(db).id, DATA)
+    r = tus_patch(client, url, len(DATA), b"")
+    assert r.status_code == 409
+    assert not storage.exists(uploads.part_key(url.rsplit("/", 1)[1]))
+
+
+def test_head_of_finished_upload_for_deleted_match_is_410(client, db):
+    """Mecz zniknął (np. brak kaskady): HEAD kończący upload nie wybucha, tylko sprząta i zwraca 410."""
+    match = make_match(db)
+    url = tus_create(client, match.id, 100).headers["Location"]
+    upload_id = url.rsplit("/", 1)[1]
+    tus_patch(client, url, 0, b"x" * 99)
+    up = db.get(UploadSession, upload_id)
+    up.offset_bytes, up.match_id = up.size_bytes, None   # upload kompletny, ale bez meczu
+    db.commit()
+    storage.local_path(uploads.part_key(upload_id)).write_bytes(b"x" * 100)
+    with pytest.raises(uploads.UploadError, match="Mecz został usunięty") as exc:
+        uploads.finish(db, db.get(UploadSession, upload_id))
+    assert exc.value.status_code == 410
+    assert db.get(UploadSession, upload_id) is None and not storage.exists(uploads.part_key(upload_id))
+    assert db.scalar(select(Video)) is None
+    # to samo przez HTTP (HEAD nie ma treści): 410, bez błędu serwera
+    url2 = tus_create(client, make_match(db).id, 100).headers["Location"]
+    id2 = url2.rsplit("/", 1)[1]
+    up2 = db.get(UploadSession, id2)
+    up2.offset_bytes, up2.match_id = up2.size_bytes, None
+    db.commit()
+    storage.local_path(uploads.part_key(id2)).write_bytes(b"x" * 100)
+    assert client.head(url2, headers=TUS).status_code == 410
+
+
+def test_deleting_a_match_removes_its_unfinished_uploads(client, db):
+    match = make_match(db)
+    url = tus_create(client, match.id, len(DATA)).headers["Location"]
+    tus_patch(client, url, 0, DATA[:1000])
+    upload_id = url.rsplit("/", 1)[1]
+    assert client.post(f"/matches/{match.id}/delete", follow_redirects=False).status_code == 303
+    assert client.head(url, headers=TUS).status_code == 404
+    assert not storage.exists(uploads.part_key(upload_id))

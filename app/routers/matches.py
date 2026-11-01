@@ -8,11 +8,12 @@ from fastapi.responses import RedirectResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
-from app import match_list, permissions, services
+from app import match_list, permissions, services, uploads
 from app.auth import require
 from app.db import get_db
 from app.loaders import get_match
-from app.models import OFFICIAL_FUNCTIONS, Match, User
+from app.models import OFFICIAL_FUNCTIONS, Match, UploadSession, User
+from app.storage import storage
 from app.web import render
 
 router = APIRouter()
@@ -160,6 +161,8 @@ def delete_match(db: Session = Depends(get_db), match: Match = Depends(get_match
                  user: User = require(permissions.can_delete_match, get_match)):
     for video in match.videos:
         services.remove_video_files(video)
+    for up in db.scalars(select(UploadSession).where(UploadSession.match_id == match.id)):
+        storage.delete(uploads.part_key(up.id))  # niedokończone wgrywania do tego meczu
     db.delete(match)
     db.commit()
     return RedirectResponse("/", status_code=303)

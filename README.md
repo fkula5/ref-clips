@@ -154,7 +154,7 @@ i ustawieniem hasła wymaga zalogowania (strony przekierowują na `/login`, API 
    kl./s — wyższą liczbę klatek ograniczamy, niższej nie podnosimy — klatka kluczowa co sekundę,
    `+faststart`; ffmpeg działa z priorytetem `nice 10`, a cięcie klipów ma pierwszeństwo przed
    konwersją). Po konwersji sprawdza wynik (ffprobe: jest wideo, czas trwania zgodny z
-   oryginałem ±1 s) i **usuwa oryginał**. Przy niezgodności nagranie dostaje błąd, a oryginał
+   oryginałem do max(2 s, 1% długości); porównywana jest ścieżka wideo) i **usuwa oryginał**. Przy niezgodności nagranie dostaje błąd, a oryginał
    zostaje — „Ponów konwersję” działa tylko dopóki oryginał istnieje. Pełne nagranie dostaje
    termin ważności (`retention_days`, domyślnie 30). Szacunek czasu konwersji: patrz
    [plan techniczny](docs/plan-techniczny.md), rozdz. 6.2.

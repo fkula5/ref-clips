@@ -56,6 +56,9 @@ DISK_SAFETY_BYTES = _gb("REFCLIPS_DISK_SAFETY_GB", 3)          # zapas wolnego m
 UPLOAD_STALE_HOURS = 24                                        # nieaktywny upload jest usuwany
 UPLOAD_CLEANUP_SECONDS = 3600                                  # co ile worker sprząta uploady
 TRANSCODE_MAX_FPS = 30
+# Weryfikacja konwersji: czas wideo wyniku może różnić się od oryginału o max(2 s, 1% długości).
+VERIFY_MIN_SECONDS = float(os.environ.get("REFCLIPS_VERIFY_MIN_SECONDS", "2"))
+VERIFY_RELATIVE = float(os.environ.get("REFCLIPS_VERIFY_RELATIVE", "0.01"))
 try:
     FFMPEG_NICE = int(os.environ.get("REFCLIPS_FFMPEG_NICE", "10"))  # 0 = bez obniżania priorytetu
 except ValueError:

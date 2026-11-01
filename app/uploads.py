@@ -133,11 +133,14 @@ def create_session(db: Session, user: User, match: Match, size: int, filename: s
     return up
 
 
-def finish(db: Session, up: UploadSession) -> Video:
+def finish(db: Session, up: UploadSession) -> Video | None:
     """Kończy upload: nagranie w kolejce do konwersji, plik pod docelową nazwą. Idempotentne."""
     info = meta(up)
-    if info.get("video_id") and (video := db.get(Video, info["video_id"])) is not None:
-        return video
+    if info.get("video_id"):  # już zakończone (nagranie mogło zostać usunięte)
+        return db.get(Video, info["video_id"])
+    if not up.match_id or db.get(Match, up.match_id) is None:
+        discard(db, up)
+        raise UploadError(410, "Mecz został usunięty")
     if storage.size(part_key(up.id)) != up.size_bytes:
         raise UploadError(500, "Rozmiar zapisanego pliku nie zgadza się z zadeklarowanym")
     video = Video(match_id=up.match_id, label=info.get("label", ""), original_filename=up.filename,

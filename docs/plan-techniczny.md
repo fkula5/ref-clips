@@ -88,7 +88,7 @@ przeglądarka ──HTTPS──► Caddy ──► FastAPI (uvicorn, 2 procesy) 
 
 ### 6.2 Konwersja
 - Ustawienia jak w prototypie: H.264 `veryfast` CRF 23, AAC, maks. 720p, maks. 30 kl./s, klatka kluczowa co 1 s, `+faststart`.
-- **Oryginał jest usuwany** zaraz po udanej konwersji i sprawdzeniu wyniku (ffprobe: czas trwania zgodny z oryginałem ±1 s).
+- **Oryginał jest usuwany** zaraz po udanej konwersji i sprawdzeniu wyniku (ffprobe: czas trwania ścieżki wideo zgodny z oryginałem z tolerancją max(2 s, 1% długości); nagrania z telefonów mają audio dłuższe od wideo, edit listy i start_time ≠ 0, więc porównujemy ścieżki wideo, a nie formaty).
 - Szacowany czas na 2 vCPU: mecz 2 h z telefonu 1080p trwa ok. 45–90 min, a 4K/HEVC może zająć 2–3 h. W interfejsie widać pozycję w kolejce i postęp.
 - **Pomiar lokalny (kamień 3, 2026-11-01).** Syntetyczne nagranie 1080p, 30 kl./s, 3 min (ffmpeg `testsrc2` z ruchem + sinus, H.264 ok. 10 Mb/s, 227 MB), konwersja pełną komendą z `app/video.py` (veryfast, CRF 23, 720p, +faststart):
 

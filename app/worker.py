@@ -61,7 +61,8 @@ def run_transcode(db: Session, job: Job) -> None:
     except vid.FFmpegError as exc:
         proxy.unlink(missing_ok=True)
         raise vid.FFmpegError(f"Wynik konwersji odrzucony: {exc}. Oryginał zostaje — można ponowić.") from exc
-    video.duration, video.fps = final["duration"], final["fps"] or video.fps
+    video.duration = final["video_duration"] or final["duration"]
+    video.fps = final["fps"] or video.fps
     video.proxy_path = proxy_key
     original_key, video.original_path = video.original_path, None
     video.status = "ready"
