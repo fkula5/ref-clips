@@ -20,7 +20,7 @@
 - [ ] Lista meczów nie odświeża się sama podczas konwersji (stan i pozycja w kolejce aktualizują się po odświeżeniu lub zmianie filtra); strona meczu odświeża panel nagrań co 3 s.
 - [ ] Filtr „liga” to dokładne dopasowanie nazwy (ligi różniące się wielkością liter są osobnymi pozycjami); ewentualne scalanie wariantów pisowni to osobna decyzja.
 - [x] Cały mecz wymaga znaczników Q1–Q4 (dogrywki opcjonalne); po wprowadzeniu deklaracji zawartości w segmencie 3 sprawdzić, czy `services.missing_periods` zgadza się z formatem pola `Video.content`. *(segment 3: format bez zmian — `full` albo kwarty po przecinku, zapis przez `services.normalize_content`; testy w `tests/test_uploads.py`)*
-- [ ] Lista klipów na stronie meczu nie ma własnych filtrów (sędzia/kategoria/kwarta) — odsyła do `/clips?match_id=...`; zakładka z filtrami to segment 5.
+- [x] Lista klipów na stronie meczu nie ma własnych filtrów (sędzia/kategoria/kwarta) — odsyła do `/clips?match_id=...`; zakładka z filtrami to segment 5. *(segment 5: sekcja „Klipy” meczu z filtrami w adresie, HTMX i bez JS; /clips ma te same filtry)*
 
 ## Uwagi z segmentu 3 (drobne, odłożone)
 
@@ -44,7 +44,17 @@
 ## Uwagi z segmentu 4a (drobne, odłożone)
 
 - [ ] Testy E2E działają tylko w Chromium (Playwright) i na pliku H.264/AAC; Safari/iPhone (kryterium akceptacji: odtwarzanie klipów na telefonie) wymaga ręcznego sprawdzenia na prawdziwym urządzeniu. Prawdziwy pełny ekran na monitorze (wygląd błysku) też tylko ręcznie.
-- [ ] Filtry listy meczów (HTMX) wysyłają w adresie puste parametry (`?date_from=&date_to=&level=X&person=`); działa, ale adres jest brzydki — `hx-params` albo skrypt usuwający puste pola.
+- [x] Filtry listy meczów (HTMX) wysyłają w adresie puste parametry (`?date_from=&date_to=&level=X&person=`); działa, ale adres jest brzydki — `hx-params` albo skrypt usuwający puste pola. *(segment 5: `static/filters.js`, atrybut `data-clean-params` na formularzach filtrów)*
 - [ ] Przy zerwanym połączeniu (`navigator.onLine === false`, np. tryb offline) wgrywanie nie ponawia się samo, tylko pokazuje komunikat i prosi o ponowny wybór pliku; ponawianie działa przy błędach sieci i serwera, gdy przeglądarka uważa się za online.
 - [ ] Lista klipów na stronie meczu i stan meczu odświeżają się razem z panelem nagrań co 3 s (także podczas cięcia klipów); jeśli worker nie działa, strona meczu odpytuje serwer w nieskończoność, dopóki są klipy „w kolejce” — ewentualnie wydłużyć odstęp po minucie.
 - [ ] Testy E2E uruchamiają jeden serwer na całą sesję i dzielą bazę (każdy test zakłada własny mecz); równoległe uruchamianie (pytest-xdist) wymaga osobnych serwerów.
+
+## Uwagi z segmentu 5 (drobne, odłożone)
+
+- [ ] Oceny szkoleniowców: na stronie klipu i w tabeli klipów jest tylko miejsce (kolumna „Oceny”, karta „Oceny szkoleniowców”) — segment 6.
+- [ ] Sędzia wpisany ręcznie i usunięty z obsady: klipy tracą przypisanie (`official_id` = NULL) i trzeba je opisać od nowa — ekran opisywania ich nie wyłapuje, bo mają `described_at`.
+- [ ] Klip z kwartą nieustaloną jest blokowany także, gdy znaczniki kwart są niekompletne, a sam klip leży w ustawionej kwarcie (zgodnie ze specyfikacją: do czasu kompletu kwart klipy z pliku mają kwartę nieustaloną). Lista znaczników w odtwarzaczu i tabela klipów pokazują w tym stanie najlepszą znaną kwartę, a ekran opisywania „kwarta nieustalona”.
+- [ ] Po usunięciu pełnego nagrania (retencja, segment 7) klipu z nieustaloną kwartą nie da się już opisać (nie ma gdzie ustawić kwart) — rozważyć, czy panel admina ma dawać wyjście.
+- [ ] Podgląd klipu w kolejce używa wersji roboczej (zakres klipu, zatrzymanie na końcu robi `describe.js`); strona ekranu nie przełącza się sama na plik klipu po wycięciu — wystarczy odświeżyć.
+- [ ] `Enter` na liście kategorii zapisuje formularz tylko przy zamkniętej liście (otwarta lista zużywa Enter na wybór opcji).
+- [ ] Opis (`description`) klipów z notatek zawiera całą linię notatki (np. „2:54 CC kroki”), więc propozycja opisu bywa powtórzeniem sędziego i kategorii — warto skracać do reszty linii po rozpoznaniu.

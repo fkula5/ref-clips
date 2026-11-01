@@ -12,8 +12,9 @@ z filtrami i stanem, strona meczu, błędy w formularzach; segment 3 („Wgrywan
 wznawialne wgrywanie (tus), deklaracja zawartości pliku, usuwanie oryginału po konwersji;
 segment 2a („Docker lokalnie”) — obraz i Compose do testów na innych komputerach;
 segment 4 („Znaczniki”) — klawisz „Zaznacz”, początki kwart wg deklaracji pliku, notatki przy wgrywaniu;
-segment 4a („Testy interfejsu”) — automatyczne testy w przeglądarce (Playwright, Chromium).
-Kolejne segmenty (ekran opisywania, oceny, retencja, wdrożenie) opisuje plan.
+segment 4a („Testy interfejsu”) — automatyczne testy w przeglądarce (Playwright, Chromium);
+segment 5 („Klipy”) — ekran opisywania znaczników, zakładka „Klipy” meczu z filtrami, widok klipu.
+Kolejne segmenty (oceny i komentarze, retencja, wdrożenie) opisuje plan.
 
 ## Wymagania i instalacja
 
@@ -312,9 +313,56 @@ i ustawieniem hasła wymaga zalogowania (strony przekierowują na `/login`, API 
    czeka na gotową wersję roboczą. Długość nagrania jest znana dopiero po konwersji, więc klip z
    momentem poza nagraniem dostaje stan błędu „Moment poza nagraniem” zamiast cichego obcięcia.
    Do czasu ustawienia znaczników kwart klipy mają kwartę „nieustaloną”.
-5. **Klipy** — lista z filtrami (mecz, sędzia, kategoria, kwarta). Na stronie klipu: odtwarzanie,
-   opis (sędzia z obsady albo „cały zespół”, kategoria ze słownika lub „własna”, tekst),
-   komentarze, pobranie MP4. Klip bez opisu jest oznaczony jako „nieopisany”.
+5. **Opisywanie znaczników** — po obejrzeniu nagrania opisujesz znaczniki w jednym miejscu. Wejście:
+   przycisk **Opisz znaczniki (N)** na stronie meczu (wszystkie nagrania, w kolejności nagranie → czas) albo
+   w odtwarzaczu (tylko to nagranie; licznik N rośnie przy każdym „Zaznacz”). Ekran pokazuje z boku listę
+   nieopisanych znaczników (czas, kwarta albo „kwarta nieustalona”, autor, stan cięcia), a w głównej części
+   podgląd klipu i pola opisu:
+   - **podgląd:** plik klipu, gdy już wycięty; gdy klip czeka w kolejce — wersja robocza od startu do końca
+     klipu (odtwarzanie zatrzymuje się na końcu zakresu);
+   - **sędzia** (CC / U1 / U2 z obsady meczu albo „cały zespół”), **kategoria** (lista pogrupowana wg grup
+     słownika; „własna” wymaga nazwy, do 100 znaków) i **opis** (opcjonalny, do 2000 znaków). Sędzia i kategoria są
+     wymagane do zatwierdzenia;
+   - **propozycje z notatek:** klipy z notatek (przy wgrywaniu, „Wklej notatki”, `M` w odtwarzaczu) mają już
+     rozpoznanego sędziego i kategorię — są wstępnie wybrane, oznaczone „propozycja” i zapisują się dopiero po
+     zatwierdzeniu;
+   - **Zapisz i dalej** ustawia `described_at` (pierwsze zatwierdzenie; edycja go nie zmienia) i przechodzi do
+     następnego nieopisanego (po ostatnim wraca do pierwszego z pominiętych; gdy nic nie zostało — komunikat
+     „Wszystkie znaczniki są opisane”); **Pomiń** przechodzi dalej bez zapisu; **Usuń znacznik** pyta o potwierdzenie
+     i usuwa też plik klipu;
+   - **kwarta nieustalona:** klipu z nagrania, które wymaga znaczników kwart (cały mecz, kilka kwart), a nie ma
+     kompletu — albo z momentu przed początkiem pierwszej kwarty — **nie da się opisać** (serwer też odmawia).
+     Ekran pokazuje komunikat z linkiem do panelu „Początki kwart” w odtwarzaczu.
+
+   Skróty w ekranie opisywania (nie działają w polach tekstowych):
+
+   | Klawisz | Działanie |
+   |---|---|
+   | `1` / `2` / `3` / `0` | sędzia CC / U1 / U2 / cały zespół |
+   | `K` | przejście do listy kategorii (wpisanie początku nazwy wybiera kategorię) |
+   | `D` | przejście do pola opisu |
+   | Spacja / `R` | odtwórz–pauza podglądu / od początku klipu |
+   | `Enter` (w formularzu, także na liście kategorii) | zapisz i dalej |
+   | `Ctrl+Enter` (w opisie) | zapisz i dalej |
+
+   Opisywać mogą administrator i szkoleniowiec w każdym meczu oraz sędzia w meczach, w których jest w obsadzie
+   (`can_describe_clip`; serwer odmawia pozostałym kodem 403 na ekranie i wszystkich trasach zapisu).
+6. **Klipy meczu** — na stronie meczu sekcja „Klipy” z filtrami: **sędzia** (obsada meczu albo „cały zespół”),
+   **kategoria**, **kwarta** (także „nieustalona”) i **opisane / nieopisane**. Filtry są w adresie
+   (`?person=…&category_id=…&period=Q2&described=0`), działają bez JavaScriptu (zwykły formularz GET), a HTMX
+   podmienia tylko listę i wpisuje filtry do adresu. Wiersz: sędzia (funkcja + nazwisko), kategoria,
+   „kwarta · czas od początku kwarty” (czas nagrania, nie zegar meczowy), czas w nagraniu, skrót opisu, stan,
+   miejsce na oceny szkoleniowców (do segmentu 6 pusta kolumna) i link do klipu; na telefonie wiersze to karty.
+   Globalna lista `/clips` ma te same filtry (plus mecz).
+7. **Klip** — odtwarzacz klipu, opis (sędzia, kategoria, „Q2 · 4:12 od początku kwarty (czas nagrania)” z dopiskiem
+   „czas nagrania – nie zegar meczowy”, opis, kto dodał znacznik i kiedy, kiedy opisano), pobranie MP4 (nazwa
+   pliku `data_kwarta_czas_sędzia_kategoria.mp4`, np. `2026-10-28_Q2_02m54s_CC_blok-szarza.mp4`; liczona na bieżąco,
+   więc po zmianie opisu pobrany plik ma nową nazwę; tylko znaki ASCII, nazwa własnej kategorii skrócona do 40 znaków),
+   komentarze, link do tego momentu w pełnym nagraniu (tylko gdy pełne nagranie nie zostało usunięte), formularz
+   edycji opisu (te same pola i walidacja co na ekranie opisywania) i **poprzedni / następny klip meczu**
+   według filtrów, z których użytkownik przyszedł (filtry przechodzą w adresie; bez filtrów — wg czasu).
+   Klip w stanie błędu pokazuje przyczynę; uprawnieni mają „Wytnij ponownie” (nie, gdy moment jest poza nagraniem
+   albo pełnego nagrania już nie ma) i „Usuń klip”. Klip bez opisu jest oznaczony „nieopisany”.
 
 Słownik kategorii (grupy Faule, Naruszenia, Bez gwizdka, Mechanika, Inne) jest zakładany
 przy pierwszym uruchomieniu (`app/seed.py`); edycja z poziomu panelu to segment 7. Klipy
@@ -342,7 +390,9 @@ obejmują każdy wiersz tabeli uprawnień ze specyfikacji dla każdej roli i ich
 Testy w prawdziwej przeglądarce (Chromium sterowany przez [Playwright](https://playwright.dev/python/)):
 logowanie, konta i zaproszenia, formularz meczu, wgrywanie (tus, przerwanie i wznowienie, notatki
 z podglądem), odtwarzacz i skróty klawiszowe, znaczniki, uprawnienia w interfejsie, strona klipu
-z komentarzami (HTMX), lista meczów (filtry, paginacja, widok mobilny) i strony błędów.
+z komentarzami (HTMX), ekran opisywania (skróty klawiszowe, propozycje z notatek, kwarta nieustalona),
+zakładka klipów meczu (filtry HTMX i bez JS, karty na telefonie), nawigacja poprzedni/następny, lista meczów
+(filtry, paginacja, widok mobilny) i strony błędów.
 Test uruchamia prawdziwy serwer (uvicorn) i worker na wolnym porcie z tymczasowym katalogiem danych,
 konta zakłada kodem aplikacji, a wideo próbne generuje ffmpeg-iem. Każdy test kończy się porażką,
 gdy w konsoli przeglądarki pojawi się błąd JavaScript (poza jawnie dopuszczonymi).
@@ -369,7 +419,8 @@ app/auth.py            sesja, CSRF, zależność require(...) dla tras
 app/accounts.py        logowanie z limitem prób, sesje, zaproszenia, zarządzanie kontami
 app/permissions.py     uprawnienia (czyste funkcje, jedno miejsce)
 app/create_admin.py    polecenie zakładające pierwszego administratora
-app/routers/           trasy: logowanie, panel admina, mecze, nagrania/odtwarzacz/notatki, klipy
+app/routers/           trasy: logowanie, panel admina, mecze, nagrania/odtwarzacz/notatki, klipy, ekran opisywania
+app/clip_list.py       filtry klipów z adresu (zakładka meczu, /clips, poprzedni/następny)
 app/models.py          model danych (SQLAlchemy 2), migracje w alembic/
 app/seed.py            słownik kategorii i ustawienia domyślne
 app/notes_parser.py    parser notatek (czysta funkcja)
