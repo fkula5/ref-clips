@@ -231,7 +231,7 @@ def test_podglad_z_wersji_roboczej_zatrzymuje_sie_na_koncu_klipu(ui):
     page.wait_for_function(f"{PREVIEW}.paused")
     page.keyboard.press(" ")
     page.wait_for_function(f"{PREVIEW}.paused && {PREVIEW}.currentTime >= 20.9", timeout=15_000)   # zatrzymanie na końcu
-    assert page.evaluate(f"{PREVIEW}.currentTime") < 21.6
+    assert page.evaluate(f"{PREVIEW}.currentTime") < 21.6, "podgląd poszedł za koniec klipu"
     page.keyboard.press(" ")                                                    # ponowne odtwarzanie wraca na początek
     page.wait_for_function(f"!{PREVIEW}.paused && {PREVIEW}.currentTime < 20.5")
     page.keyboard.press("r")

@@ -11,7 +11,8 @@
     video.addEventListener("loadedmetadata", toStart);
     if (video.readyState >= 1) toStart();
     video.addEventListener("timeupdate", () => {
-      if (video.currentTime >= end) { video.pause(); video.currentTime = end; }
+      // Spóźnione zdarzenie z poprzedniej pozycji (podczas przewijania) nie może zatrzymać nowego odtwarzania.
+      if (!video.seeking && !video.paused && video.currentTime >= end) video.pause();
     });
     video.addEventListener("play", () => {
       if (video.currentTime >= end - 0.05 || video.currentTime < start) toStart();
