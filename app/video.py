@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import re
+import shutil
 import subprocess
 from collections.abc import Callable
 from pathlib import Path
@@ -62,29 +63,54 @@ def probe(path: Path) -> dict:
     if video is None:
         raise FFmpegError("Plik nie zawiera ścieżki wideo")
     duration = data.get("format", {}).get("duration") or video.get("duration")
+    avg_fps, nominal_fps = _parse_fraction(video.get("avg_frame_rate")), _parse_fraction(video.get("r_frame_rate"))
     return {
         "duration": float(duration) if duration else None,
         "width": video.get("width"),
         "height": video.get("height"),
-        "fps": _parse_fraction(video.get("avg_frame_rate")) or _parse_fraction(video.get("r_frame_rate")),
+        "fps": avg_fps or nominal_fps,
+        # największa z deklarowanych liczb klatek (nagrania z telefonów bywają VFR: średnio 30, nominalnie 60)
+        "max_fps": max(avg_fps or 0.0, nominal_fps or 0.0) or None,
         "has_audio": any(s.get("codec_type") == "audio" for s in streams),
     }
 
 
-def build_transcode_command(ffmpeg: str, src: Path, dst: Path) -> list[str]:
-    """Wersja robocza: H.264/AAC, maks. 720p, klatka kluczowa co sekundę, +faststart."""
+def build_transcode_command(ffmpeg: str, src: Path, dst: Path, src_fps: float | None = None,
+                            preset: str = "veryfast") -> list[str]:
+    """Wersja robocza: H.264/AAC, maks. 720p i 30 kl./s (niższej liczby klatek nie podnosimy),
+    klatka kluczowa co sekundę, +faststart. `src_fps` to największa liczba klatek źródła."""
+    filters = ["scale=-2:'min(720,ih)'"]
+    if src_fps and src_fps > config.TRANSCODE_MAX_FPS + 0.5:
+        filters.append(f"fps={config.TRANSCODE_MAX_FPS}")
+    filters.append("format=yuv420p")
     return [
         ffmpeg, "-y", "-hide_banner", "-loglevel", "error", "-nostdin",
         "-i", str(src),
         "-map", "0:v:0", "-map", "0:a:0?",
-        "-vf", "scale=-2:'min(720,ih)',format=yuv420p",
-        "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
+        "-vf", ",".join(filters),
+        "-c:v", "libx264", "-preset", preset, "-crf", "23",
         "-sc_threshold", "0", "-force_key_frames", "expr:gte(t,n_forced*1)",
         "-c:a", "aac", "-b:a", "128k", "-ac", "2",
         "-movflags", "+faststart",
         "-progress", "pipe:1", "-nostats",
         "-f", "mp4", str(dst),
     ]
+
+
+VERIFY_TOLERANCE = 1.0  # s: dopuszczalna różnica czasu trwania oryginału i wersji roboczej
+
+
+def verify_conversion(source: dict, proxy: Path) -> dict:
+    """Sprawdza wynik konwersji: wersja robocza ma ścieżkę wideo, a jej czas trwania zgadza się
+    z oryginałem (±1 s). Zwraca probe wersji roboczej albo rzuca FFmpegError."""
+    result = probe(proxy)  # rzuca FFmpegError bez ścieżki wideo
+    if not source.get("duration") or not result.get("duration"):
+        raise FFmpegError("Nie udało się odczytać czasu trwania — wyniku nie można zweryfikować")
+    if abs(result["duration"] - source["duration"]) > VERIFY_TOLERANCE:
+        raise FFmpegError(
+            f"Czas trwania wersji roboczej ({result['duration']:.1f} s) różni się od oryginału "
+            f"({source['duration']:.1f} s)")
+    return result
 
 
 def build_cut_command(ffmpeg: str, src: Path, dst: Path, start: float, duration: float) -> list[str]:
@@ -101,17 +127,24 @@ def build_cut_command(ffmpeg: str, src: Path, dst: Path, start: float, duration:
     ]
 
 
+def _low_priority(cmd: list[str]) -> list[str]:
+    """Polecenie uruchamiane z obniżonym priorytetem (nice), żeby konwersja nie dusiła strony."""
+    nice = shutil.which("nice")
+    return [nice, "-n", str(config.FFMPEG_NICE), *cmd] if nice and config.FFMPEG_NICE else cmd
+
+
 _PROGRESS_RE = re.compile(r"^out_time_(?:us|ms)=(\d+)$")
 
 
 def transcode_to_proxy(src: Path, dst: Path, duration: float | None,
-                       on_progress: Callable[[float], None] | None = None) -> None:
+                       on_progress: Callable[[float], None] | None = None,
+                       src_fps: float | None = None) -> None:
     """Konwertuje do wersji roboczej; zapisuje najpierw do pliku tymczasowego."""
     ffmpeg, _ = _require()
     tmp = dst.with_name(dst.stem + ".part.mp4")
     dst.parent.mkdir(parents=True, exist_ok=True)
     proc = subprocess.Popen(
-        build_transcode_command(ffmpeg, src, tmp),
+        _low_priority(build_transcode_command(ffmpeg, src, tmp, src_fps)),
         stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
     )
     assert proc.stdout is not None
@@ -131,7 +164,7 @@ def cut_clip(src: Path, dst: Path, start: float, duration: float) -> None:
     ffmpeg, _ = _require()
     tmp = dst.with_name(dst.stem + ".part.mp4")
     dst.parent.mkdir(parents=True, exist_ok=True)
-    proc = subprocess.run(build_cut_command(ffmpeg, src, tmp, start, duration),
+    proc = subprocess.run(_low_priority(build_cut_command(ffmpeg, src, tmp, start, duration)),
                           capture_output=True, text=True)
     if proc.returncode != 0:
         tmp.unlink(missing_ok=True)
