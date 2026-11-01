@@ -9,7 +9,8 @@ Dokumentacja projektu: [specyfikacja MVP](docs/specyfikacja-mvp.md),
 [plan techniczny](docs/plan-techniczny.md). Stan prac: segment 1 („Fundament”) — konta,
 logowanie, role, obsada CC/U1/U2, nowy model danych; segment 2 („Mecze i obsada”) — lista meczów
 z filtrami i stanem, strona meczu, błędy w formularzach; segment 3 („Wgrywanie i konwersja”) —
-wznawialne wgrywanie (tus), deklaracja zawartości pliku, usuwanie oryginału po konwersji.
+wznawialne wgrywanie (tus), deklaracja zawartości pliku, usuwanie oryginału po konwersji;
+segment 2a („Docker lokalnie”) — obraz i Compose do testów na innych komputerach.
 Kolejne segmenty (znaczniki „Zaznacz”, ekran opisywania, oceny, retencja, wdrożenie) opisuje plan.
 
 ## Wymagania i instalacja
@@ -80,6 +81,84 @@ Zmienne środowiskowe:
 | `REFCLIPS_DISK_SAFETY_GB` | zapas wolnego miejsca, którego upload nie może zająć (domyślnie 3) |
 | `REFCLIPS_FFMPEG_NICE` | priorytet (`nice`) ffmpeg w workerze (domyślnie 10, `0` = bez zmiany) |
 | `REFCLIPS_V2_FEATURES` | `1` włącza ukryte funkcje wersji 2 (korekta granic klipu, eksport ZIP) |
+
+## Uruchomienie w Dockerze (testy lokalne)
+
+Sposób dla osoby, która chce tylko wypróbować aplikację na swoim komputerze: nie trzeba
+instalować Pythona ani ffmpeg — wszystko jest w obrazie.
+
+**Wymagania**
+
+- Windows: [Docker Desktop](https://www.docker.com/products/docker-desktop/) z włączonym WSL2
+  (instalator sam to proponuje); macOS: Docker Desktop; Linux: Docker Engine z wtyczką
+  Compose (`docker compose version` musi działać).
+- Git oraz dostęp do prywatnego repozytorium: przyjmij zaproszenie na GitHubie (mail od
+  właściciela), a potem zaloguj się do GitHuba w Git (na Windowsie otworzy się okno logowania).
+- Ok. 2 GB wolnego miejsca na obraz, plus miejsce na nagrania.
+
+**Pierwsze uruchomienie** (w terminalu; na Windowsie PowerShell):
+
+```bash
+git clone https://github.com/fkula5/ref-clips.git
+cd ref-clips
+docker compose up -d --build
+```
+
+Pierwsze budowanie trwa kilka minut (pobiera się obraz Pythona i ffmpeg). Gdy skończy,
+`docker compose ps` pokazuje usługę `app` jako `healthy`. Potem załóż konto administratora
+(zapyta o e-mail, imię i nazwisko oraz hasło, min. 10 znaków):
+
+```bash
+docker compose run --rm app python -m app.create_admin
+```
+
+(albo bez pytań: `docker compose run --rm -T app python -m app.create_admin --email szef@example.com --name "Jan Kowalski" --password '...'`).
+Otwórz **http://localhost:8000** i zaloguj się.
+
+**Zapraszanie kolejnych osób.** W aplikacji: *Użytkownicy* → dodaj konto → skopiuj link
+zaproszenia. Uwaga: link zaczyna się od `http://localhost:8000`, więc działa tylko na tym
+komputerze (inna osoba musiałaby uruchomić własną kopię). Do prawdziwego udostępniania służy
+wdrożenie na serwerze z HTTPS (osobny etap).
+
+**Na co dzień**
+
+| Co | Polecenie |
+|---|---|
+| Podgląd logów (Ctrl+C kończy podgląd) | `docker compose logs -f` (osobno: `logs -f worker`) |
+| Zatrzymanie (dane zostają) | `docker compose stop` |
+| Ponowne uruchomienie | `docker compose up -d` |
+| Restart aplikacji i workera | `docker compose restart app worker` |
+| Aktualizacja do nowej wersji | `git pull`, potem `docker compose up -d --build` (baza migruje się sama) |
+| Wyłączenie i usunięcie kontenerów (dane zostają) | `docker compose down` |
+| **Skasowanie wszystkich danych** (baza, nagrania, klipy) | `docker compose down -v` — **nieodwracalne** |
+
+Ustawienia (port, limity wgrywania, itp.) zmieniasz w pliku `.env`: `cp .env.example .env`
+(na Windowsie `copy .env.example .env`), edycja, `docker compose up -d`. Bez `.env` działają
+wartości domyślne. Wszystkie opcje opisuje `.env.example`.
+
+**Gdzie są dane.** W nazwanym woluminie Dockera `ref-clips_dane` (w kontenerach katalog
+`/data`: baza SQLite, wgrane nagrania, wersje robocze, klipy). Przeżywa restart komputera,
+`docker compose down` i aktualizację; znika po `down -v`. Kopia bazy: `docker compose cp app:/data/ref-clips.db .`.
+
+**Typowe problemy**
+
+- *„port is already allocated” / zajęty port 8000* — ustaw w `.env` inny port (`REFCLIPS_PORT=8001`)
+  i otwórz `http://localhost:8001`.
+- *„Cannot connect to the Docker daemon” / brak połączenia z Dockerem* — uruchom Docker Desktop
+  i poczekaj, aż będzie „Running”.
+- *Brak miejsca przy dużych nagraniach* — Docker Desktop trzyma dane na dysku wirtualnym
+  o ograniczonym rozmiarze (Settings → Resources); aplikacja odmawia wgrania pliku, gdy miejsca
+  brakuje (komunikat „Brak miejsca na serwerze”). Zwiększ limit dysku w Docker Desktop albo
+  usuń niepotrzebne obrazy (`docker system prune`).
+- *Konwersja trwa długo* — worker celowo działa z niskim priorytetem, a Docker Desktop domyślnie
+  dostaje część procesorów komputera (Settings → Resources). Godzinny mecz może konwertować się
+  kilkanaście minut lub dłużej; status widać na stronie meczu.
+- *Nie mogę się zalogować na http://localhost* — w `.env` musi być `REFCLIPS_COOKIE_SECURE=0`.
+- Dane na zwykłym katalogu zamiast woluminu (`./dane:/data`) wymagają, by katalog należał do
+  użytkownika o UID 1000 (kontener nie działa jako root); najprościej zostać przy woluminie.
+
+Test dymny całego zestawu (budowanie, start, założenie admina, wgranie wideo, konwersja):
+`scripts/docker-smoke.sh` — działa na osobnym projekcie Compose i porcie 8123, na końcu po sobie sprząta.
 
 ## Konta, role i zapraszanie użytkowników
 
@@ -225,6 +304,8 @@ app/routers/uploads.py protokół tus (wgrywanie wznawialne); logika sesji, reze
 app/video.py           ffprobe/ffmpeg: konwersja, weryfikacja wyniku i wycinanie
 app/storage.py         magazyn plików (lokalny; interfejs pod przyszłe S3)
 app/worker.py          pętla zadań z tabeli jobs
+Dockerfile, compose.yaml, .env.example   obraz i uruchomienie w Dockerze (app, worker, init)
+scripts/docker-smoke.sh                  test dymny Dockera
 app/services.py        obsada, kwarty, granice klipów, nazwy plików, kolejka
 app/templates, static  interfejs (Jinja2, HTMX 2.0.4 w static/vendor, czysty JS)
 tests/                 pytest
