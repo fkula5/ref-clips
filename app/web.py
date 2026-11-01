@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from fastapi import Request
 from fastapi.responses import FileResponse
@@ -15,12 +16,27 @@ from app import models as m
 from app import permissions
 from app import video as vid
 from app.security import new_token
-from app.textutil import format_clock
+from app.textutil import format_clock, normalize
 
 BASE = Path(__file__).parent
 templates = Jinja2Templates(directory=str(BASE / "templates"))
 env = templates.env
 env.filters["clock"] = format_clock
+
+
+# Kolory strojów wpisywane ręcznie: rozpoznajemy początek nazwy (np. „czerwone”, „Czerwony”).
+COLOR_STEMS = {
+    "bial": "#ffffff", "czerw": "#d32f2f", "nieb": "#1e6fd9", "granat": "#1a2a5a", "ziel": "#2e9d4a",
+    "zolt": "#f2c500", "pomaran": "#f28c00", "czarn": "#111111", "ciemn": "#2b2f3a", "szar": "#9aa0aa",
+    "fiolet": "#7b3fa0", "bordow": "#7b1f2e", "rozow": "#ec6fa0", "jasn": "#e6e9f0",
+    "turkus": "#1fb5b0", "braz": "#6d4c2f",
+}
+
+
+def color_hex(name: str | None) -> str:
+    """Kolor CSS dla nazwy koloru strojów albo pusty napis, gdy nazwy nie rozpoznajemy."""
+    key = normalize(name or "")
+    return next((hex_ for stem, hex_ in COLOR_STEMS.items() if key.startswith(stem)), "")
 
 
 @pass_context
@@ -39,6 +55,8 @@ env.globals.update(
     VIDEO_STATUSES=m.VIDEO_STATUSES, CLIP_STATUSES=m.CLIP_STATUSES, PERIODS=m.PERIODS,
     period_for=lambda c: services.period_for(c.video.marks, c.time_sec),
     period_label=lambda c: services.period_label(c.video.marks, c.time_sec),
+    period_short=lambda c: services.period_short(c.video.marks, c.time_sec),
+    color_hex=color_hex,
     clip_bounds=services.clip_range,
     DEFAULT_MARGIN=config.DEFAULT_MARGIN_BEFORE,
 )
@@ -62,6 +80,16 @@ def render(request: Request, name: str, status_code: int = 200, **context):
     if anon_cookie:
         set_anon_csrf_cookie(response, anon_cookie)
     return response
+
+
+def back_url(request: Request) -> str | None:
+    """Adres poprzedniej strony z nagłówka Referer, tylko z tego samego serwisu (inaczej None)."""
+    referer = urlsplit(request.headers.get("referer", ""))
+    if not referer.netloc or referer.netloc != request.url.netloc or not referer.path.startswith("/"):
+        return None
+    target = referer.path + (f"?{referer.query}" if referer.query else "")
+    current = request.url.path + (f"?{request.url.query}" if request.url.query else "")
+    return None if target == current else target
 
 
 def clip_json(c: m.Clip) -> dict:

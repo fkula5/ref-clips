@@ -122,6 +122,7 @@ class Match(Base):
     created_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
+    creator: Mapped[User | None] = relationship(foreign_keys=[created_by])
     officials: Mapped[list[MatchOfficial]] = relationship(
         back_populates="match", cascade="all, delete-orphan", order_by="MatchOfficial.function")
     videos: Mapped[list[Video]] = relationship(

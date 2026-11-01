@@ -80,3 +80,34 @@ tr.inactive td { color: var(--muted); }
 .official-row label { margin: 0; }
 @media (max-width: 960px) { .official-row { grid-template-columns: 1fr; } }
 .facts dt { font-weight: 600; margin-top: 6px; } .facts dd { margin: 0; }
+
+/* lista meczów, strona meczu */
+.match-filters { gap: 12px 14px; align-items: flex-end; }
+.match-filters label { display: flex; flex-direction: column; font-size: 13px; color: var(--muted); gap: 2px; }
+.match-filters label.inline { flex-direction: row; align-items: center; gap: 4px; margin: 0 0 6px; color: var(--text); font-size: 15px; }
+.pager { margin: 12px 0; }
+.chip.warn { background: #fff0cc; color: var(--warn); font-weight: 600; }
+.badge.state-ready { background: #d8f0da; color: var(--ok); }
+.badge.state-error { background: #fbd9d6; color: var(--danger); }
+.badge.state-converting, .badge.state-uploading, .badge.state-no_marks { background: #fff0cc; color: var(--warn); }
+.badge.state-purged, .badge.state-none { background: #e9edf5; color: var(--muted); }
+.match-head .facts { display: grid; grid-template-columns: 110px 1fr; gap: 6px 12px; margin: 0; }
+.match-head .facts dt { margin: 0; color: var(--muted); font-weight: 500; }
+.match-head { margin-top: 4px; }
+.swatch { display: inline-block; width: 14px; height: 14px; border-radius: 50%; border: 1px solid #8a93a6; vertical-align: -2px; margin-right: 4px; background: repeating-linear-gradient(45deg, #fff, #fff 3px, #e3e6ee 3px, #e3e6ee 6px); }
+.has-account { color: var(--ok); } .me { color: var(--accent); font-weight: 600; }
+.small-note { font-size: 13px; }
+
+/* telefon: tabele jako karty (bez JS) */
+@media (max-width: 720px) {
+  main { padding: 12px 12px 48px; }
+  .top { gap: 12px; padding: 10px 12px; flex-wrap: wrap; }
+  .match-head .facts { grid-template-columns: 1fr; gap: 0; } .match-head .facts dd { margin-bottom: 8px; }
+  table.responsive, table.responsive tbody { display: block; background: none; border: 0; }
+  table.responsive thead { position: absolute; left: -9999px; }
+  table.responsive tr { display: block; background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 6px 12px; margin: 10px 0; }
+  table.responsive td { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; border: 0; padding: 4px 0; text-align: right; flex-wrap: wrap; }
+  table.responsive td::before { content: attr(data-label); color: var(--muted); font-size: 13px; text-align: left; flex: 0 0 auto; }
+  table.responsive td.main-cell { font-weight: 600; font-size: 16px; }
+  .match-filters label { flex: 1 1 140px; } .match-filters input, .match-filters select { width: 100%; }
+}
