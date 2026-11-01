@@ -1,6 +1,6 @@
 # Plan techniczny MVP
 
-> Wersja 0.2, 2026-11-01. Odpowiada na sekcję 4 [specyfikacji MVP](specyfikacja-mvp.md) (wersja 0.3).
+> Wersja 0.3, 2026-11-01. Odpowiada na sekcję 4 [specyfikacji MVP](specyfikacja-mvp.md) (wersja 0.3).
 > Dokument do akceptacji przed pisaniem kodu.
 
 ## 1. Podsumowanie decyzji
@@ -167,14 +167,15 @@ Każdy kamień milowy kończy się działającą wersją z testami.
 
 1. **Fundament:** nowy model danych + migracja, konta, logowanie, zaproszenia, role, `permissions.py` z testami tabeli uprawnień.
 2. **Mecze i obsada:** formularz meczu, CC/U1/U2 (konto lub wpisane), reguła „sędzia wgrywa tylko swoje mecze”.
+2a. **Docker lokalnie (do testów u innych osób):** `Dockerfile` (Python 3.12 slim + ffmpeg z pakietów Debiana) i `compose.yaml` z usługami `app` i `worker` na wspólnym woluminie danych. Uruchomienie jednym poleceniem `docker compose up`, a pierwszy admin przez `docker compose run --rm app python -m app.create_admin`. Instrukcja w README dla Windows (Docker Desktop), macOS i Linuksa. Ten sam obraz posłuży potem w segmencie 8, gdzie dochodzi tylko Caddy, kopie zapasowe i konfiguracja produkcyjna.
 3. **Wgrywanie i konwersja:** tus, rezerwacja miejsca, deklaracja zawartości pliku, usuwanie oryginału. Pomiar czasu konwersji lokalnie z ograniczeniem do 2 rdzeni (`taskset -c 0,1`) jako przybliżenie VPS.
 4. **Znaczniki:** znaczniki kwart, odtwarzacz z klawiszem „Zaznacz”, notatki przy wgrywaniu (parser z CC/U1/U2 i kategoriami).
 5. **Klipy:** cięcie 15/15, ekran opisywania, zakładka klipów z filtrami, widok klipu.
 6. **Oceny i komentarze:** oceny szkoleniowców, komentarze do meczu i klipu, edycja i usuwanie według uprawnień, widoki mobilne.
 7. **Admin i retencja:** panel użytkowników, kategorii, retencji i dysku, zadanie `retention`.
-8. **Wdrożenie (odłożone, do czasu zakupu VPS):** Docker Compose, Caddy, kopie zapasowe, monitoring, przejście kryteriów akceptacji ze specyfikacji na serwerze.
+8. **Wdrożenie (odłożone, do czasu zakupu VPS):** obraz i Compose z segmentu 2a rozszerzone o Caddy, kopie zapasowe, monitoring, przejście kryteriów akceptacji ze specyfikacji na serwerze.
 
-Kamienie 1–7 robimy i testujemy lokalnie w WSL. Po zakupie VPS pomiar czasu konwersji z kroku 3 powtarzamy na serwerze.
+Kamienie 1–7 robimy i testujemy lokalnie w WSL; od segmentu 2a każdy segment musi też działać w Dockerze. Po zakupie VPS pomiar czasu konwersji z kroku 3 powtarzamy na serwerze.
 
 ## 12. Ryzyka
 
