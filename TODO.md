@@ -57,4 +57,4 @@
 - [ ] Po usunięciu pełnego nagrania (retencja, segment 7) klipu z nieustaloną kwartą nie da się już opisać (nie ma gdzie ustawić kwart) — rozważyć, czy panel admina ma dawać wyjście.
 - [ ] Podgląd klipu w kolejce używa wersji roboczej (zakres klipu, zatrzymanie na końcu robi `describe.js`); strona ekranu nie przełącza się sama na plik klipu po wycięciu — wystarczy odświeżyć.
 - [ ] `Enter` na liście kategorii zapisuje formularz tylko przy zamkniętej liście (otwarta lista zużywa Enter na wybór opcji).
-- [ ] Opis (`description`) klipów z notatek zawiera całą linię notatki (np. „2:54 CC kroki”), więc propozycja opisu bywa powtórzeniem sędziego i kategorii — warto skracać do reszty linii po rozpoznaniu.
+- [ ] Opis (`description`) klipów ze znacznika `M` zawiera całą linię notatki (np. „2:54 CC kroki”), więc propozycja opisu bywa powtórzeniem sędziego i kategorii — warto zapisywać tylko resztę linii po rozpoznaniu.
