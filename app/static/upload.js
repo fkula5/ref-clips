@@ -8,6 +8,10 @@
   const list = document.getElementById("upload-files-list");
   const box = document.getElementById("upload-progress");
   const template = document.getElementById("content-template");
+  const notesTemplate = document.getElementById("notes-template");
+  const canNotes = form.dataset.canNotes === "1" && !!notesTemplate;
+  const MAX_CHARS = parseInt(form.dataset.notesChars || "20000", 10);
+  const MAX_LINES = parseInt(form.dataset.notesLines || "300", 10);
   const csrf = document.querySelector('meta[name="csrf-token"]').content;
   const CHUNK = 50 * 1024 * 1024;
   let busy = false, rows = [];
@@ -29,10 +33,99 @@
       row.append(name, " ", template.content.cloneNode(true));
       row.querySelector(".content-kind").addEventListener("change", () => togglePeriods(row));
       togglePeriods(row);
+      if (canNotes) {
+        row.appendChild(notesTemplate.content.cloneNode(true));
+        row.querySelector(".notes-preview-btn").addEventListener("click", () => previewNotes(row));
+      }
       list.appendChild(row);
       return { file, row };
     });
   });
+
+  // --- notatki: podgląd przed wysłaniem i zapis razem z uploadem ----------------------------
+  function notesOf(row) {
+    const area = row.querySelector(".notes-text");
+    return area ? area.value.replace(/\s+$/, "") : "";
+  }
+
+  function notesProblem(text) {
+    if (text.length > MAX_CHARS) return "Notatki są za długie (maksymalnie " + MAX_CHARS + " znaków).";
+    if (text && text.split("\n").length > MAX_LINES) return "Notatki mają za dużo linii (maksymalnie " + MAX_LINES + ").";
+    return "";
+  }
+
+  async function previewNotes(row) {
+    const box = row.querySelector(".notes-preview");
+    const text = notesOf(row);
+    box.textContent = "";
+    const problem = notesProblem(text);
+    if (problem) { box.textContent = problem; box.className = "notes-preview error-text"; return; }
+    if (!text.trim()) { box.textContent = "Brak notatek."; box.className = "notes-preview muted"; return; }
+    box.className = "notes-preview";
+    try {
+      const res = await fetch("/api/matches/" + matchId + "/notes/parse", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-CSRF-Token": csrf },
+        body: JSON.stringify({ text: text }),
+      });
+      if (!res.ok) {
+        let detail = "";
+        try { detail = (await res.json()).detail; } catch (e) { /* brak JSON */ }
+        throw new Error(typeof detail === "string" && detail ? detail : "Błąd serwera (" + res.status + ")");
+      }
+      renderPreview(box, await res.json());
+    } catch (err) {
+      box.textContent = "Nie udało się zrobić podglądu: " + err.message;
+      box.className = "notes-preview error-text";
+    }
+  }
+
+  function renderPreview(box, rows) {
+    const good = rows.filter((r) => r.ok).length;
+    const summary = document.createElement("p");
+    summary.className = "small-note";
+    summary.textContent = good + " z " + rows.length + " linii zamieni się w klipy; linie bez czasu zostaną pominięte. " +
+      "Klipy powstaną jako nieopisane — opis zatwierdzisz później.";
+    const table = document.createElement("table");
+    table.className = "preview";
+    const head = table.createTHead().insertRow();
+    ["Linia", "Czas", "Sędzia", "Kategoria", "Opis", "Uwagi"].forEach((h) => {
+      const th = document.createElement("th"); th.textContent = h; head.appendChild(th);
+    });
+    const body = table.createTBody();
+    rows.forEach((r) => {
+      const tr = body.insertRow();
+      tr.className = !r.ok ? "bad" : (r.warnings.length ? "warn" : "");
+      [r.line_no, r.ok ? r.clock : "—", r.official || "—", r.category || "—", r.description, r.warnings.join("; ")]
+        .forEach((value, i) => {
+          const td = tr.insertCell();
+          td.textContent = String(value);  // tekst, nie HTML
+          if (i === 5) td.className = "warn-text";
+        });
+    });
+    box.replaceChildren(summary, table);
+  }
+
+  async function sendNotes(url, text, pct) {
+    if (!text.trim()) return;
+    try {
+      const res = await fetch(url + "/notes", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-CSRF-Token": csrf },
+        body: JSON.stringify({ text: text }),
+      });
+      if (!res.ok) {
+        let detail = "";
+        try { detail = (await res.json()).detail; } catch (e) { /* brak JSON */ }
+        throw new Error(typeof detail === "string" && detail ? detail : "błąd " + res.status);
+      }
+    } catch (err) {
+      const warn = document.createElement("div");
+      warn.className = "error-text small-note";
+      warn.textContent = "Notatki nie zostały zapisane (" + err.message + "). Dodasz je po konwersji przyciskiem „Wklej notatki”.";
+      pct.parentNode.appendChild(warn);
+    }
+  }
 
   function contentOf(row) {
     const kind = row.querySelector(".content-kind").value;
@@ -68,7 +161,7 @@
   }
 
   // --- jeden plik -----------------------------------------------------------------
-  function uploadOne(file, content, label) {
+  function uploadOne(file, content, label, notes) {
     return new Promise((resolve, reject) => {
       const row = document.createElement("div");
       row.className = "upload-row";
@@ -79,6 +172,7 @@
       row.append(fname, bar, pct, stop);
       box.appendChild(row);
 
+      let notesDone = Promise.resolve();
       const upload = new tus.Upload(file, {
         endpoint: "/uploads/",
         chunkSize: CHUNK,
@@ -88,11 +182,12 @@
         storeFingerprintForResuming: true,
         removeFingerprintOnSuccess: true,
         onShouldRetry: shouldRetry,
+        onUploadUrlAvailable: () => { notesDone = sendNotes(upload.url, notes, pct); },
         onProgress: (sent, total) => {
           const p = Math.floor((sent / total) * 100);
           bar.value = p; pct.textContent = p + "% (" + mb(sent) + " / " + mb(total) + " MB)";
         },
-        onSuccess: () => { stop.remove(); pct.textContent = "gotowe — konwersja w tle"; resolve(); },
+        onSuccess: () => notesDone.then(() => { stop.remove(); pct.textContent = "gotowe — konwersja w tle"; resolve(); }),
         onError: (err) => {
           stop.remove();
           pct.textContent = errorText(err);
@@ -118,7 +213,11 @@
       // Wznowienie po odświeżeniu strony: ten sam plik i mecz => dalej od miejsca przerwania.
       upload.findPreviousUploads().then((previous) => {
         const same = previous.find((p) => p.metadata && p.metadata.match_id === matchId);
-        if (same) { upload.resumeFromPreviousUpload(same); pct.textContent = "wznawianie…"; }
+        if (same) {
+          upload.resumeFromPreviousUpload(same);
+          pct.textContent = "wznawianie…";
+          notesDone = sendNotes(upload.url, notes, pct);  // wznowienie nie tworzy sesji, więc nie woła onUploadUrlAvailable
+        }
         upload.start();
       });
     });
@@ -134,6 +233,9 @@
     let contents;
     try { contents = rows.map((r) => contentOf(r.row)); }
     catch (err) { alert(err.message); return; }
+    const notes = rows.map((r) => notesOf(r.row));
+    const problem = notes.map(notesProblem).find(Boolean);
+    if (problem) { alert(problem); return; }
     const label = document.getElementById("upload-label").value.trim();
     const button = form.querySelector("button[type=submit]");
     button.disabled = true; busy = true;
@@ -141,7 +243,7 @@
     let failed = false;
     for (let i = 0; i < rows.length; i++) {
       const { file } = rows[i];
-      try { await uploadOne(file, contents[i], rows.length > 1 && label ? label + " (" + file.name + ")" : label); }
+      try { await uploadOne(file, contents[i], rows.length > 1 && label ? label + " (" + file.name + ")" : label, notes[i]); }
       catch (err) { failed = true; if (err.message === "abort") break; }
     }
     busy = false; button.disabled = false;

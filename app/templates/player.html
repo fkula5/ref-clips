@@ -5,21 +5,34 @@
   <div>
     <h1>{{ video.display_name }}</h1>
     <a href="/matches/{{ match.id }}">{{ match.title }}</a>
+    <span class="muted">· zawiera: {{ content_label(video.content) }}</span>
   </div>
   <div class="row">
-    {% if perm.can_manage_clips(user, match) %}<a class="btn" href="/videos/{{ video.id }}/notes">Wklej notatki</a>{% endif %}
+    {% if state and perm.can_manage_clips(user, match) %}<a class="btn" href="/videos/{{ video.id }}/notes">Wklej notatki</a>{% endif %}
     <a class="btn" href="/clips?video_id={{ video.id }}">Klipy tego nagrania</a>
   </div>
 </div>
 
-{% if video.status != 'ready' %}
+{% if video.purged_at %}
+  <div class="banner" id="purged-banner">Pełne nagranie zostało usunięte ({{ video.purged_at.strftime("%d.%m.%Y") }}), więc nie ma już odtwarzacza ani możliwości
+    dodawania znaczników. Klipy wycięte wcześniej zostają i dalej się odtwarzają:
+    <a href="/clips?video_id={{ video.id }}">klipy tego nagrania ({{ video.clips|length }})</a>.</div>
+{% elif video.status != 'ready' %}
   <div class="banner error">Wersja robocza nie jest jeszcze gotowa (status: {{ VIDEO_STATUSES.get(video.status, video.status) }}). Wróć do <a href="/matches/{{ match.id }}">meczu</a>.</div>
 {% else %}
+<div id="marks-banner" class="banner warn hidden">
+  <strong>Ustaw początki kwart, żeby klipy miały kwartę i czas.</strong>
+  Brakuje: <span id="missing-list"></span>. Do tego czasu klipy mają kwartę „nieustaloną” (wycinanie działa). Użyj panelu „Początki kwart”.
+</div>
 <div class="player-layout">
   <section>
-    <div class="video-wrap">
-      <video id="player" src="/videos/{{ video.id }}/stream" preload="auto" controls playsinline></video>
+    <div class="video-wrap" id="video-wrap">
+      <video id="player" src="/videos/{{ video.id }}/stream" preload="auto" controls controlsList="nofullscreen" playsinline></video>
       <div id="timeline" class="timeline" title="Kliknij, by przewinąć"></div>
+      <div id="mark-count" class="mark-count" title="Liczba znaczników w tym nagraniu"></div>
+      <div id="flash" class="flash hidden"></div>
+      {% if perm.can_manage_clips(user, match) %}<button class="btn primary big fs-only" id="btn-mark-fs" type="button">Zaznacz (Z)</button>{% endif %}
+      <div id="toast" class="toast hidden"></div>
     </div>
     <div class="row controls">
       <span id="clock" class="clock">0:00</span>
@@ -28,42 +41,61 @@
           {% for s in [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2] %}<option value="{{ s }}" {{ 'selected' if s == 1 }}>{{ s }}×</option>{% endfor %}
         </select>
       </label>
-      {% if perm.can_manage_clips(user, match) %}<button class="btn" id="btn-m" type="button">M · Dodaj klip</button>{% endif %}
-      {% if perm.can_upload_to_match(user, match) %}<button class="btn" id="btn-q" type="button">Q · Znacznik kwarty (<span id="next-period">Q1</span>)</button>{% endif %}
+      {% if perm.can_manage_clips(user, match) %}
+        <button class="btn primary big" id="btn-z" type="button" title="Dodaje znacznik w bieżącym czasie bez zatrzymywania odtwarzania">Zaznacz (Z)</button>
+        <button class="btn" id="btn-undo" type="button" title="Usuwa Twój ostatni nieopisany znacznik">Cofnij (Backspace)</button>
+        <button class="btn" id="btn-m" type="button" title="Pauza i pole tekstowe: sędzia, kategoria, opis">M · Znacznik z notatką</button>
+      {% endif %}
+      {% if perm.can_upload_to_match(user, match) %}<button class="btn" id="btn-q" type="button">Q · Początek kwarty (<span id="next-period">—</span>)</button>{% endif %}
+      <button class="btn" id="btn-fs" type="button">Pełny ekran (F)</button>
+      <button class="btn" id="btn-help" type="button">? Skróty</button>
     </div>
     {% if perm.can_manage_clips(user, match) %}
     <form id="quick-form" class="card hidden" autocomplete="off">
-      <label>Klip w <strong id="quick-time">0:00</strong> — wpisz np. „Filip kroki” lub „U1 faul techniczny”
+      <label>Znacznik z notatką w <strong id="quick-time">0:00</strong> — wpisz np. „Filip kroki” lub „U1 faul techniczny”
         <input id="quick-text" placeholder="sędzia (imię, nazwisko, CC/U1/U2), kategoria, uwagi — Enter zapisuje, Esc anuluje">
       </label>
     </form>
     {% endif %}
+    <div id="help" class="card help hidden" role="dialog" aria-label="Skróty klawiszowe">
+      <div class="row between"><h3>Skróty klawiszowe</h3><button class="btn small" id="help-close" type="button">Zamknij (Esc)</button></div>
+      <table class="shortcuts-table">
+        <tr><td><kbd>Z</kbd></td><td><strong>Zaznacz</strong> — znacznik w bieżącym czasie, odtwarzanie trwa dalej</td></tr>
+        <tr><td><kbd>Backspace</kbd></td><td>Cofnij swój ostatni nieopisany znacznik</td></tr>
+        <tr><td><kbd>M</kbd></td><td>Znacznik z notatką (pauza, pole tekstowe: sędzia, kategoria, opis)</td></tr>
+        <tr><td><kbd>Q</kbd></td><td>Ustaw początek następnej brakującej kwarty w bieżącym czasie</td></tr>
+        <tr><td><kbd>Spacja</kbd></td><td>Start / pauza</td></tr>
+        <tr><td><kbd>←</kbd> <kbd>→</kbd></td><td>±1 s (z <kbd>Shift</kbd> ±5 s)</td></tr>
+        <tr><td><kbd>,</kbd> <kbd>.</kbd></td><td>Klatka wstecz / naprzód</td></tr>
+        <tr><td><kbd>[</kbd> <kbd>]</kbd></td><td>Wolniejsze / szybsze tempo (0,25×–2×)</td></tr>
+        <tr><td><kbd>F</kbd></td><td>Pełny ekran (znaczniki działają także w pełnym ekranie)</td></tr>
+        <tr><td><kbd>?</kbd></td><td>Ta pomoc</td></tr>
+      </table>
+    </div>
     <p class="muted shortcuts">
-      Skróty: <kbd>Spacja</kbd> start/pauza · <kbd>←</kbd><kbd>→</kbd> ±1 s · <kbd>Shift</kbd>+<kbd>←</kbd><kbd>→</kbd> ±5 s ·
-      <kbd>,</kbd><kbd>.</kbd> klatka wstecz/naprzód · <kbd>[</kbd><kbd>]</kbd> tempo · <kbd>M</kbd> klip · <kbd>Q</kbd> kwarta
+      <kbd>Z</kbd> zaznacz · <kbd>Backspace</kbd> cofnij · <kbd>Spacja</kbd> start/pauza · <kbd>←</kbd><kbd>→</kbd> ±1 s ·
+      <kbd>,</kbd><kbd>.</kbd> klatka · <kbd>[</kbd><kbd>]</kbd> tempo · <kbd>M</kbd> z notatką · <kbd>Q</kbd> kwarta ·
+      <kbd>F</kbd> pełny ekran · <kbd>?</kbd> wszystkie skróty
     </p>
   </section>
 
   <aside>
-    <div class="card">
-      <h3>Znaczniki kwart</h3>
-      <div id="marks"></div>
-      {% if perm.can_upload_to_match(user, match) %}
-      <div class="row">
-        <select id="mark-period">{% for p in PERIODS %}<option>{{ p }}</option>{% endfor %}</select>
-        <button class="btn small" id="btn-mark" type="button">Ustaw w bieżącej chwili</button>
-      </div>
-      {% endif %}
-      <p class="muted">Kwarta każdego klipu wynika z tych znaczników (czas nagrania, nie zegar meczowy).</p>
+    <div class="card" id="poczatki-kwart">
+      <h3>Początki kwart</h3>
+      <p class="muted small-note">Plik zawiera: {{ content_label(video.content) }}. Ustaw początek każdej kwarty w czasie nagrania
+        (przewiń do początku kwarty i kliknij „Ustaw tutaj” albo naciśnij <kbd>Q</kbd>). Kwarta każdego klipu wynika z tych
+        znaczników (czas nagrania, nie zegar meczowy).</p>
+      <div id="periods"></div>
     </div>
     <div class="card">
-      <h3>Klipy <span id="dec-count" class="muted"></span></h3>
+      <h3>Znaczniki <span id="dec-count" class="muted"></span></h3>
       <ul id="decisions" class="dec-list"></ul>
+      <p class="muted small-note">Znaczniki opisujesz później. Z każdego powstaje klip {{ (2 * DEFAULT_MARGIN)|int }} s
+        (po {{ DEFAULT_MARGIN|int }} s przed i po).</p>
     </div>
   </aside>
 </div>
-<div id="toast" class="toast hidden"></div>
 <script type="application/json" id="init-state">{{ state|tojson }}</script>
 {% endif %}
 {% endblock %}
-{% block scripts %}{% if video.status == 'ready' %}<script>window.CAN_MARK = {{ 'true' if perm.can_upload_to_match(user, match) else 'false' }};window.START_AT = {{ start_at }};</script><script src="/static/player.js"></script>{% endif %}{% endblock %}
+{% block scripts %}{% if state %}<script>window.CAN_MARK = {{ 'true' if perm.can_upload_to_match(user, match) else 'false' }};window.CAN_CLIP = {{ 'true' if perm.can_manage_clips(user, match) else 'false' }};window.START_AT = {{ start_at }};</script><script src="/static/player.js"></script>{% endif %}{% endblock %}

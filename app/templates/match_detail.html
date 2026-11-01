@@ -37,7 +37,8 @@
 
 {% if perm.can_upload_to_match(user, match) %}
 <h3>Dodaj nagranie</h3>
-<form id="upload-form" class="card form" data-match="{{ match.id }}" data-max-gb="{{ max_upload_gb()|round(1) }}">
+<form id="upload-form" class="card form" data-match="{{ match.id }}" data-max-gb="{{ max_upload_gb()|round(1) }}"
+      data-can-notes="{{ 1 if perm.can_manage_clips(user, match) else 0 }}" data-notes-chars="{{ NOTES_MAX_CHARS }}" data-notes-lines="{{ NOTES_MAX_LINES }}">
   <div class="grid2">
     <label>Pliki wideo (można kilka, np. osobne kwarty; maks. {{ max_upload_gb()|round(1) }} GB każdy)
       <input type="file" id="upload-files" accept="video/*,.mkv,.mov,.mp4,.avi,.ts" multiple required>
@@ -49,10 +50,24 @@
   <div id="upload-files-list" class="muted-list"></div>
   <p class="muted small-note">Przy każdym pliku wskaż, co zawiera: cały mecz, jedną kwartę albo kilka kwart.
     Wgrywanie można przerwać i wznowić: po zerwaniu połączenia lub odświeżeniu strony wybierz ten sam plik
-    i kliknij „Wgraj” — dalej pójdzie od miejsca przerwania. Po konwersji oryginał jest usuwany.</p>
+    i kliknij „Wgraj” — dalej pójdzie od miejsca przerwania. Po konwersji oryginał jest usuwany.
+    Do pliku możesz dopisać notatki (jedna linia = jeden moment w czasie nagrania, np. <code>2:54 Filip PTS</code>
+    albo <code>3:17 U1 dlaczego nie blok?</code>): po konwersji powstaną z nich nieopisane klipy.</p>
   <button class="btn primary" type="submit">Wgraj</button>
   <div id="upload-progress"></div>
   <template id="content-template">{{ content_picker() }}</template>
+  <template id="notes-template">
+    <details class="notes-block">
+      <summary>Notatki do tego pliku (opcjonalnie)</summary>
+      <textarea class="notes-text" rows="5" placeholder="2:54 Filip PTS&#10;3:17 U1 dlaczego nie blok?&#10;1:02:15 CC faul techniczny"></textarea>
+      <div class="row">
+        <button type="button" class="btn small notes-preview-btn">Podgląd</button>
+        <span class="muted small-note">Czas to czas nagrania (m:ss, h:mm:ss; także 2.54 i 2,54). Sędzia: imię, nazwisko albo CC/U1/U2.
+          Moment poza nagraniem wyjdzie dopiero po konwersji (klip z błędem).</span>
+      </div>
+      <div class="notes-preview"></div>
+    </details>
+  </template>
 </form>
 {% else %}
 <p class="muted">Wgrywać nagrania do tego meczu mogą administratorzy, szkoleniowcy i sędziowie z obsady.</p>
