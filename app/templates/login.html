@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block title %}Logowanie{% endblock %}
+{% block content %}
+<div class="auth-box">
+  <h1>Logowanie</h1>
+  {% if ok %}<div class="banner ok">Hasło zostało ustawione. Zaloguj się.</div>{% endif %}
+  {% if error %}<div class="banner error">{{ error }}</div>{% endif %}
+  <form method="post" action="/login" class="card form">
+    {{ csrf_input() }}
+    <input type="hidden" name="next" value="{{ next }}">
+    <label>E-mail
+      <input type="email" name="email" value="{{ email }}" autocomplete="username" required autofocus>
+    </label>
+    <label>Hasło
+      <input type="password" name="password" autocomplete="current-password" required>
+    </label>
+    <button class="btn primary">Zaloguj</button>
+  </form>
+  <p class="muted">Konta zakłada administrator. Jeśli nie masz konta albo zapomniałeś hasła, poproś go o link.</p>
+</div>
+{% endblock %}
