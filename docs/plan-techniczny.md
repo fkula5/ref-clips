@@ -169,6 +169,7 @@ wdrożenie ──► review ──► są uwagi? ──tak──► poprawa bł�
 - **Review:** niezależny przegląd zmian (Opus 5.5): zgodność ze specyfikacją i planem, błędy logiczne, uprawnienia i bezpieczeństwo, testy. Każda uwaga dostaje wagę: **blokująca** (musi być poprawiona) lub **drobna**.
 - **Poprawa błędów:** usunięcie wszystkich uwag blokujących (drobne według uznania), po czym kolejne review. Pętla trwa, dopóki review nie zwróci żadnej uwagi blokującej, a wszystkie testy przechodzą.
 - **Zamknięcie segmentu:** krótki raport (co zrobiono, wynik testów, lista drobnych uwag odłożonych na później) i scalenie gałęzi do `master`.
+- **Testy przed review:** każdy segment przed review przechodzi pełne `pytest`, a także `scripts/e2e.sh` (testy interfejsu w prawdziwej przeglądarce, segment 4a) i — od segmentu 2a — `scripts/docker-smoke.sh` (test dymny obrazu Dockera). Nowy interfejs (JS, szablony, HTMX) dostaje scenariusze w `tests/e2e/`.
 - Odłożone drobne uwagi i pomysły trafiają do `TODO.md`.
 
 ## 11. Kamienie milowe
