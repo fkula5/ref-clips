@@ -1,11 +1,15 @@
-// Strona klipu: pole „nazwa własnej kategorii” widoczne tylko dla kategorii „własna”.
+// Formularz opisu klipu (strona klipu i ekran opisywania): pole „nazwa własnej kategorii” jest widoczne
+// i wymagane tylko dla kategorii „własna”.
 (function () {
   const select = document.getElementById("category-select");
   const label = document.getElementById("custom-label");
   if (!select || !label) return;
+  const input = label.querySelector("input");
   function sync() {
     const option = select.options[select.selectedIndex];
-    label.classList.toggle("hidden", !(option && option.dataset.custom === "1"));
+    const custom = !!option && option.dataset.custom === "1";
+    label.classList.toggle("hidden", !custom);
+    if (input) input.required = custom;
   }
   select.addEventListener("change", sync);
   sync();

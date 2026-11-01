@@ -1,117 +1,141 @@
-"""Klipy: lista z filtrami, szczegóły, opis, komentarze, pobieranie."""
+"""Klipy: lista z filtrami, strona klipu, opis i edycja, ponowne cięcie, usuwanie, komentarze, pobieranie."""
 from __future__ import annotations
+
+from urllib.parse import urlencode
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.responses import RedirectResponse
 from sqlalchemy import select
-from sqlalchemy.orm import Session, selectinload
+from sqlalchemy.orm import Session
 
-from app import permissions, services
+from app import clip_list, permissions, services
 from app.auth import require, via_match
+from app.clip_list import query_clips  # noqa: F401 - używane też przez app/routers/clips_v2.py
 from app.db import get_db
 from app.loaders import get_clip, get_comment
-from app.models import Category, Clip, Comment, Match, MatchOfficial, User
+from app.models import Clip, Comment, Match, User
+from app.routers import describe
 from app.storage import storage
-from app.timeutil import utcnow
 from app.web import file_response, render
 
 router = APIRouter()
 
 
-def query_clips(db: Session, *, match_id=None, video_id=None, person=None, category_id=None,
-                period=None, ids=None) -> list[Clip]:
-    stmt = select(Clip).options(selectinload(Clip.comments)).order_by(
-        Clip.match_id.desc(), Clip.video_id, Clip.time_sec)
-    if match_id:
-        stmt = stmt.where(Clip.match_id == match_id)
-    if video_id:
-        stmt = stmt.where(Clip.video_id == video_id)
-    if category_id:
-        stmt = stmt.where(Clip.category_id == category_id)
-    if ids:
-        stmt = stmt.where(Clip.id.in_(ids))
-    if person:  # "u<id konta>" albo "n<znormalizowane imię i nazwisko>"
-        accounts = services.account_names(db)
-        official_ids = [oid for oid, user_id, name in db.execute(
-            select(MatchOfficial.id, MatchOfficial.user_id, MatchOfficial.name))
-            if services.person_key(user_id, name, accounts) == person]
-        stmt = stmt.where(Clip.official_id.in_(official_ids))
-    clips = list(db.scalars(stmt))
-    if period:  # kwarta jest wyliczana ze znaczników, więc filtrujemy w Pythonie
-        clips = [c for c in clips if (services.period_for(c.video.marks, c.time_sec) or "") == period]
-    return clips
+def person_choices(db: Session) -> list[tuple[str, str]]:
+    return [*services.people(db), (clip_list.TEAM, "cały zespół")]
 
 
 # --- lista ----------------------------------------------------------------------
 @router.get("/clips")
 def clips_list(request: Request, db: Session = Depends(get_db),
-               user: User = require(permissions.can_view), match_id: int | None = None,
-               video_id: int | None = None, person: str = "", category_id: int | None = None,
-               period: str = "", created: int | None = None, skipped: int = 0):
-    clips = query_clips(db, match_id=match_id, video_id=video_id, person=person or None,
-                        category_id=category_id, period=period or None)
-    pending = any(c.status in ("new", "queued") for c in clips)
+               user: User = require(permissions.can_view), created: int | None = None, skipped: int = 0):
+    f = clip_list.parse_filters(request.query_params)
+    clips = clip_list.select_clips(db, f)
     return render(
-        request, "clips.html", clips=clips, pending=pending, created=created, skipped=skipped,
-        matches=db.scalars(select(Match).order_by(Match.date.desc())).all(),
-        people=services.people(db), categories=services.active_categories(db),
-        f={"match_id": match_id, "video_id": video_id, "person": person,
-           "category_id": category_id, "period": period},
-        query=str(request.url.query),
-    )
+        request, "clips.html", clips=clips, f=f, created=created, skipped=skipped,
+        pending=any(c.status in ("new", "queued") for c in clips),
+        matches=db.scalars(select(Match).order_by(Match.date.desc(), Match.id.desc())).all(),
+        people=person_choices(db), categories=services.all_categories(db),
+        nav=f.query(scope=False), query=str(request.url.query))
 
 
-# --- szczegóły i opis -------------------------------------------------------------
+# --- strona klipu ---------------------------------------------------------------
+def render_clip(request: Request, db: Session, clip: Clip, f: clip_list.ClipFilters, *,
+                values: dict | None = None, error: str | None = None, status_code: int = 200):
+    """Strona klipu; `f` to filtry, z których przyszedł użytkownik (poprzedni/następny klip w meczu
+    liczony wg nich, a klip bieżący nie musi do nich pasować)."""
+    previous, following = services.neighbours(clip_list.select_clips(db, f, match_id=clip.match_id), clip)
+    nav = f.query(scope=False)
+    full_video = clip.video.purged_at is None and clip.video.status == "ready" and bool(clip.video.proxy_path)
+    return render(
+        request, "clip_detail.html", status_code=status_code, c=clip, filename=services.clip_filename(clip),
+        categories=services.categories_for(db, clip), busy=clip.status in ("new", "queued"),
+        previous=previous, following=following, nav=nav, nav_q=f"?{nav}" if nav else "",
+        full_video=full_video, problem=describe.cut_problem(clip),
+        blocker=services.describe_block(clip), error=error,
+        values=values if values is not None else describe.form_values(clip))
+
+
 @router.get("/clips/{clip_id}")
 def clip_detail(request: Request, db: Session = Depends(get_db), clip: Clip = Depends(get_clip),
                 user: User = require(permissions.can_view)):
-    return render(request, "clip_detail.html", c=clip, filename=services.clip_filename(clip),
-                  categories=services.active_categories(db),
-                  busy=clip.status in ("new", "queued"))
+    return render_clip(request, db, clip, clip_list.parse_filters(request.query_params))
 
 
+# --- opis (pierwszy i edycja) ---------------------------------------------------
 @router.post("/clips/{clip_id}/update")
-def clip_update(db: Session = Depends(get_db), clip: Clip = Depends(get_clip),
+def clip_update(request: Request, db: Session = Depends(get_db), clip: Clip = Depends(get_clip),
                 user: User = require(permissions.can_describe_clip, get_clip),
                 official: str = Form(""), category_id: str = Form(""),
-                custom_category: str = Form(""), description: str = Form("")):
-    """Opis klipu: sędzia z obsady (albo „cały zespół”), kategoria, opis tekstowy."""
-    valid_officials = {str(o.id) for o in clip.match.officials}
-    clip.whole_team = official == "team"
-    clip.official_id = int(official) if official in valid_officials else None
-    category = db.get(Category, int(category_id)) if category_id.isdigit() else None
-    if category is not None and not category.is_active and category.id != clip.category_id:
-        raise HTTPException(422, "Ta kategoria jest nieaktywna")
-    clip.category_id = category.id if category else None
-    custom = " ".join(custom_category.split())[:100]
-    if category is not None and category.is_custom:
-        if not custom:
-            raise HTTPException(422, "Dla kategorii „własna” wpisz jej nazwę")
-        clip.custom_category = custom
-    else:
-        clip.custom_category = None
-    clip.description = description.strip()
-    clip.described_at = utcnow()
+                custom_category: str = Form(""), description: str = Form(""),
+                context: str = "", video_id: int | None = None):
+    """Opis klipu: sędzia z obsady albo „cały zespół” i kategoria są wymagane, opis opcjonalny.
+    `context=describe` (ekran opisywania) po zapisie przechodzi do następnego nieopisanego klipu,
+    w przeciwnym razie wracamy na stronę klipu. Błędy wracają do formularza z zachowanymi wartościami."""
+    describing = context == "describe"
+    values = {"official": official, "category_id": category_id,
+              "custom_category": custom_category, "description": description}
+    try:
+        services.describe_clip(db, clip, official=official, category_id=category_id,
+                               custom_category=custom_category, description=description)
+    except services.ClipDescribeError as exc:
+        db.rollback()
+        if describing:
+            return describe.render_screen(request, db, clip.match, clip_id=clip.id, video_id=video_id,
+                                          values=values, error=str(exc), status_code=exc.status_code)
+        return render_clip(request, db, clip, clip_list.parse_filters(request.query_params),
+                           values=values, error=str(exc), status_code=exc.status_code)
     db.commit()
-    return RedirectResponse(f"/clips/{clip.id}", status_code=303)
+    if describing:
+        return _to_next(db, clip, video_id)
+    return _to_clip(request, clip)
+
+
+def _to_clip(request: Request, clip: Clip) -> RedirectResponse:
+    nav = clip_list.parse_filters(request.query_params).query(scope=False)
+    return RedirectResponse(f"/clips/{clip.id}" + (f"?{nav}" if nav else ""), status_code=303)
+
+
+def _describe_redirect(match_id: int, following: Clip | None, video_id: int | None) -> RedirectResponse:
+    """Ekran opisywania z następnym klipem; bez niego (pusta kolejka) — z komunikatem „wszystko opisane”."""
+    params = [("clip", str(following.id))] if following else []
+    if video_id:
+        params.append(("video_id", str(video_id)))
+    return RedirectResponse(f"/matches/{match_id}/describe" + (f"?{urlencode(params)}" if params else ""),
+                            status_code=303)
+
+
+def _to_next(db: Session, clip: Clip, video_id: int | None) -> RedirectResponse:
+    """Po zapisie: następny nieopisany klip w kolejce (ten sam zakres)."""
+    following = services.next_in_queue(services.undescribed_queue(db, clip.match_id, video_id), clip)
+    return _describe_redirect(clip.match_id, following, video_id)
 
 
 @router.post("/clips/{clip_id}/recut")
-def clip_recut(db: Session = Depends(get_db), clip: Clip = Depends(get_clip),
+def clip_recut(request: Request, db: Session = Depends(get_db), clip: Clip = Depends(get_clip),
                user: User = require(via_match(permissions.can_manage_clips), get_clip)):
+    video = clip.video
+    if video.purged_at is not None or video.status != "ready" or not video.proxy_path:
+        raise HTTPException(409, "Pełnego nagrania nie ma już na serwerze — klipu nie da się wyciąć ponownie")
     services.queue_cut(db, clip)
     db.commit()
-    return RedirectResponse(f"/clips/{clip.id}", status_code=303)
+    return _to_clip(request, clip)
 
 
 @router.post("/clips/{clip_id}/delete")
 def clip_delete(db: Session = Depends(get_db), clip: Clip = Depends(get_clip),
-                user: User = require(permissions.can_delete_clip, get_clip)):
+                user: User = require(permissions.can_delete_clip, get_clip),
+                context: str = "", video_id: int | None = None):
     match_id = clip.match_id
+    following = None
+    if context == "describe":  # w ekranie opisywania liczymy następny klip, zanim ten zniknie
+        following = services.next_in_queue(services.undescribed_queue(db, match_id, video_id), clip)
     services.remove_clip_files(clip)
     db.delete(clip)
     db.commit()
-    return RedirectResponse(f"/clips?match_id={match_id}", status_code=303)
+    if context == "describe":
+        return _describe_redirect(match_id, following, video_id)
+    return RedirectResponse(f"/matches/{match_id}#klipy", status_code=303)
 
 
 def _clip_file(clip: Clip, download: bool):

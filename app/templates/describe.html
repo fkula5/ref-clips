@@ -1,0 +1,108 @@
+{% extends "base.html" %}
+{% block title %}Opisywanie znaczników{% endblock %}
+{% block content %}
+<div class="row between">
+  <div>
+    <h1>Opisywanie znaczników</h1>
+    <a href="/matches/{{ match.id }}">{{ match.title }}</a>
+    {% if scope %}<span class="muted">· nagranie: {{ scope.display_name }}</span>
+      · <a href="/matches/{{ match.id }}/describe">cały mecz</a>
+      · <a href="/videos/{{ scope.id }}">odtwarzacz</a>{% endif %}
+  </div>
+  <a class="btn" href="/matches/{{ match.id }}#klipy">Klipy meczu</a>
+</div>
+
+{% if not current %}
+  <div class="card done-box" id="all-described">
+    <h2>Wszystkie znaczniki są opisane</h2>
+    <p class="muted">Nie ma nieopisanych znaczników{% if scope %} w nagraniu „{{ scope.display_name }}”{% else %} w tym meczu{% endif %}.
+      Nowe pojawią się, gdy zaznaczysz kolejne momenty w odtwarzaczu albo wkleisz notatki.</p>
+    <div class="row">
+      <a class="btn primary" href="/matches/{{ match.id }}#klipy">Klipy meczu</a>
+      {% for v in match.videos if v.status == 'ready' and not v.purged_at %}<a class="btn" href="/videos/{{ v.id }}">Odtwarzacz: {{ v.display_name }}</a>{% endfor %}
+    </div>
+  </div>
+{% else %}
+<div class="player-layout" id="describe" data-clip="{{ current.id }}">
+  <section>
+    <p class="muted" id="describe-position">
+      {% if position %}Znacznik {{ position }} z {{ queue|length }}{% else %}Ten klip jest już opisany — zmiany zapiszesz jak edycję opisu.{% endif %}
+      · {{ current.time_sec|clock }} w nagraniu{% if many_videos %} ({{ current.video.display_name }}){% endif %}
+    </p>
+
+    {% if preview.kind == 'file' %}
+      <video id="preview" src="{{ preview.src }}" controls preload="auto" playsinline></video>
+    {% elif preview.kind == 'draft' %}
+      <video id="preview" src="{{ preview.src }}" controls preload="auto" playsinline data-start="{{ preview.start }}" data-end="{{ preview.end }}"></video>
+      <p class="muted small-note" id="draft-note">Klip czeka na wycięcie — to podgląd z wersji roboczej ({{ preview.start|clock }}–{{ preview.end|clock }}); odtwarzanie zatrzyma się na końcu klipu.</p>
+    {% endif %}
+    {% if problem %}
+      <div class="banner error" id="cut-problem">{{ problem.message }}
+        <div class="row">
+          {% if problem.can_recut and perm.can_manage_clips(user, current.match) %}
+          <form method="post" action="/clips/{{ current.id }}/recut">{{ csrf_input() }}<button class="btn">Wytnij ponownie</button></form>
+          {% endif %}
+        </div>
+      </div>
+    {% elif preview.kind == 'none' %}
+      <div class="banner">Podgląd nie jest dostępny.</div>
+    {% endif %}
+
+    <div class="card">
+      <h3>Kwarta i czas</h3>
+      <p>{% if blocker %}<span class="chip warn">kwarta nieustalona</span>{% else %}{{ period_label(current) }}{% endif %}
+        <br><small class="muted">czas nagrania – nie zegar meczowy</small></p>
+      {% if blocker %}
+        <div class="banner error" id="describe-block" role="alert">{{ blocker.message }}
+          {% if blocker.url %}<div><a class="btn" id="set-periods-link" href="{{ blocker.url }}">{{ blocker.link_text }}</a></div>{% endif %}
+        </div>
+      {% else %}
+        {% if proposal and not error %}<div class="banner" id="proposal-note">{{ proposal_note }}</div>{% endif %}
+        {% set form_action = "/clips/" ~ current.id ~ "/update?context=describe" ~ scope_q %}
+        {% set submit_label = "Zapisz i dalej" if position else "Zapisz opis" %}
+        {% set keys = true %}
+        {% set skip_url = ("/matches/" ~ match.id ~ "/describe?clip=" ~ next_clip.id ~ scope_q) if next_clip and position else none %}
+        {% set c = current %}
+        {% include "_clip_form.html" %}
+      {% endif %}
+      {% if blocker and next_clip and position %}
+        <p><a class="btn" id="btn-skip" href="/matches/{{ match.id }}/describe?clip={{ next_clip.id }}{{ scope_q }}">Pomiń</a></p>
+      {% endif %}
+    </div>
+
+    <div class="row">
+      <button class="btn" type="button" id="btn-play" {% if preview.kind == 'none' %}disabled{% endif %}>Odtwórz / pauza <kbd>Spacja</kbd></button>
+      {% if perm.can_delete_clip(user, current) %}
+      <form method="post" action="/clips/{{ current.id }}/delete?context=describe{{ scope_q }}" onsubmit="return confirm('Usunąć ten znacznik razem z klipem?')">{{ csrf_input() }}<button class="btn danger" id="btn-delete">Usuń znacznik</button></form>
+      {% endif %}
+      <a class="btn small" href="/clips/{{ current.id }}">Strona klipu</a>
+    </div>
+    <p class="muted shortcuts">
+      <kbd>1</kbd> CC · <kbd>2</kbd> U1 · <kbd>3</kbd> U2 · <kbd>0</kbd> cały zespół · <kbd>K</kbd> kategoria · <kbd>D</kbd> opis ·
+      <kbd>Spacja</kbd> odtwórz/pauza · <kbd>R</kbd> od początku · <kbd>Enter</kbd> zapisz i dalej. Skróty nie działają w polach tekstowych.
+    </p>
+  </section>
+
+  <aside>
+    <div class="card">
+      <h3>Nieopisane znaczniki ({{ queue|length }})</h3>
+      <ul class="dec-list describe-list" id="describe-list">
+        {% for q in queue %}
+        <li {% if q.id == current.id %}class="current" aria-current="true"{% endif %}>
+          <a class="t" href="/matches/{{ match.id }}/describe?clip={{ q.id }}{{ scope_q }}">{{ q.time_sec|clock }}</a>
+          {% set blocked = describe_block(q) %}
+          <span {% if blocked %}class="muted" title="Najpierw ustaw początki kwart"{% endif %}>{% if blocked %}kwarta nieustalona{% else %}{{ period_short(q) }}{% endif %}</span>
+          {% if many_videos %}<span class="muted">{{ q.video.display_name }}</span>{% endif %}
+          <span class="muted">{{ q.author.name if q.author else '—' }}</span>
+          <span class="badge {{ q.status }}">{{ CLIP_STATUSES.get(q.status, q.status) }}</span>
+          {% if is_proposal(q) %}<span class="chip" title="Sędzia lub kategoria z notatek">propozycja</span>{% endif %}
+        </li>
+        {% endfor %}
+        {% if position is none %}<li class="muted">Ten klip nie jest na liście (już opisany).</li>{% endif %}
+      </ul>
+    </div>
+  </aside>
+</div>
+{% endif %}
+{% endblock %}
+{% block scripts %}{% if current %}<script src="/static/clip.js"></script><script src="/static/describe.js"></script>{% endif %}{% endblock %}

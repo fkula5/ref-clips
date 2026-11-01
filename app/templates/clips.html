@@ -1,49 +1,20 @@
 {% extends "base.html" %}
+{% from "_clips_macros.html" import clip_filters, clips_table %}
 {% block title %}Klipy{% endblock %}
 {% block content %}
 <h1>Klipy</h1>
 {% if created is not none %}
   <div class="banner ok">Dodano {{ created }} klipów do wycięcia{% if skipped %} (pominięto {{ skipped }} z niepoprawnym czasem){% endif %}.</div>
 {% endif %}
-<form method="get" class="row filters">
-  <select name="match_id"><option value="">Wszystkie mecze</option>
-    {% for m in matches %}<option value="{{ m.id }}" {{ 'selected' if f.match_id == m.id }}>{{ m.title }}</option>{% endfor %}</select>
-  <select name="person"><option value="">Wszyscy sędziowie</option>
-    {% for key, name in people %}<option value="{{ key }}" {{ 'selected' if f.person == key }}>{{ name }}</option>{% endfor %}</select>
-  <select name="category_id"><option value="">Wszystkie kategorie</option>
-    {% for c in categories %}<option value="{{ c.id }}" {{ 'selected' if f.category_id == c.id }}>{{ c.group_name }}: {{ c.name }}</option>{% endfor %}</select>
-  <select name="period"><option value="">Każda kwarta</option>
-    {% for p in PERIODS %}<option {{ 'selected' if f.period == p }}>{{ p }}</option>{% endfor %}</select>
-  {% if f.video_id %}<input type="hidden" name="video_id" value="{{ f.video_id }}">{% endif %}
-  <button class="btn">Filtruj</button>
-  <a class="btn" href="/clips">Wyczyść</a>
-</form>
+{# Te same filtry co w zakładce „Klipy” meczu; działają w adresie, a HTMX odświeża tylko listę. #}
+{{ clip_filters(f, "/clips", people, categories, matches) }}
 
-<div id="clips-table" {% if pending %}hx-get="/clips?{{ query }}" hx-trigger="every 3s" hx-select="#clips-table" hx-swap="outerHTML"{% endif %}>
+<div id="clips-list" {% if pending %}hx-get="/clips{{ '?' ~ query if query }}" hx-trigger="every 3s" hx-select="#clips-list" hx-swap="outerHTML"{% endif %}>
 {% if not clips %}
   <p class="muted">Brak klipów dla wybranych filtrów.</p>
 {% else %}
-  <table>
-    <thead><tr><th>Mecz</th><th>Czas w nagraniu</th><th>Kwarta</th><th>Sędzia</th><th>Kategoria</th><th>Status</th><th></th></tr></thead>
-    <tbody>
-    {% for c in clips %}
-      <tr>
-        <td>{{ c.match.date.strftime("%d.%m.%Y") }} {{ c.match.team_a_name or c.match.team_a_color }}–{{ c.match.team_b_name or c.match.team_b_color }}</td>
-        <td><a href="/clips/{{ c.id }}">{{ c.time_sec|clock }}</a></td>
-        <td>{{ period_for(c) or '—' }}</td>
-        <td>{{ c.official_label or '—' }}</td>
-        <td>{% if c.category_label %}<span class="chip">{{ c.category_label }}</span>{% else %}—{% endif %}</td>
-        <td><span class="badge {{ c.status }}">{{ CLIP_STATUSES.get(c.status, c.status) }}</span>
-          {% if not c.is_described %}<span class="chip">nieopisany</span>{% endif %}
-          {% if c.comments %} <span class="chip">💬 {{ c.comments|length }}</span>{% endif %}</td>
-        <td class="row">
-          <a class="btn small" href="/clips/{{ c.id }}">Odtwórz</a>
-          {% if c.status == 'cut' %}<a class="btn small" href="/clips/{{ c.id }}/download">MP4</a>{% endif %}
-        </td>
-      </tr>
-    {% endfor %}
-    </tbody>
-  </table>
+  {{ clips_table(clips, nav, true) }}
+  <p class="muted small-note">Klipów: {{ clips|length }}. Czas w kolumnie „Kwarta” liczony jest od początku kwarty w nagraniu — to nie jest zegar meczowy.</p>
 {% endif %}
 </div>
 {% endblock %}

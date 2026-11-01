@@ -8,7 +8,7 @@ from sqlalchemy import select
 
 from app import permissions as p
 from app.models import Clip, Comment, Match, MatchOfficial, Rating, User, Video
-from tests.helpers import (TUS, make_match, make_ready_video, make_user, tus_create,
+from tests.helpers import (TUS, category_named, make_match, make_ready_video, make_user, mark_periods, tus_create,
                            tus_metadata)
 
 ME = 10      # id użytkownika sprawdzanego
@@ -183,7 +183,7 @@ def world(db, make_client):
     other_coach_client, other_coach = make_client("coach", name="Inny Trener")
     admin_client, admin = make_client("admin", name="Szef")
     m = make_match(db, officials=(("CC", member), ("U1", "Wpisany Sędzia")), created_by=coach)
-    video = make_ready_video(db, m)
+    video = mark_periods(db, make_ready_video(db, m))
     clip = Clip(match_id=m.id, video_id=video.id, author_id=coach.id, time_sec=100)
     db.add(clip)
     db.commit()
@@ -265,8 +265,9 @@ def test_allowed_requests_for_crew_member(world, db):
     m, v, c = world["match"], world["video"], world["clip"]
     r = member.post(f"/api/videos/{v.id}/quick-clip", json={"time_sec": 50, "text": "CC aut"})
     assert r.status_code == 200
-    assert member.post(f"/api/videos/{v.id}/marks", json={"time_sec": 0}).status_code == 200
-    r = member.post(f"/clips/{c.id}/update", data={"official": "team"}, follow_redirects=False)
+    assert member.post(f"/api/videos/{v.id}/marks", json={"time_sec": 0, "period": "Q1"}).status_code == 200
+    r = member.post(f"/clips/{c.id}/update", data={"official": "team", "category_id": str(category_named(db, "kroki"))},
+                    follow_redirects=False)
     db.expire_all()
     assert r.status_code == 303 and db.get(Clip, c.id).whole_team
     assert member.get(f"/videos/{v.id}/notes").status_code == 200
@@ -297,7 +298,8 @@ def test_coach_and_admin_can_work_on_any_match(world, db):
         client = world[who]
         r = client.post(f"/api/videos/{world['video'].id}/quick-clip", json={"time_sec": 10})
         assert r.status_code == 200, who
-        assert client.post(f"/clips/{world['clip'].id}/update", data={"official": ""},
+        assert client.post(f"/clips/{world['clip'].id}/update",
+                           data={"official": "team", "category_id": str(category_named(db, "aut"))},
                            follow_redirects=False).status_code == 303
         assert tus_create(client, world["match"].id, 4).status_code == 201, who
 

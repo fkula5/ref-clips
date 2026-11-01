@@ -7,7 +7,7 @@
 </div>
 
 {# Filtry to zwykły formularz GET (działa bez JS); HTMX tylko odświeża listę bez przeładowania strony. #}
-<form method="get" action="/" class="card row filters match-filters"
+<form method="get" action="/" class="card row filters match-filters" data-clean-params
       hx-get="/" hx-target="#matches-list" hx-select="#matches-list" hx-swap="outerHTML"
       hx-trigger="change, submit" hx-push-url="true">
   <label>Od <input type="date" name="date_from" value="{{ f.date_from.isoformat() if f.date_from }}"></label>

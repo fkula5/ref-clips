@@ -485,8 +485,13 @@ def clip_range(clip: Clip) -> tuple[float, float]:
 
 
 # --- nazwy plików ---------------------------------------------------------------
+FILENAME_CATEGORY_MAX = 40  # nazwa własnej kategorii bywa długa — w nazwie pliku ją skracamy
+
+
 def clip_filename(clip: Clip) -> str:
-    """np. 2026-10-28_Q2_02m54s_CC_blok-szarza.mp4"""
+    """data_kwarta_czas_sędzia_kategoria.mp4, np. 2026-10-28_Q2_02m54s_CC_blok-szarza.mp4
+    (funkcja sędziego albo „zespol”; tylko znaki ASCII; liczona na bieżąco, więc po zmianie
+    opisu pobrany plik ma już nową nazwę)."""
     period = period_for(clip.video.marks, clip.time_sec) or "Qx"
     minutes, seconds = divmod(int(clip.time_sec), 60)
     parts = [clip.match.date.isoformat(), period, f"{minutes:02d}m{seconds:02d}s"]
@@ -494,7 +499,7 @@ def clip_filename(clip: Clip) -> str:
         parts.append("zespol")
     elif clip.official:
         parts.append(clip.official.function)
-    category = slugify(clip.category_label)
+    category = slugify(clip.category_label)[:FILENAME_CATEGORY_MAX].strip("-")
     if category:
         parts.append(category)
     return "_".join(parts) + ".mp4"
@@ -504,6 +509,29 @@ def clip_filename(clip: Clip) -> str:
 def active_categories(db: Session) -> list[Category]:
     return list(db.scalars(select(Category).where(Category.is_active.is_(True))
                            .order_by(Category.sort, Category.name)))
+
+
+def category_groups(categories: Iterable[Category]) -> list[tuple[str, list[Category]]]:
+    """Kategorie pogrupowane wg grup słownika (kolejność jak na liście wejściowej) — <optgroup> w formularzach."""
+    groups: list[tuple[str, list[Category]]] = []
+    for category in categories:
+        if not groups or groups[-1][0] != category.group_name:
+            groups.append((category.group_name, []))
+        groups[-1][1].append(category)
+    return groups
+
+
+def categories_for(db: Session, clip: Clip) -> list[Category]:
+    """Kategorie do wyboru w formularzu opisu: aktywne oraz (gdy już nieaktywna) obecna kategoria klipu."""
+    found = active_categories(db)
+    if clip.category is not None and not clip.category.is_active:
+        found = sorted([*found, clip.category], key=lambda c: (c.sort, c.name))
+    return found
+
+
+def all_categories(db: Session) -> list[Category]:
+    """Wszystkie kategorie (także nieaktywne) — do filtrów, żeby stare klipy dało się znaleźć."""
+    return list(db.scalars(select(Category).order_by(Category.sort, Category.name)))
 
 
 def category_defs(db: Session) -> list[CategoryDef]:
@@ -637,3 +665,127 @@ def remove_video_files(video: Video) -> None:
     storage.delete(video.proxy_path)
     for clip in video.clips:
         remove_clip_files(clip)
+
+
+# --- opisywanie klipów ------------------------------------------------------------
+CUSTOM_CATEGORY_MAX = 100   # nazwa kategorii „własna”
+DESCRIPTION_MAX = 2000      # opis tekstowy klipu
+
+
+class ClipDescribeError(ValueError):
+    """Niepoprawny opis klipu (komunikat po polsku; HTTP 422)."""
+    status_code = 422
+
+
+@dataclass(frozen=True)
+class DescribeBlock:
+    """Powód, dla którego klipu nie da się opisać (kwarta nieustalona), z linkiem do naprawy."""
+    message: str
+    url: str | None = None
+    link_text: str = ""
+
+
+class ClipBlockedError(ClipDescribeError):
+    def __init__(self, block: DescribeBlock):
+        super().__init__(block.message)
+        self.block = block
+
+
+def describe_block(clip: Clip) -> DescribeBlock | None:
+    """Klip z nagrania, które wymaga znaczników kwart, a ich nie ma (kwarta nieustalona), nie może
+    być opisany (spec). Dotyczy też momentu przed początkiem pierwszej kwarty."""
+    video = clip.video
+    marks = video.marks
+    missing = missing_periods(video.content, (m.period for m in marks))
+    if not missing and period_position(marks, clip.time_sec) is not None:
+        return None
+    fixable = video.purged_at is None and video.status == "ready"
+    url = f"/videos/{video.id}#poczatki-kwart" if fixable else None
+    if missing:
+        message = (f"Kwarta tego klipu jest nieustalona: nagranie „{video.display_name}” nie ma ustawionych "
+                   f"początków kwart (brakuje: {', '.join(missing)}), więc klipu nie można opisać.")
+    else:
+        message = (f"Kwarta tego klipu jest nieustalona: moment {format_clock(clip.time_sec)} wypada przed "
+                   "początkiem pierwszej kwarty, więc klipu nie można opisać. Przesuń początek pierwszej kwarty "
+                   "albo usuń ten znacznik.")
+    if not fixable:
+        message += " Pełne nagranie nie jest już dostępne, więc kwart nie da się ustawić."
+    return DescribeBlock(message, url, "Ustaw początki kwart w odtwarzaczu" if url else "")
+
+
+def describe_clip(db: Session, clip: Clip, *, official: str, category_id: str, custom_category: str,
+                  description: str) -> None:
+    """Zatwierdza opis klipu (pierwszy raz albo edycję): sędzia z obsady meczu albo „cały zespół”
+    i kategoria są wymagane, kategoria „własna” wymaga nazwy, opis tekstowy jest opcjonalny.
+    `described_at` ustawia się raz (pierwsze zatwierdzenie) i przy edycji się nie zmienia.
+    Błąd to ClipDescribeError i nic nie jest zmieniane."""
+    block = describe_block(clip)
+    if block is not None:
+        raise ClipBlockedError(block)
+    official = official.strip()
+    valid_officials = {str(o.id) for o in clip.match.officials}
+    if official != "team" and official not in valid_officials:
+        raise ClipDescribeError("Wybierz sędziego (CC, U1, U2) albo „cały zespół”.")
+    category = db.get(Category, int(category_id)) if category_id.strip().isdigit() else None
+    if category is None:
+        raise ClipDescribeError("Wybierz kategorię.")
+    if not category.is_active and category.id != clip.category_id:
+        raise ClipDescribeError("Ta kategoria jest nieaktywna — wybierz inną.")
+    custom = " ".join(custom_category.split())
+    if category.is_custom:
+        if not custom:
+            raise ClipDescribeError("Dla kategorii „własna” wpisz jej nazwę.")
+        if len(custom) > CUSTOM_CATEGORY_MAX:
+            raise ClipDescribeError(f"Nazwa własnej kategorii: najwyżej {CUSTOM_CATEGORY_MAX} znaków.")
+    description = description.strip()
+    if len(description) > DESCRIPTION_MAX:
+        raise ClipDescribeError(f"Opis: najwyżej {DESCRIPTION_MAX} znaków.")
+    clip.whole_team = official == "team"
+    clip.official_id = None if clip.whole_team else int(official)
+    clip.category_id = category.id
+    clip.custom_category = custom if category.is_custom else None
+    clip.description = description
+    if clip.described_at is None:
+        clip.described_at = utcnow()
+
+
+def clip_order_key(clip: Clip) -> tuple[int, float, int]:
+    """Kolejność klipów w meczu: nagranie, potem czas w nagraniu."""
+    return clip.video_id, clip.time_sec, clip.id
+
+
+def undescribed_queue(db: Session, match_id: int, video_id: int | None = None) -> list[Clip]:
+    """Nieopisane klipy meczu (albo jednego nagrania) w kolejności nagranie -> czas."""
+    stmt = select(Clip).where(Clip.match_id == match_id, Clip.described_at.is_(None))
+    if video_id:
+        stmt = stmt.where(Clip.video_id == video_id)
+    return sorted(db.scalars(stmt), key=clip_order_key)
+
+
+def next_in_queue(queue: Iterable[Clip], current: Clip | None) -> Clip | None:
+    """Następny klip z kolejki po `current` (kolejność nagranie -> czas); po ostatnim wraca do
+    pierwszego z pozostałych. `current` nie jest zwracany. None, gdy w kolejce nie ma innych."""
+    others = sorted((c for c in queue if current is None or c.id != current.id), key=clip_order_key)
+    if not others:
+        return None
+    if current is not None:
+        key = clip_order_key(current)
+        for clip in others:
+            if clip_order_key(clip) > key:
+                return clip
+    return others[0]
+
+
+def neighbours(clips: Iterable[Clip], current: Clip) -> tuple[Clip | None, Clip | None]:
+    """Poprzedni i następny klip względem `current` w kolejności nagranie -> czas. `current` nie musi
+    być na liście (np. po edycji przestał pasować do filtra)."""
+    key = clip_order_key(current)
+    ordered = sorted((c for c in clips if c.id != current.id), key=clip_order_key)
+    before = [c for c in ordered if clip_order_key(c) < key]
+    after = [c for c in ordered if clip_order_key(c) > key]
+    return (before[-1] if before else None), (after[0] if after else None)
+
+
+def is_proposal(clip: Clip) -> bool:
+    """Nieopisany klip z wartościami wstępnymi (z notatek) — propozycja do zatwierdzenia."""
+    return not clip.is_described and bool(clip.official_id or clip.category_id)

@@ -6,7 +6,7 @@ from playwright.sync_api import Page, expect
 CLIP_VIDEO = "document.getElementById('clip-video')"
 
 
-def cut_clip(ui, time_sec, *, marks=(("Q1", 10.0),), role="admin", mobile=False):
+def cut_clip(ui, time_sec, *, marks=(("Q1", 10.0), ("Q2", 40.0)), role="admin", mobile=False):
     """Mecz, nagranie ze znacznikami kwart i klip, który wycina prawdziwy worker."""
     match_id = ui.server.make_match()
     video_id = ui.server.make_ready_video(match_id, content="Q1,Q2")
@@ -115,10 +115,11 @@ def test_opis_klipu_pole_wlasnej_kategorii(ui):
     expect(custom).to_be_hidden()
     page.locator("#category-select").select_option(label="własna")
     page.locator("input[name=custom_category]").fill("ustawienie przy autach")
-    page.locator("select[name=official]").select_option(label="CC · Roman Sędzia")
+    page.get_by_label("CC · Roman Sędzia").check()
     page.locator("textarea[name=description]").fill("Sytuacja przy linii bocznej")
     page.get_by_role("button", name="Zapisz opis").click()
-    expect(page.locator("aside .card").first).not_to_contain_text("nieopisany")
+    expect(page.locator("#clip-info")).not_to_contain_text("nieopisany")
+    expect(page.locator("#clip-info")).to_contain_text("ustawienie przy autach")
     expect(page.locator("input[name=custom_category]")).to_have_value("ustawienie przy autach")
 
 

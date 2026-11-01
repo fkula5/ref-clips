@@ -3,7 +3,7 @@ from datetime import date
 from functools import lru_cache
 
 from app import security
-from app.models import Match, MatchOfficial, User, Video
+from app.models import Category, Match, MatchOfficial, PeriodMark, User, Video
 from app.storage import storage
 
 PASSWORD = "correct-horse-battery"
@@ -85,3 +85,16 @@ def tus_upload(client, match_id, data: bytes, filename="mecz.mp4", chunk=None, *
         assert r.status_code == 204, r.text
         offset = int(r.headers["Upload-Offset"])
     return url
+
+
+def mark_periods(db, video, times=(0.0, 150.0, 300.0, 450.0), periods=("Q1", "Q2", "Q3", "Q4")):
+    """Początki kwart w nagraniu (domyślnie Q1–Q4 co 150 s) — bez nich klipów nie da się opisać."""
+    for period, at in zip(periods, times):
+        db.add(PeriodMark(video_id=video.id, period=period, time_sec=at))
+    db.commit()
+    db.refresh(video)
+    return video
+
+
+def category_named(db, name) -> int:
+    return db.query(Category.id).filter(Category.name == name).scalar()

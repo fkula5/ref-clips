@@ -8,6 +8,7 @@
     <span class="muted">· zawiera: {{ content_label(video.content) }}</span>
   </div>
   <div class="row">
+    {% if perm.can_manage_clips(user, match) %}<a class="btn primary" id="btn-describe" href="/matches/{{ match.id }}/describe?video_id={{ video.id }}" title="Ekran opisywania: nieopisane znaczniki tego nagrania">Opisz znaczniki (<span id="undescribed-count">{{ video.clips|rejectattr('described_at')|list|length }}</span>)</a>{% endif %}
     {% if state and perm.can_manage_clips(user, match) %}<a class="btn" href="/videos/{{ video.id }}/notes">Wklej notatki</a>{% endif %}
     <a class="btn" href="/clips?video_id={{ video.id }}">Klipy tego nagrania</a>
   </div>
