@@ -21,10 +21,15 @@ def _invite_url(request: Request, token: str) -> str:
 
 
 def _page(request: Request, db: Session, *, status_code: int = 200, error: str | None = None,
-          invite_link: str | None = None, invite_for: User | None = None):
+          invite_link: str | None = None, invite_for: User | None = None,
+          new_values: dict | None = None, roles_edit: dict[int, set[str]] | None = None):
+    """Strona kont. Przy błędzie formularza zachowuje wpisane wartości: `new_values` (nowe konto)
+    albo `roles_edit` (role wybrane w wierszu konta, którego zapis się nie udał)."""
     users = db.scalars(select(User).order_by(User.is_active.desc(), User.name)).all()
     return render(request, "admin_users.html", status_code=status_code, users=users, error=error,
-                  invite_link=invite_link, invite_for=invite_for)
+                  invite_link=invite_link, invite_for=invite_for,
+                  new_values=new_values or {"name": "", "email": "", "roles": ["referee"]},
+                  roles_edit=roles_edit or {})
 
 
 def _get_user(db: Session, user_id: int) -> User:
@@ -46,7 +51,9 @@ def create_user(request: Request, db: Session = Depends(get_db), admin: User = a
     try:
         user = accounts.create_user(db, email=email, name=name, roles=roles)
     except accounts.AccountError as exc:
-        return _page(request, db, status_code=422, error=str(exc))
+        db.rollback()
+        return _page(request, db, status_code=422, error=str(exc),
+                     new_values={"name": name, "email": email, "roles": roles})
     token = accounts.create_invite(db, user, "activate", admin)
     return _page(request, db, invite_link=_invite_url(request, token), invite_for=user)
 
@@ -58,7 +65,8 @@ def update_roles(request: Request, user_id: int, db: Session = Depends(get_db),
     try:
         accounts.update_roles(db, user, roles)
     except accounts.AccountError as exc:
-        return _page(request, db, status_code=422, error=str(exc))
+        db.rollback()
+        return _page(request, db, status_code=422, error=str(exc), roles_edit={user_id: set(roles)})
     return _page(request, db)
 
 

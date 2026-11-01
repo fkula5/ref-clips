@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block title %}Usuń mecz{% endblock %}
+{% block content %}
+<h1>Usunąć mecz?</h1>
+<div class="card">
+  <p><strong>{{ match.title }}</strong>{% if match.level %} · {{ match.level }}{% endif %}</p>
+  <p>Razem z meczem zostanie usunięte bezpowrotnie:</p>
+  <ul>
+    <li>nagrania: <strong>{{ videos }}</strong> (pliki z dysku także),</li>
+    <li>klipy: <strong>{{ clips }}</strong>{% if undescribed %} (w tym nieopisane: {{ undescribed }}){% endif %}, razem z opisami, ocenami i komentarzami,</li>
+    <li>obsada i komentarze do meczu.</li>
+  </ul>
+  <form method="post" action="/matches/{{ match.id }}/delete" class="row">
+    {{ csrf_input() }}
+    <button class="btn danger">Tak, usuń mecz</button>
+    <a class="btn" href="/matches/{{ match.id }}">Anuluj</a>
+  </form>
+</div>
+{% endblock %}

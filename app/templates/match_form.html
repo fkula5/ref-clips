@@ -2,7 +2,7 @@
 {% block title %}{{ "Edycja meczu" if match else "Nowy mecz" }}{% endblock %}
 {% block content %}
 <h1>{{ "Edycja meczu" if match else "Nowy mecz" }}</h1>
-{% if error %}<div class="banner error">{{ error }}</div>{% endif %}
+{% if error %}<div class="banner error" role="alert">{{ error }}</div>{% endif %}
 <form method="post" action="{{ '/matches/%d' % match.id if match else '/matches' }}" class="card form">
   {{ csrf_input() }}
   <div class="grid2">
@@ -10,17 +10,18 @@
       <input type="date" name="date" required value="{{ values.date }}">
     </label>
     <label>Liga / poziom rozgrywek
-      <input name="level" placeholder="np. II liga" value="{{ values.level }}">
+      <input name="level" list="levels" maxlength="100" autocomplete="off" placeholder="np. II liga" value="{{ values.level }}">
+      <datalist id="levels">{% for lv in levels %}<option value="{{ lv }}">{% endfor %}</datalist>
     </label>
   </div>
   <div class="grid2">
     <fieldset><legend>Drużyna A</legend>
-      <label>Nazwa <input name="team_a_name" value="{{ values.team_a_name }}"></label>
-      <label>Kolor strojów <input name="team_a_color" value="{{ values.team_a_color }}"></label>
+      <label>Nazwa <input name="team_a_name" maxlength="100" value="{{ values.team_a_name }}"></label>
+      <label>Kolor strojów <input name="team_a_color" maxlength="50" value="{{ values.team_a_color }}"></label>
     </fieldset>
     <fieldset><legend>Drużyna B</legend>
-      <label>Nazwa <input name="team_b_name" value="{{ values.team_b_name }}"></label>
-      <label>Kolor strojów <input name="team_b_color" value="{{ values.team_b_color }}"></label>
+      <label>Nazwa <input name="team_b_name" maxlength="100" value="{{ values.team_b_name }}"></label>
+      <label>Kolor strojów <input name="team_b_color" maxlength="50" value="{{ values.team_b_color }}"></label>
     </fieldset>
   </div>
   <fieldset><legend>Obsada sędziowska</legend>
@@ -35,7 +36,7 @@
           </select>
         </label>
         <label>albo imię i nazwisko (sędzia bez konta)
-          <input name="{{ key }}_name" value="{{ values[key ~ '_name'] }}" placeholder="np. Jan Kowalski">
+          <input name="{{ key }}_name" maxlength="100" value="{{ values[key ~ '_name'] }}" placeholder="np. Jan Kowalski">
         </label>
       </div>
     {% endfor %}

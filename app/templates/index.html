@@ -5,23 +5,61 @@
   <h1>Mecze</h1>
   {% if perm.can_create_match(user) %}<a class="btn primary" href="/matches/new">+ Nowy mecz</a>{% endif %}
 </div>
-{% if not matches %}
-  <p class="muted">Nie ma jeszcze żadnego meczu. Dodaj mecz, wgraj nagranie i zacznij zaznaczać momenty do analizy.</p>
+
+{# Filtry to zwykły formularz GET (działa bez JS); HTMX tylko odświeża listę bez przeładowania strony. #}
+<form method="get" action="/" class="card row filters match-filters"
+      hx-get="/" hx-target="#matches-list" hx-select="#matches-list" hx-swap="outerHTML"
+      hx-trigger="change, submit" hx-push-url="true">
+  <label>Od <input type="date" name="date_from" value="{{ f.date_from.isoformat() if f.date_from }}"></label>
+  <label>Do <input type="date" name="date_to" value="{{ f.date_to.isoformat() if f.date_to }}"></label>
+  <label>Liga
+    <select name="level"><option value="">Wszystkie</option>
+      {% for lv in levels %}<option value="{{ lv }}" {{ 'selected' if f.level == lv }}>{{ lv }}</option>{% endfor %}
+      {% if f.level and f.level not in levels %}<option value="{{ f.level }}" selected>{{ f.level }}</option>{% endif %}
+    </select></label>
+  <label>Sędzia
+    <select name="person"><option value="">Wszyscy</option>
+      {% for key, name in people %}<option value="{{ key }}" {{ 'selected' if f.person == key }}>{{ name }}</option>{% endfor %}
+    </select></label>
+  <label class="inline"><input type="checkbox" name="mine" value="1" {{ 'checked' if f.mine }}> tylko moje</label>
+  <button class="btn">Filtruj</button>
+  <a class="btn" href="/">Wyczyść</a>
+</form>
+
+<div id="matches-list">
+{% for e in f.errors %}<div class="banner error">{{ e }}</div>{% endfor %}
+{% if not result.rows %}
+  {% if result.total == 0 and f.query() %}
+    <p class="muted">Brak meczów dla wybranych filtrów.</p>
+  {% else %}
+    <p class="muted">Nie ma jeszcze żadnego meczu. Dodaj mecz, wgraj nagranie i zacznij zaznaczać momenty do analizy.</p>
+  {% endif %}
 {% else %}
-<table>
-  <thead><tr><th>Data</th><th>Mecz</th><th>Liga</th><th>Obsada</th><th>Nagrania</th><th>Klipy</th></tr></thead>
+<table class="responsive">
+  <thead><tr><th>Data</th><th>Mecz</th><th>Liga</th><th>Obsada</th><th>Stan</th><th>Klipy</th><th>Nieopisane</th></tr></thead>
   <tbody>
-  {% for m in matches %}
+  {% for row in result.rows %}
+    {% set m = row.match %}
     <tr>
-      <td>{{ m.date.strftime("%d.%m.%Y") }}</td>
-      <td><a href="/matches/{{ m.id }}">{{ m.team_a_name or m.team_a_color }} – {{ m.team_b_name or m.team_b_color }}</a></td>
-      <td>{{ m.level }}</td>
-      <td>{% for o in m.officials %}<span class="chip">{{ o.function }} {{ o.display_name }}</span>{% endfor %}</td>
-      <td>{{ m.videos|length }}</td>
-      <td><a href="/clips?match_id={{ m.id }}">{{ m.clips|length }}</a></td>
+      <td data-label="Data">{{ m.date.strftime("%d.%m.%Y") }}</td>
+      <td data-label="Mecz" class="main-cell"><a href="/matches/{{ m.id }}">{{ m.team_a_name or m.team_a_color }} – {{ m.team_b_name or m.team_b_color }}</a></td>
+      <td data-label="Liga">{{ m.level or '—' }}</td>
+      <td data-label="Obsada">{% for o in m.officials %}<span class="chip">{{ o.function }} {{ o.display_name }}</span>{% endfor %}</td>
+      <td data-label="Stan"><span class="badge state-{{ row.state.code }}">{{ row.state.label }}</span>
+        {% if row.state.detail %}<small class="muted">{{ row.state.detail }}</small>{% endif %}</td>
+      <td data-label="Klipy"><a href="/clips?match_id={{ m.id }}">{{ row.clips }}</a></td>
+      <td data-label="Nieopisane">{% if row.undescribed %}<span class="chip warn">{{ row.undescribed }}</span>{% else %}0{% endif %}</td>
     </tr>
   {% endfor %}
   </tbody>
 </table>
+<div class="row between pager">
+  <span class="muted">Mecze: {{ result.total }} · strona {{ result.page }} z {{ result.pages }}</span>
+  <span class="row">
+    {% if result.has_prev %}<a class="btn small" href="/?{{ prev_query }}" hx-get="/?{{ prev_query }}" hx-target="#matches-list" hx-select="#matches-list" hx-swap="outerHTML" hx-push-url="true">‹ Nowsze</a>{% endif %}
+    {% if result.has_next %}<a class="btn small" href="/?{{ next_query }}" hx-get="/?{{ next_query }}" hx-target="#matches-list" hx-select="#matches-list" hx-swap="outerHTML" hx-push-url="true">Starsze ›</a>{% endif %}
+  </span>
+</div>
 {% endif %}
+</div>
 {% endblock %}

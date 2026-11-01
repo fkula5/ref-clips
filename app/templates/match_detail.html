@@ -1,22 +1,37 @@
 {% extends "base.html" %}
 {% block title %}{{ match.title }}{% endblock %}
 {% block content %}
+{% macro team(name, color) %}
+  <span class="team"><i class="swatch" style="{% if color_hex(color) %}background: {{ color_hex(color) }}{% endif %}"></i>
+  <strong>{{ name or '—' }}</strong>{% if color %} <span class="muted">({{ color }})</span>{% endif %}</span>
+{% endmacro %}
 <div class="row between">
   <h1>{{ match.title }}</h1>
   <div class="row">
     {% if perm.can_edit_match(user, match) %}<a class="btn" href="/matches/{{ match.id }}/edit">Edytuj</a>{% endif %}
-    <a class="btn" href="/clips?match_id={{ match.id }}">Klipy ({{ match.clips|length }})</a>
+    {% if perm.can_delete_match(user, match) %}<a class="btn danger" href="/matches/{{ match.id }}/delete">Usuń</a>{% endif %}
   </div>
 </div>
-<p class="muted">
-  {{ match.level }}{% if match.level %} · {% endif %}
-  {{ match.team_a_name or '—' }} ({{ match.team_a_color }}) vs {{ match.team_b_name or '—' }} ({{ match.team_b_color }})
-</p>
-<p>Obsada:
-  {% for o in match.officials %}<span class="chip">{{ o.display_name }} <small>{{ o.function }}</small></span>{% else %}<span class="muted">brak</span>{% endfor %}
-</p>
 
-<h2>Nagrania</h2>
+<div class="card match-head">
+  <dl class="facts">
+    <dt>Data</dt><dd>{{ match.date.strftime("%d.%m.%Y") }}</dd>
+    <dt>Liga</dt><dd>{{ match.level or '—' }}</dd>
+    <dt>Drużyny</dt><dd>{{ team(match.team_a_name, match.team_a_color) }} <span class="muted">vs</span> {{ team(match.team_b_name, match.team_b_color) }}</dd>
+    <dt>Obsada</dt>
+    <dd>
+      {% for o in match.officials %}
+        <span class="chip official"><strong>{{ o.function }}</strong> {{ o.display_name }}
+          {% if o.user_id %}<small class="has-account" title="Ma konto w aplikacji">konto</small>{% else %}<small class="muted" title="Sędzia bez konta">bez konta</small>{% endif %}
+          {% if o.user_id == user.id %}<small class="me">to Ty</small>{% endif %}</span>
+      {% else %}<span class="muted">brak</span>{% endfor %}
+    </dd>
+    <dt>Dodał(a)</dt><dd>{{ match.creator.name if match.creator else '—' }}, {{ match.created_at.strftime("%d.%m.%Y") }}</dd>
+    <dt>Stan</dt><dd><span class="badge state-{{ state.code }}">{{ state.label }}</span> {% if state.detail %}<small class="muted">{{ state.detail }}</small>{% endif %}</dd>
+  </dl>
+</div>
+
+<h2 id="nagrania">Nagrania</h2>
 {% include "_videos_panel.html" %}
 
 {% if perm.can_upload_to_match(user, match) %}
@@ -37,11 +52,34 @@
 <p class="muted">Wgrywać nagrania do tego meczu mogą administratorzy, szkoleniowcy i sędziowie z obsady.</p>
 {% endif %}
 
-{% if perm.can_delete_match(user, match) %}
-<form method="post" action="/matches/{{ match.id }}/delete" onsubmit="return confirm('Usunąć mecz razem z nagraniami i klipami?')">
-  {{ csrf_input() }}
-  <button class="btn danger small">Usuń mecz</button>
-</form>
+<div class="row between">
+  <h2 id="klipy">Klipy ({{ clips|length }}{% if undescribed %}, nieopisane: {{ undescribed }}{% endif %})</h2>
+  {% if clips %}<a class="btn small" href="/clips?match_id={{ match.id }}">Filtry klipów</a>{% endif %}
+</div>
+{% if not clips %}
+  <p class="muted">Ten mecz nie ma jeszcze klipów. Klipy powstają ze znaczników zaznaczonych w odtwarzaczu albo z wklejonych notatek.</p>
+{% else %}
+<table class="responsive">
+  <thead><tr><th>Sędzia</th><th>Kategoria</th><th title="Kwarta i czas od jej początku w czasie nagrania (nie zegar meczowy)">Kwarta · od początku kwarty</th><th>Czas w nagraniu</th><th>Stan</th></tr></thead>
+  <tbody>
+  {% for c in clips %}
+    <tr>
+      <td data-label="Sędzia" class="main-cell"><a href="/clips/{{ c.id }}">{{ c.official_label or '—' }}</a></td>
+      <td data-label="Kategoria">{% if c.category_label %}<span class="chip">{{ c.category_label }}</span>{% else %}—{% endif %}</td>
+      <td data-label="Kwarta · od początku">{{ period_short(c) }}</td>
+      <td data-label="Czas w nagraniu">{{ c.time_sec|clock }}</td>
+      <td data-label="Stan">
+        {% if not c.is_described %}<span class="chip warn">nieopisany</span>{% endif %}
+        <span class="badge {{ c.status }}">{{ CLIP_STATUSES.get(c.status, c.status) }}</span>
+      </td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+<p class="muted small-note">Czas w kolumnie „Kwarta” liczony jest od początku kwarty w nagraniu — to nie jest zegar meczowy.</p>
 {% endif %}
+
+{# Komentarze do meczu: segment 6 (tabela comments i reguły w permissions gotowe, brak tras i widoku). #}
+<section id="komentarze"></section>
 {% endblock %}
 {% block scripts %}<script src="/static/upload.js"></script>{% endblock %}

@@ -12,7 +12,6 @@ from app.db import get_db
 from app.loaders import get_clip, get_comment
 from app.models import Category, Clip, Comment, Match, MatchOfficial, User
 from app.storage import storage
-from app.textutil import normalize
 from app.timeutil import utcnow
 from app.web import file_response, render
 
@@ -32,25 +31,15 @@ def query_clips(db: Session, *, match_id=None, video_id=None, person=None, categ
     if ids:
         stmt = stmt.where(Clip.id.in_(ids))
     if person:  # "u<id konta>" albo "n<znormalizowane imię i nazwisko>"
-        official_ids = [o.id for o in db.scalars(select(MatchOfficial))
-                        if person_key(o) == person]
+        accounts = services.account_names(db)
+        official_ids = [oid for oid, user_id, name in db.execute(
+            select(MatchOfficial.id, MatchOfficial.user_id, MatchOfficial.name))
+            if services.person_key(user_id, name, accounts) == person]
         stmt = stmt.where(Clip.official_id.in_(official_ids))
     clips = list(db.scalars(stmt))
     if period:  # kwarta jest wyliczana ze znaczników, więc filtrujemy w Pythonie
         clips = [c for c in clips if (services.period_for(c.video.marks, c.time_sec) or "") == period]
     return clips
-
-
-def person_key(official: MatchOfficial) -> str:
-    return f"u{official.user_id}" if official.user_id else f"n{normalize(official.name or '')}"
-
-
-def people(db: Session) -> list[tuple[str, str]]:
-    """Sędziowie z obsad (konto albo wpisane nazwisko) do filtra: (klucz, nazwa)."""
-    found: dict[str, str] = {}
-    for official in db.scalars(select(MatchOfficial).options(selectinload(MatchOfficial.user))):
-        found.setdefault(person_key(official), official.display_name)
-    return sorted(found.items(), key=lambda kv: normalize(kv[1]))
 
 
 # --- lista ----------------------------------------------------------------------
@@ -65,7 +54,7 @@ def clips_list(request: Request, db: Session = Depends(get_db),
     return render(
         request, "clips.html", clips=clips, pending=pending, created=created, skipped=skipped,
         matches=db.scalars(select(Match).order_by(Match.date.desc())).all(),
-        people=people(db), categories=services.active_categories(db),
+        people=services.people(db), categories=services.active_categories(db),
         f={"match_id": match_id, "video_id": video_id, "person": person,
            "category_id": category_id, "period": period},
         query=str(request.url.query),
