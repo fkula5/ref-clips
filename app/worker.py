@@ -4,10 +4,10 @@ from __future__ import annotations
 import logging
 import time
 
-from sqlalchemy import and_, exists, or_, select, update
+from sqlalchemy import and_, case, exists, or_, select, update
 from sqlalchemy.orm import Session
 
-from app import services, video as vid
+from app import config, services, uploads, video as vid
 from app.db import SessionLocal
 from app.models import Clip, Job, Video
 from app.storage import storage
@@ -18,12 +18,13 @@ POLL_SECONDS = 2.0
 
 
 def claim_next(db: Session) -> Job | None:
-    """Pobiera najstarsze oczekujące zadanie. Cięcie czeka, aż nagranie będzie gotowe."""
+    """Pobiera oczekujące zadanie: najpierw cięcia (krótkie), potem konwersje, w obrębie typu
+    najstarsze. Cięcie czeka, aż nagranie będzie gotowe."""
     ready_video = exists().where(and_(Video.id == Job.video_id, Video.status == "ready"))
     candidate = db.scalar(
         select(Job.id)
         .where(Job.status == "pending", or_(Job.type == "transcode", ready_video))
-        .order_by(Job.id).limit(1)
+        .order_by(case((Job.type == "cut", 0), else_=1), Job.id).limit(1)
     )
     if candidate is None:
         return None
@@ -53,11 +54,23 @@ def run_transcode(db: Session, job: Job) -> None:
             job.progress = value
             db.commit()
 
-    vid.transcode_to_proxy(src, storage.local_path(proxy_key), video.duration, on_progress)
-    final = vid.probe(storage.local_path(proxy_key))  # czas trwania wersji roboczej jest wiążący
-    video.duration, video.fps = final["duration"] or video.duration, final["fps"] or video.fps
+    proxy = storage.local_path(proxy_key)
+    vid.transcode_to_proxy(src, proxy, video.duration, on_progress, src_fps=info.get("max_fps"))
+    try:
+        final = vid.verify_conversion(info, proxy)  # czas trwania wersji roboczej jest wiążący
+    except vid.FFmpegError as exc:
+        proxy.unlink(missing_ok=True)
+        raise vid.FFmpegError(f"Wynik konwersji odrzucony: {exc}. Oryginał zostaje — można ponowić.") from exc
+    video.duration = final["video_duration"] or final["duration"]
+    video.fps = final["fps"] or video.fps
     video.proxy_path = proxy_key
+    original_key, video.original_path = video.original_path, None
     video.status = "ready"
+    db.commit()
+    try:  # retencja: oryginał znika po udanej konwersji i sprawdzeniu wyniku
+        storage.delete(original_key)
+    except OSError:
+        log.warning("Nie udało się usunąć oryginału %s", original_key)
 
 
 def run_cut(db: Session, job: Job) -> None:
@@ -120,15 +133,25 @@ def recover_interrupted() -> None:
         db.commit()
 
 
+def run_maintenance() -> None:
+    """Okresowe sprzątanie: porzucone uploady (> 24 h bez aktywności)."""
+    with SessionLocal() as db:
+        uploads.cleanup_stale(db)
+
+
 def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(message)s")
     from app.initdb import init_db
     init_db()
     recover_interrupted()
     warned_at = 0.0
+    maintained_at = float("-inf")
     log.info("Worker uruchomiony")
     while True:
         try:
+            if time.monotonic() - maintained_at >= config.UPLOAD_CLEANUP_SECONDS:
+                maintained_at = time.monotonic()
+                run_maintenance()
             if run_once():
                 continue
             if not vid.ffmpeg_available() and time.monotonic() - warned_at > 60:

@@ -19,5 +19,15 @@
 
 - [ ] Lista meczów nie odświeża się sama podczas konwersji (stan i pozycja w kolejce aktualizują się po odświeżeniu lub zmianie filtra); strona meczu odświeża panel nagrań co 3 s.
 - [ ] Filtr „liga” to dokładne dopasowanie nazwy (ligi różniące się wielkością liter są osobnymi pozycjami); ewentualne scalanie wariantów pisowni to osobna decyzja.
-- [ ] Cały mecz wymaga znaczników Q1–Q4 (dogrywki opcjonalne); po wprowadzeniu deklaracji zawartości w segmencie 3 sprawdzić, czy `services.missing_periods` zgadza się z formatem pola `Video.content`.
+- [x] Cały mecz wymaga znaczników Q1–Q4 (dogrywki opcjonalne); po wprowadzeniu deklaracji zawartości w segmencie 3 sprawdzić, czy `services.missing_periods` zgadza się z formatem pola `Video.content`. *(segment 3: format bez zmian — `full` albo kwarty po przecinku, zapis przez `services.normalize_content`; testy w `tests/test_uploads.py`)*
 - [ ] Lista klipów na stronie meczu nie ma własnych filtrów (sędzia/kategoria/kwarta) — odsyła do `/clips?match_id=...`; zakładka z filtrami to segment 5.
+
+## Uwagi z segmentu 3 (drobne, odłożone)
+
+- [ ] Znaczniki kwart w UI i klawisz „Zaznacz” (segment 4): `services.next_period` nie zna deklaracji zawartości — dla pliku z jedną kwartą (np. Q3, automatyczny znacznik Q3@0:00) „następną kwartą” wyjdzie Q1; przy dodawaniu znaczników uwzględnić `Video.content`.
+- [ ] Zmiana deklaracji zawartości na jedną kwartę zostawia tylko najwcześniejszy znacznik (pozostałe są usuwane, kwarty klipów się przeliczają) — rozważyć ostrzeżenie w formularzu edycji, gdy znaczniki są usuwane.
+- [ ] Po zmianie deklaracji wznowionego uploadu obowiązuje deklaracja z pierwszego POST (metadane zapisane po stronie serwera); poprawka przez „Edytuj” przy nagraniu.
+- [ ] Wgrywanie wznowione bez zapamiętanego adresu (np. inna przeglądarka): ten sam plik (mecz, nazwa, rozmiar) startuje od zera, stary niedokończony upload jest wtedy usuwany.
+- [ ] Panel admina: ostrzeżenie o odrzuconych uploadach z braku miejsca (plan 6.1) — na razie tylko wpis w logu serwera (segment 7).
+- [ ] Pomiar czasu konwersji powtórzyć na prawdziwym VPS i na prawdziwym nagraniu (4K/HEVC), patrz plan 6.2 (segment 8).
+- [ ] Wgrywanie w przeglądarce (`app/static/upload.js`) nie ma testów automatycznych: sprawdzono zgodność `tus-js-client` z serwerem skryptem w Node z podstawionym XHR (wznowienie, przerwanie), ale formularz z paskiem postępu wymaga ręcznego przejrzenia w przeglądarce.

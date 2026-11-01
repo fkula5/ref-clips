@@ -1,3 +1,4 @@
+import base64
 from datetime import date
 from functools import lru_cache
 
@@ -50,3 +51,37 @@ def make_ready_video(db, match, duration=600.0, content=b"fakevideo"):
     video.proxy_path = key
     db.commit()
     return video
+
+
+# --- klient tus ---------------------------------------------------------------------
+TUS = {"Tus-Resumable": "1.0.0"}
+
+
+def tus_metadata(**values) -> str:
+    """Nagłówek Upload-Metadata: klucz + base64(wartość)."""
+    return ",".join(f"{k} {base64.b64encode(str(v).encode()).decode()}" for k, v in values.items())
+
+
+def tus_create(client, match_id, size, filename="mecz.mp4", **meta):
+    """POST tworzący upload (odpowiedź, bez sprawdzania statusu)."""
+    return client.post("/uploads/", headers={**TUS, "Upload-Length": str(size),
+                                             "Upload-Metadata": tus_metadata(filename=filename, match_id=match_id, **meta)})
+
+
+def tus_patch(client, url, offset, data):
+    return client.patch(url, content=data, headers={**TUS, "Upload-Offset": str(offset),
+                                                    "Content-Type": "application/offset+octet-stream"})
+
+
+def tus_upload(client, match_id, data: bytes, filename="mecz.mp4", chunk=None, **meta) -> str:
+    """Pełne wgranie pliku protokołem tus (opcjonalnie w kawałkach). Zwraca adres uploadu."""
+    r = tus_create(client, match_id, len(data), filename, **meta)
+    assert r.status_code == 201, r.text
+    url = r.headers["Location"]
+    offset = 0
+    while offset < len(data):
+        part = data[offset:offset + (chunk or len(data))]
+        r = tus_patch(client, url, offset, part)
+        assert r.status_code == 204, r.text
+        offset = int(r.headers["Upload-Offset"])
+    return url

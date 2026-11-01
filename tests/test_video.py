@@ -3,10 +3,12 @@ import subprocess
 from datetime import date
 
 import pytest
+from sqlalchemy import select
 
 from app import config, services, video as vid
 from app.models import Clip, Match, MatchOfficial, PeriodMark, Video
 from tests.conftest import needs_ffmpeg
+from tests.helpers import make_match, tus_upload
 
 
 # --- czyste funkcje (bez ffmpeg) -------------------------------------------------
@@ -73,10 +75,10 @@ def test_worker_pipeline_with_fake_ffmpeg(db, monkeypatch):
 
     calls = []
     monkeypatch.setattr(vid, "ffmpeg_available", lambda: True)
-    monkeypatch.setattr(vid, "probe", lambda p: {"duration": 120.0, "fps": 25.0, "width": 1280,
+    monkeypatch.setattr(vid, "probe", lambda p: {"duration": 120.0, "video_duration": 120.0, "fps": 25.0, "width": 1280,
                                                  "height": 720, "has_audio": True})
 
-    def fake_transcode(src, dst, duration, on_progress=None):
+    def fake_transcode(src, dst, duration, on_progress=None, src_fps=None):
         dst.parent.mkdir(parents=True, exist_ok=True)
         dst.write_bytes(b"proxy")
 
@@ -103,6 +105,7 @@ def test_worker_pipeline_with_fake_ffmpeg(db, monkeypatch):
     db.refresh(video)
     db.refresh(clip)
     assert video.status == "ready" and video.duration == 120.0
+    assert video.original_path is None  # po udanej konwersji oryginał jest usuwany
     assert clip.status == "cut" and storage.exists(clip.clip_path)
     assert calls == [(0, 20)]  # początek obcięty do 0: 0..20 s (5 s + margines 15 s)
 
@@ -232,10 +235,13 @@ def test_end_to_end_upload_transcode_cut(client, db, source):
     from tests.helpers import make_match
 
     match = make_match(db)
-    r = client.post(f"/matches/{match.id}/upload", params={"filename": "mecz.mp4"}, content=source.read_bytes())
-    assert r.status_code == 200
-    vid_id = r.json()["id"]
+    tus_upload(client, match.id, source.read_bytes(), chunk=1024 * 1024)
+    vid_id = db.scalar(select(Video.id))
+    original = db.get(Video, vid_id).original_path
+    assert storage.exists(original)
     assert worker.run_once() is True
+    db.expire_all()
+    assert db.get(Video, vid_id).original_path is None and not storage.exists(original)  # oryginał usunięty
     state = client.get(f"/api/videos/{vid_id}/state").json()
     assert state["duration"] == pytest.approx(20, abs=0.3)
     assert client.get(f"/videos/{vid_id}/stream", headers={"Range": "bytes=0-99"}).status_code == 206
@@ -261,8 +267,8 @@ def test_default_clip_is_30_seconds_in_the_middle_of_a_recording(client, db, tmp
 
     long_source = _make_source(tmp_path / "long.mp4", seconds=50)
     match = make_match(db)
-    vid_id = client.post(f"/matches/{match.id}/upload", params={"filename": "long.mp4"},
-                         content=long_source.read_bytes()).json()["id"]
+    tus_upload(client, match.id, long_source.read_bytes())
+    vid_id = db.scalar(select(Video.id))
     assert worker.run_once() is True
     c = client.post(f"/api/videos/{vid_id}/quick-clip", json={"time_sec": 25, "text": ""}).json()["clip"]
     assert worker.run_once() is True

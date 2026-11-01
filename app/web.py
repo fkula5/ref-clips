@@ -57,6 +57,8 @@ env.globals.update(
     period_label=lambda c: services.period_label(c.video.marks, c.time_sec),
     period_short=lambda c: services.period_short(c.video.marks, c.time_sec),
     color_hex=color_hex,
+    content_label=services.content_label,
+    max_upload_gb=lambda: config.UPLOAD_MAX_BYTES / config.GB,
     clip_bounds=services.clip_range,
     DEFAULT_MARGIN=config.DEFAULT_MARGIN_BEFORE,
 )

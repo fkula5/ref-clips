@@ -21,6 +21,10 @@ class Storage(ABC):
     def open_write(self, key: str) -> BinaryIO: ...
 
     @abstractmethod
+    def open_update(self, key: str) -> BinaryIO:
+        """Otwiera istniejący (albo nowy) plik do zapisu w dowolnym miejscu, bez obcinania."""
+
+    @abstractmethod
     def exists(self, key: str) -> bool: ...
 
     @abstractmethod
@@ -44,6 +48,12 @@ class LocalStorage(Storage):
         path = self.local_path(key)
         path.parent.mkdir(parents=True, exist_ok=True)
         return open(path, "wb")
+
+    def open_update(self, key: str) -> BinaryIO:
+        path = self.local_path(key)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.touch(exist_ok=True)
+        return open(path, "r+b")
 
     def exists(self, key: str) -> bool:
         return self.local_path(key).is_file()

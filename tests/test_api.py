@@ -2,7 +2,7 @@ from sqlalchemy import select
 
 from app.models import Category, Clip, Comment, Job, Match, Video
 from app.storage import storage
-from tests.helpers import make_match, make_ready_video, make_user
+from tests.helpers import make_match, make_ready_video, make_user, tus_create, tus_upload
 
 MATCH_FORM = {
     "date": "2026-10-28", "level": "II liga", "team_a_name": "Legia", "team_a_color": "białe",
@@ -70,11 +70,9 @@ def test_new_match_form_prefills_referee(make_client, db):
 def test_upload_streams_to_disk_and_queues_transcode(client, db):
     match = make_match(db)
     payload = b"x" * (5 * 1024 * 1024)
-    r = client.post(f"/matches/{match.id}/upload", params={"filename": "mecz ąę.mp4", "label": "Całość"},
-                    content=payload)
-    assert r.status_code == 200 and r.json()["size"] == len(payload)
+    tus_upload(client, match.id, payload, filename="mecz ąę.mp4", chunk=2 * 1024 * 1024, label="Całość")
     video = db.scalar(select(Video))
-    assert video.status == "queued" and video.size_bytes == len(payload)
+    assert video.status == "queued" and video.size_bytes == len(payload) and video.label == "Całość"
     assert video.created_by is not None and video.expires_at is not None  # retencja 30 dni
     assert storage.size(video.original_path) == len(payload)
     assert video.original_path.startswith("uploads/") and " " not in video.original_path
@@ -84,9 +82,14 @@ def test_upload_streams_to_disk_and_queues_transcode(client, db):
 
 def test_upload_empty_rejected(client, db):
     match = make_match(db)
-    r = client.post(f"/matches/{match.id}/upload", params={"filename": "a.mp4"}, content=b"")
-    assert r.status_code == 400
+    assert tus_create(client, match.id, 0).status_code == 400
     assert db.scalar(select(Video)) is None
+
+
+def test_old_raw_upload_route_is_gone(client, db):
+    match = make_match(db)
+    r = client.post(f"/matches/{match.id}/upload", params={"filename": "a.mp4"}, content=b"x")
+    assert r.status_code in (404, 405)
 
 
 def test_stream_supports_range(client, db):

@@ -209,10 +209,71 @@ class MatchState:
 
 def declared_periods(content: str | None) -> list[str] | None:
     """Zawartość pliku ("full" albo "Q1,Q2") jako lista kwart; None = cały mecz.
-    Brak deklaracji (segment 3 jej jeszcze nie wymaga) traktujemy jak cały mecz."""
+    Brak deklaracji traktujemy jak cały mecz."""
     found = [p.strip().upper() for p in (content or "").split(",")]
     found = [p for p in PERIODS if p in found]
     return found or None
+
+
+def normalize_content(raw: str | None) -> str:
+    """Deklaracja zawartości pliku z formularza lub metadanych uploadu: "full" albo kwarty
+    w kolejności meczu po przecinku ("Q1", "Q2,Q3"). Nieznana kwarta to MatchFormError."""
+    tokens = [t.strip().upper() for t in (raw or "").split(",") if t.strip()]
+    if not tokens or tokens == ["FULL"]:
+        return "full"
+    unknown = [t for t in tokens if t not in PERIODS]
+    if unknown:
+        raise MatchFormError(f"Nieznana kwarta w deklaracji zawartości: {unknown[0]}")
+    return ",".join(p for p in PERIODS if p in tokens)
+
+
+def content_from_form(kind: str, periods: Iterable[str]) -> str:
+    """Pola formularza: rodzaj ("full", kwarta albo "multi") + zaznaczone kwarty -> deklaracja."""
+    if kind == "multi":
+        content = normalize_content(",".join(periods))
+        if content == "full" or len(content.split(",")) < 2:
+            raise MatchFormError("Dla kilku kwart zaznacz co najmniej dwie.")
+        return content
+    content = normalize_content(kind)
+    if len(content.split(",")) > 1:
+        raise MatchFormError("Nieprawidłowa deklaracja zawartości.")
+    return content
+
+
+def content_label(content: str | None) -> str:
+    """Opis deklaracji do interfejsu: „cały mecz”, „kwarta Q2”, „kwarty Q1, Q2”."""
+    declared = declared_periods(content)
+    if declared is None:
+        return "cały mecz"
+    return f"kwarta {declared[0]}" if len(declared) == 1 else f"kwarty {', '.join(declared)}"
+
+
+def set_content(db: Session, video: Video, content: str) -> None:
+    """Zapisuje deklarację zawartości i dopasowuje do niej znacznik domyślny.
+
+    Plik z jedną kwartą dostaje od razu znacznik startu 0:00 (spec: znacznik opcjonalny,
+    domyślnie 0:00; można go przesunąć), więc kwarta jego klipów jest znana bez ręcznych
+    znaczników. Przy zmianie deklaracji: na jedną kwartę zostaje najwcześniejszy znacznik
+    (przemianowany; ewentualnie przesunięty przez użytkownika), pozostałe są usuwane; z jednej
+    kwarty na inną deklarację znika samotny znacznik 0:00 pasujący do starej deklaracji,
+    jeśli nowa deklaracja go nie obejmuje."""
+    old = declared_periods(video.content)
+    video.content = content = normalize_content(content)
+    new = declared_periods(content)
+    marks = sorted(video.marks, key=lambda m: m.time_sec)
+    if new is not None and len(new) == 1:
+        if not marks:
+            video.marks.append(PeriodMark(period=new[0], time_sec=0.0))
+            return
+        keep, rest = marks[0], marks[1:]
+        for mark in rest:
+            video.marks.remove(mark)
+        db.flush()
+        keep.period = new[0]
+    elif old is not None and len(old) == 1 and len(marks) == 1:
+        wanted = new if new is not None else FULL_MATCH_PERIODS
+        if marks[0].time_sec == 0 and marks[0].period not in wanted:
+            video.marks.remove(marks[0])
 
 
 def missing_periods(content: str | None, marked: Iterable[str]) -> list[str]:

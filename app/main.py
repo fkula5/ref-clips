@@ -17,7 +17,7 @@ from app.auth import PROTECTED, PUBLIC, SessionRefreshMiddleware, require
 from app.db import get_db
 from app.initdb import init_db
 from app.models import Job, User
-from app.routers import admin, auth, clips, clips_v2, matches, videos
+from app.routers import admin, auth, clips, clips_v2, matches, uploads, videos
 from app.web import BASE, back_url, render
 
 
@@ -38,6 +38,7 @@ app.include_router(auth.router, dependencies=PROTECTED)
 app.include_router(admin.router, dependencies=PROTECTED)
 app.include_router(matches.router, dependencies=PROTECTED)
 app.include_router(videos.router, dependencies=PROTECTED)
+app.include_router(uploads.router, dependencies=PROTECTED)
 if config.ENABLE_V2_FEATURES:  # przed clips: /clips/export.zip nie może trafić w /clips/{clip_id}
     app.include_router(clips_v2.router, dependencies=PROTECTED)
 app.include_router(clips.router, dependencies=PROTECTED)

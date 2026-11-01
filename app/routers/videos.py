@@ -1,8 +1,7 @@
-"""Nagrania: upload strumieniowy, odtwarzacz, znaczniki kwart, notatki, szybkie klipy."""
+"""Nagrania: panel i edycja, odtwarzacz, znaczniki kwart, notatki, szybkie klipy."""
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
-from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
 from sqlalchemy import select
@@ -15,11 +14,10 @@ from app.loaders import get_mark, get_match, get_video
 from app.models import PERIODS, Category, Match, PeriodMark, User, Video
 from app.notes_parser import parse_notes, parse_time
 from app.storage import storage
-from app.textutil import format_clock, safe_filename
+from app.textutil import format_clock
 from app.web import clip_json, file_response, mark_json, render
 
 router = APIRouter()
-CHUNK_FLUSH = 4 * 1024 * 1024
 
 # Wgrywanie, znaczniki kwart i klipy: administrator i szkoleniowiec w każdym meczu, sędzia
 # tylko w meczu, w którego obsadzie jest (po koncie).
@@ -27,49 +25,7 @@ can_upload_video = via_match(permissions.can_upload_to_match)
 can_manage_video_clips = via_match(permissions.can_manage_clips)
 
 
-# --- upload ---------------------------------------------------------------------
-@router.post("/matches/{match_id}/upload")
-async def upload_video(request: Request, filename: str, label: str = "",
-                       match: Match = Depends(get_match), db: Session = Depends(get_db),
-                       user: User = require(permissions.can_upload_to_match, get_match)):
-    """Surowe body = zawartość pliku. Zapis strumieniowo na dysk (bez wczytywania do pamięci)."""
-    declared = int(request.headers.get("content-length") or 0)
-    if declared and declared > storage.free_bytes() - 512 * 1024 * 1024:
-        raise HTTPException(507, "Za mało miejsca na dysku")
-
-    video = Video(match_id=match.id, label=label.strip(), original_filename=filename,
-                  status="uploading", created_by=user.id, expires_at=services.video_expiry(db))
-    db.add(video)
-    db.commit()
-    key = f"uploads/{video.id}_{safe_filename(filename, 'nagranie')}"
-    out = storage.open_write(key)
-    written = 0
-    try:
-        buffer = bytearray()
-        async for chunk in request.stream():
-            buffer += chunk
-            if len(buffer) >= CHUNK_FLUSH:
-                await run_in_threadpool(out.write, bytes(buffer))
-                written += len(buffer)
-                buffer.clear()
-        if buffer:
-            await run_in_threadpool(out.write, bytes(buffer))
-            written += len(buffer)
-        if written == 0:
-            raise HTTPException(400, "Pusty plik")
-    except BaseException:
-        out.close()
-        storage.delete(key)
-        db.delete(video)
-        db.commit()
-        raise
-    out.close()
-    video.original_path, video.size_bytes = key, written
-    services.queue_transcode(db, video)
-    db.commit()
-    return {"id": video.id, "size": written}
-
-
+# --- nagrania meczu (wgrywanie: app/routers/uploads.py, protokół tus) ---------------------
 @router.get("/matches/{match_id}/videos-panel")
 def videos_panel(request: Request, match: Match = Depends(get_match),
                  user: User = require(permissions.can_view)):
@@ -88,19 +44,44 @@ def stream_video(video: Video = Depends(get_video), user: User = require(permiss
 @router.post("/videos/{video_id}/retry")
 def retry_video(db: Session = Depends(get_db), video: Video = Depends(get_video),
                 user: User = require(can_upload_video, get_video)):
-    if video.original_path:
-        services.queue_transcode(db, video)
-        db.commit()
+    """Ponowienie konwersji — tylko dopóki istnieje oryginał (po udanej konwersji jest usuwany)."""
+    if video.status != "error":
+        raise HTTPException(409, "Konwersję można ponowić tylko po błędzie")
+    if not video.original_path or not storage.exists(video.original_path):
+        raise HTTPException(409, "Oryginał został już usunięty — ponowna konwersja jest niemożliwa. "
+                                 "Wgraj plik jeszcze raz.")
+    services.queue_transcode(db, video)
+    db.commit()
     return RedirectResponse(f"/matches/{video.match_id}", status_code=303)
+
+
+@router.get("/videos/{video_id}/edit")
+def edit_video_form(request: Request, video: Video = Depends(get_video),
+                    user: User = require(can_upload_video, get_video)):
+    return render(request, "video_edit.html", video=video, match=video.match, error=None,
+                  kind=_content_kind(video.content), checked=services.declared_periods(video.content) or [])
 
 
 @router.post("/videos/{video_id}/update")
-def update_video(label: str = Form(""), db: Session = Depends(get_db),
+def update_video(request: Request, label: str = Form(""), content_kind: str = Form("full"),
+                 periods: list[str] = Form([]), db: Session = Depends(get_db),
                  video: Video = Depends(get_video),
                  user: User = require(can_upload_video, get_video)):
-    video.label = label.strip()
+    """Etykieta i deklaracja zawartości pliku (cały mecz / kwarta / kilka kwart)."""
+    try:
+        content = services.content_from_form(content_kind, periods)
+    except services.MatchFormError as exc:
+        return render(request, "video_edit.html", status_code=422, video=video, match=video.match,
+                      error=str(exc), kind=content_kind, checked=periods)
+    video.label = label.strip()[:100]
+    services.set_content(db, video, content)
     db.commit()
     return RedirectResponse(f"/matches/{video.match_id}", status_code=303)
+
+
+def _content_kind(content: str | None) -> str:
+    declared = services.declared_periods(content)
+    return "full" if declared is None else declared[0] if len(declared) == 1 else "multi"
 
 
 @router.post("/videos/{video_id}/delete")

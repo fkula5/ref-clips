@@ -8,7 +8,8 @@ from sqlalchemy import select
 
 from app import permissions as p
 from app.models import Clip, Comment, Match, MatchOfficial, Rating, User, Video
-from tests.helpers import make_match, make_ready_video, make_user
+from tests.helpers import (TUS, make_match, make_ready_video, make_user, tus_create,
+                           tus_metadata)
 
 ME = 10      # id użytkownika sprawdzanego
 OTHER = 99   # ktoś inny
@@ -197,7 +198,8 @@ def forbidden_requests(w):
     form = {"date": "2026-10-28", "cc_name": "A B", "u1_name": "C D"}
     return [
         # sędzia spoza obsady: mecz, nagrania, znaczniki, klipy
-        ("spoza obsady: upload", "outsider", "post", f"/matches/{m.id}/upload?filename=a.mp4", {"content": b"x"}),
+        ("spoza obsady: upload (tus)", "outsider", "post", "/uploads/", {"headers": {
+            **TUS, "Upload-Length": "10", "Upload-Metadata": tus_metadata(filename="a.mp4", match_id=m.id)}}),
         ("spoza obsady: znacznik kwarty", "outsider", "post", f"/api/videos/{v.id}/marks", {"json": {"time_sec": 1}}),
         ("spoza obsady: nowy klip", "outsider", "post", f"/api/videos/{v.id}/quick-clip", {"json": {"time_sec": 5}}),
         ("spoza obsady: notatki", "outsider", "post", f"/videos/{v.id}/notes/commit", {"data": {"count": "0"}}),
@@ -297,7 +299,7 @@ def test_coach_and_admin_can_work_on_any_match(world, db):
         assert r.status_code == 200, who
         assert client.post(f"/clips/{world['clip'].id}/update", data={"official": ""},
                            follow_redirects=False).status_code == 303
-        assert client.post(f"/matches/{world['match'].id}/upload?filename=a.mp4", content=b"data").status_code == 200
+        assert tus_create(client, world["match"].id, 4).status_code == 201, who
 
 
 def test_comment_deletion_rules(world, db):

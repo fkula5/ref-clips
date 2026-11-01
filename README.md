@@ -8,8 +8,9 @@ klipy z opisem, komentarzami i (docelowo) ocenami szkoleniowców.
 Dokumentacja projektu: [specyfikacja MVP](docs/specyfikacja-mvp.md),
 [plan techniczny](docs/plan-techniczny.md). Stan prac: segment 1 („Fundament”) — konta,
 logowanie, role, obsada CC/U1/U2, nowy model danych; segment 2 („Mecze i obsada”) — lista meczów
-z filtrami i stanem, strona meczu, błędy w formularzach. Kolejne segmenty (tus, znaczniki „Zaznacz”,
-ekran opisywania, oceny, retencja, wdrożenie) opisuje plan.
+z filtrami i stanem, strona meczu, błędy w formularzach; segment 3 („Wgrywanie i konwersja”) —
+wznawialne wgrywanie (tus), deklaracja zawartości pliku, usuwanie oryginału po konwersji.
+Kolejne segmenty (znaczniki „Zaznacz”, ekran opisywania, oceny, retencja, wdrożenie) opisuje plan.
 
 ## Wymagania i instalacja
 
@@ -74,6 +75,10 @@ Zmienne środowiskowe:
 | `REFCLIPS_COOKIE_SECURE` | `1` ustawia ciasteczka z flagą `Secure` — włącz za HTTPS; lokalnie po `http://` zostaw wyłączone |
 | `REFCLIPS_PUBLIC_URL` | adres aplikacji w linkach zaproszeń (np. `https://klipy.example.pl`); domyślnie z żądania |
 | `REFCLIPS_TRUST_PROXY` | `1` bierze adres klienta (limit prób logowania) z `X-Forwarded-For` — tylko za zaufanym proxy |
+| `REFCLIPS_UPLOAD_MAX_GB` | maks. rozmiar jednego wgrywanego pliku (domyślnie 8) |
+| `REFCLIPS_DRAFT_RESERVE_GB` | miejsce rezerwowane na wersję roboczą przy przyjmowaniu uploadu (domyślnie 1,5) |
+| `REFCLIPS_DISK_SAFETY_GB` | zapas wolnego miejsca, którego upload nie może zająć (domyślnie 3) |
+| `REFCLIPS_FFMPEG_NICE` | priorytet (`nice`) ffmpeg w workerze (domyślnie 10, `0` = bez zmiany) |
 | `REFCLIPS_V2_FEATURES` | `1` włącza ukryte funkcje wersji 2 (korekta granic klipu, eksport ZIP) |
 
 ## Konta, role i zapraszanie użytkowników
@@ -127,10 +132,32 @@ i ustawieniem hasła wymaga zalogowania (strony przekierowują na `/login`, API 
    znaczników nie wymaga. Na telefonie tabela zamienia się w karty. **Strona meczu** pokazuje
    obsadę (kto ma konto), nagrania i klipy meczu; usunięcie meczu poprzedza strona
    potwierdzenia z liczbą nagrań i klipów.
-2. **Wgraj nagranie** (na stronie meczu; można kilka plików, np. osobne kwarty). Plik jest
-   zapisywany strumieniowo na dysk z paskiem postępu (wznawialne wgrywanie przez tus to
-   segment 3). Worker konwertuje go do wersji roboczej (H.264/AAC, maks. 720p, klatka kluczowa
-   co sekundę, `+faststart`). Pełne nagranie dostaje termin ważności (`retention_days`, domyślnie 30).
+2. **Wgraj nagranie** (na stronie meczu; można kilka plików, np. osobne kwarty). Przy każdym
+   pliku wskaż, **co zawiera**: cały mecz, jedną kwartę (Q1–Q4, OT1–OT3) albo kilka kwart.
+   Wgrywanie jest **wznawialne** (protokół tus 1.0.0, `tus-js-client` przypięty w
+   `static/vendor`): kawałki po 50 MB, automatyczne ponawianie po zerwaniu połączenia, a po
+   odświeżeniu strony lub zamknięciu karty wystarczy wybrać ten sam plik i kliknąć „Wgraj” —
+   wgrywanie pójdzie dalej od miejsca przerwania. „Przerwij” anuluje wgrywanie i usuwa dane.
+   Plik trafia strumieniowo na dysk (`uploads/`), po ostatnim bajcie powstaje nagranie i zadanie
+   konwersji. Limity: maks. 8 GB na plik, jedno niedokończone wgrywanie na użytkownika
+   (kolejne zwraca czytelny błąd z możliwością przerwania poprzedniego), nieaktywne dłużej niż
+   24 h jest usuwane przez worker (co godzinę). **Rezerwacja miejsca:** upload jest przyjmowany tylko
+   wtedy, gdy wolne miejsce na dysku ≥ rozmiar pliku + 1,5 GB (wersja robocza) + 3 GB zapasu, licząc
+   rezerwacje innych uploadów i oryginałów czekających na konwersję; inaczej błąd 507
+   „Brak miejsca na serwerze, spróbuj później.”. Wgrywać do meczu mogą ci sami, co zakładają klipy
+   (administrator, szkoleniowiec, sędzia z obsady); cudzego uploadu nie da się dotknąć.
+   Deklarację zawartości można poprawić po wgraniu (**Edytuj** przy nagraniu). Plik z jedną
+   kwartą dostaje automatycznie znacznik początku kwarty 0:00 (można go przesunąć), więc nie
+   wymaga ręcznych znaczników; cały mecz i kilka kwart wymagają znaczników początku kwart
+   (stan meczu „brak znaczników kwart”).
+   Worker konwertuje plik do wersji roboczej (H.264 veryfast CRF 23, AAC, maks. 720p, maks. 30
+   kl./s — wyższą liczbę klatek ograniczamy, niższej nie podnosimy — klatka kluczowa co sekundę,
+   `+faststart`; ffmpeg działa z priorytetem `nice 10`, a cięcie klipów ma pierwszeństwo przed
+   konwersją). Po konwersji sprawdza wynik (ffprobe: jest wideo, czas trwania zgodny z
+   oryginałem do max(2 s, 1% długości); porównywana jest ścieżka wideo) i **usuwa oryginał**. Przy niezgodności nagranie dostaje błąd, a oryginał
+   zostaje — „Ponów konwersję” działa tylko dopóki oryginał istnieje. Pełne nagranie dostaje
+   termin ważności (`retention_days`, domyślnie 30). Szacunek czasu konwersji: patrz
+   [plan techniczny](docs/plan-techniczny.md), rozdz. 6.2.
 3. **Odtwarzacz** — skróty klawiszowe:
 
    | Klawisz | Działanie |
@@ -176,7 +203,8 @@ eksport ZIP (`app/routers/clips_v2.py`, włączane `REFCLIPS_V2_FEATURES=1`), st
 .venv/bin/python -m pytest
 ```
 
-Testy wideo (konwersja, wycinanie, obcięcie do granic nagrania, przepływ end-to-end) używają
+Testy wideo (konwersja, ograniczenie klatek, usuwanie oryginału, wycinanie, obcięcie do granic
+nagrania, przepływ tus → worker → gotowe nagranie) używają
 prawdziwego ffmpeg i są pomijane, gdy go brak. Testy uprawnień (`tests/test_permissions.py`)
 obejmują każdy wiersz tabeli uprawnień ze specyfikacji dla każdej roli i ich kombinacji oraz
 żądania wysyłane wprost do API, które serwer ma odrzucić (403).
@@ -193,7 +221,8 @@ app/routers/           trasy: logowanie, panel admina, mecze, nagrania/odtwarzac
 app/models.py          model danych (SQLAlchemy 2), migracje w alembic/
 app/seed.py            słownik kategorii i ustawienia domyślne
 app/notes_parser.py    parser notatek (czysta funkcja)
-app/video.py           ffprobe/ffmpeg: konwersja i wycinanie
+app/routers/uploads.py protokół tus (wgrywanie wznawialne); logika sesji, rezerwacji miejsca i sprzątania: app/uploads.py
+app/video.py           ffprobe/ffmpeg: konwersja, weryfikacja wyniku i wycinanie
 app/storage.py         magazyn plików (lokalny; interfejs pod przyszłe S3)
 app/worker.py          pętla zadań z tabeli jobs
 app/services.py        obsada, kwarty, granice klipów, nazwy plików, kolejka
