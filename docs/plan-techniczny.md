@@ -82,14 +82,24 @@ przeglądarka ──HTTPS──► Caddy ──► FastAPI (uvicorn, 2 procesy) 
 
 ### 6.1 Wgrywanie (tus)
 - Przeglądarka: `tus-js-client` (plik JS przypięty w repozytorium, bez CDN), kawałki po 50 MB, automatyczne ponawianie i wznowienie po odświeżeniu strony (fingerprint pliku).
-- Serwer: minimalna implementacja tus 1.0 w FastAPI (`POST` utworzenie, `HEAD` offset, `PATCH` dopisanie). To ok. 150 linii zamiast osobnej usługi.
+- Serwer: minimalna implementacja tus 1.0.0 w FastAPI (`app/routers/uploads.py`, logika w `app/uploads.py`): rozszerzenia `creation`, `termination` i `expiration`, czyli `POST` utworzenie, `HEAD` offset, `PATCH` dopisanie, `DELETE` anulowanie. Dane trafiają strumieniowo do `uploads/tus-<id>.part`, a stan do `upload_sessions` (offset zapisywany co 4 MB i przy zerwaniu połączenia).
 - **Rezerwacja miejsca:** przy `POST` znamy rozmiar pliku. Serwer przyjmuje upload tylko wtedy, gdy na dysku jest wolne miejsce na `rozmiar + 1,5 GB (wersja robocza) + 3 GB zapasu`, licząc już zarezerwowane uploady. W przeciwnym razie użytkownik dostaje komunikat „brak miejsca, spróbuj później”, a admin dostaje ostrzeżenie w panelu.
 - Limit: jeden aktywny upload na użytkownika, maksymalnie 8 GB na plik.
 
 ### 6.2 Konwersja
 - Ustawienia jak w prototypie: H.264 `veryfast` CRF 23, AAC, maks. 720p, maks. 30 kl./s, klatka kluczowa co 1 s, `+faststart`.
 - **Oryginał jest usuwany** zaraz po udanej konwersji i sprawdzeniu wyniku (ffprobe: czas trwania zgodny z oryginałem ±1 s).
-- Szacowany czas na 2 vCPU: mecz 2 h z telefonu 1080p trwa ok. 45–90 min, a 4K/HEVC może zająć 2–3 h. W interfejsie widać pozycję w kolejce i postęp. **Do sprawdzenia na prawdziwym VPS w pierwszym kamieniu milowym.** Jeśli będzie za wolno, możliwy jest preset `superfast` albo mocniejszy VPS na czas konwersji.
+- Szacowany czas na 2 vCPU: mecz 2 h z telefonu 1080p trwa ok. 45–90 min, a 4K/HEVC może zająć 2–3 h. W interfejsie widać pozycję w kolejce i postęp.
+- **Pomiar lokalny (kamień 3, 2026-11-01).** Syntetyczne nagranie 1080p, 30 kl./s, 3 min (ffmpeg `testsrc2` z ruchem + sinus, H.264 ok. 10 Mb/s, 227 MB), konwersja pełną komendą z `app/video.py` (veryfast, CRF 23, 720p, +faststart):
+
+  | Warunki | Czas dla 3 min | Wielokrotność czasu rzeczywistego | Ekstrapolacja na 2 h |
+  |---|---|---|---|
+  | `taskset -c 0,1` (2 rdzenie), 2 pomiary | 50,7 s i 50,2 s | ok. 0,28× | ok. 34 min |
+  | bez ograniczenia (16 rdzeni) | 31,7 s | ok. 0,18× | ok. 21 min |
+
+  Wynik dla 2 h przy 2 rdzeniach jest znacznie poniżej 2 h, więc preset `superfast` nie jest potrzebny (dla porównania: 41,3 s, ok. 28 min na 2 h, ale plik ponad 2× większy). Wersja robocza 3 min miała 32 MB, czyli 2 h to ok. 1,3 GB. **Zastrzeżenie:** obraz syntetyczny różni się od prawdziwego nagrania (inna złożoność ruchu i szumu, brak rozmycia i kompresji z kamery), a ekstrapolacja liniowa nie obejmuje 4K/HEVC, gdzie samo dekodowanie jest kilka razy droższe. Rdzenie tego komputera są też szybsze niż vCPU w typowym VPS. Liczby traktujemy jako dolną granicę; **pomiar trzeba powtórzyć na prawdziwym VPS i prawdziwym nagraniu** (po zakupie serwera, segment 8). Jeśli będzie za wolno, możliwy jest preset `superfast` albo mocniejszy VPS na czas konwersji.
+- **Ograniczenie klatek:** do 30 kl./s dodajemy filtr `fps=30` tylko wtedy, gdy źródło (średnia lub nominalna liczba klatek) ma więcej niż 30 kl./s; niższej liczby klatek nie podnosimy.
+- **Priorytet:** worker uruchamia ffmpeg przez `nice -n 10` (zmienna `REFCLIPS_FFMPEG_NICE`).
 - Zajętość: wersja robocza 2 h zajmuje ok. 1–1,5 GB.
 
 ### 6.3 Klipy
