@@ -7,7 +7,8 @@ klipy z opisem, komentarzami i (docelowo) ocenami szkoleniowców.
 
 Dokumentacja projektu: [specyfikacja MVP](docs/specyfikacja-mvp.md),
 [plan techniczny](docs/plan-techniczny.md). Stan prac: segment 1 („Fundament”) — konta,
-logowanie, role, obsada CC/U1/U2, nowy model danych. Kolejne segmenty (tus, znaczniki „Zaznacz”,
+logowanie, role, obsada CC/U1/U2, nowy model danych; segment 2 („Mecze i obsada”) — lista meczów
+z filtrami i stanem, strona meczu, błędy w formularzach. Kolejne segmenty (tus, znaczniki „Zaznacz”,
 ekran opisywania, oceny, retencja, wdrożenie) opisuje plan.
 
 ## Wymagania i instalacja
@@ -112,7 +113,20 @@ i ustawieniem hasła wymaga zalogowania (strony przekierowują na `/login`, API 
    (U2 opcjonalnie). Każdą pozycję wypełniasz wyborem konta z rolą sędziego albo wpisaniem imienia
    i nazwiska (sędzia bez konta). Sędzia, który zakłada mecz, jest wstawiony na pierwszą
    pozycję (może zmienić funkcję), a serwer odrzuca mecz, w którego obsadzie go nie ma
-   (dotyczy użytkownika, który nie jest administratorem ani szkoleniowcem).
+   (dotyczy użytkownika, który nie jest administratorem ani szkoleniowcem). Ta sama osoba nie
+   zajmie dwóch pozycji (to samo konto albo to samo wpisane nazwisko; wpisane nazwisko zgodne z
+   nazwą konta to ta sama osoba). Pole „Liga” podpowiada ligi użyte wcześniej. Błędy pokazują
+   się w formularzu z zachowanymi wartościami.
+   Gdy sędzia wpisany ręcznie dostanie później konto, wystarczy wybrać konto w obsadzie
+   (edycja meczu): jego klipy zostają przy nim, o ile imię i nazwisko konta jest takie samo
+   (po normalizacji wielkości liter i polskich znaków) i nie ma drugiego konta o tej nazwie.
+   **Lista meczów** (strona główna) ma filtry w adresie (daty od–do, liga, sędzia, „tylko moje”),
+   paginację po 25 i stan meczu wyliczany z nagrań: brak nagrania, konwersja (z pozycją w
+   kolejce), błąd konwersji, brak znaczników kwart, gotowy, pełne nagranie usunięte. Plik bez
+   deklaracji zawartości liczy się jak cały mecz (wymaga znaczników Q1–Q4); plik z jedną kwartą
+   znaczników nie wymaga. Na telefonie tabela zamienia się w karty. **Strona meczu** pokazuje
+   obsadę (kto ma konto), nagrania i klipy meczu; usunięcie meczu poprzedza strona
+   potwierdzenia z liczbą nagrań i klipów.
 2. **Wgraj nagranie** (na stronie meczu; można kilka plików, np. osobne kwarty). Plik jest
    zapisywany strumieniowo na dysk z paskiem postępu (wznawialne wgrywanie przez tus to
    segment 3). Worker konwertuje go do wersji roboczej (H.264/AAC, maks. 720p, klatka kluczowa

@@ -1,7 +1,12 @@
 {% extends "base.html" %}
-{% block title %}Błąd{% endblock %}
+{% block title %}{{ heading }}{% endblock %}
 {% block content %}
-<h1>Nie można wykonać operacji</h1>
-<div class="banner error">{{ message }}</div>
-<p>{% if user %}<a href="/">Wróć do listy meczów</a>{% else %}<a href="/login">Zaloguj się</a>{% endif %}</p>
+<h1>{{ heading }}</h1>
+<div class="banner error" role="alert">{{ message }}</div>
+<p class="row">
+  {% if user %}
+    {% if back_url %}<a class="btn" href="{{ back_url }}">&larr; Wróć</a>{% endif %}
+    <a class="btn primary" href="/">Lista meczów</a>
+  {% else %}<a class="btn primary" href="/login">Zaloguj się</a>{% endif %}
+</p>
 {% endblock %}

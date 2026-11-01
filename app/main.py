@@ -3,6 +3,8 @@ from contextlib import asynccontextmanager
 from urllib.parse import quote
 
 from fastapi import Depends, FastAPI, Request
+from fastapi.exceptions import RequestValidationError
+from fastapi.exception_handlers import request_validation_exception_handler
 from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import func, select
@@ -16,7 +18,7 @@ from app.db import get_db
 from app.initdb import init_db
 from app.models import Job, User
 from app.routers import admin, auth, clips, clips_v2, matches, videos
-from app.web import BASE, render
+from app.web import BASE, back_url, render
 
 
 @asynccontextmanager
@@ -52,6 +54,30 @@ def _is_browser_form(request: Request) -> bool:
             and not request.url.path.startswith("/api/"))
 
 
+ERROR_HEADINGS = {403: "Brak dostępu", 404: "Nie znaleziono", 405: "Nieobsługiwana operacja",
+                  413: "Plik za duży", 422: "Nieprawidłowe dane"}
+ERROR_MESSAGES = {404: "Nie ma takiej strony lub została usunięta.",
+                  405: "Ta operacja nie jest dostępna pod tym adresem.",
+                  422: "Przesłane dane są niepoprawne. Wróć i sprawdź formularz."}
+
+
+def error_page(request: Request, status_code: int, detail: str | None = None):
+    """Strona błędu dla nawigacji w przeglądarce (nie dla formularzy, które pokazują błędy u siebie)."""
+    generic = not detail or detail in ("Not Found", "Method Not Allowed")
+    message = ERROR_MESSAGES.get(status_code, "Nie można wykonać operacji.") if generic else detail
+    return render(request, "error.html", status_code=status_code, message=message,
+                  heading=ERROR_HEADINGS.get(status_code, "Nie można wykonać operacji"),
+                  back_url=back_url(request))
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_error(request: Request, exc: RequestValidationError):
+    """Niepoprawne parametry (np. id w adresie): w przeglądarce strona błędu, w API JSON."""
+    if _is_browser_form(request):
+        return error_page(request, 422)
+    return await request_validation_exception_handler(request, exc)
+
+
 @app.exception_handler(HTTPException)
 async def http_error(request: Request, exc: HTTPException):
     """401 na stronie przekierowuje na logowanie; w API zostaje kod błędu (JSON)."""
@@ -62,7 +88,7 @@ async def http_error(request: Request, exc: HTTPException):
         headers = {"HX-Redirect": "/login"} if "hx-request" in request.headers else None
         return JSONResponse({"detail": exc.detail}, status_code=401, headers=headers)
     if _is_browser_form(request):
-        return render(request, "error.html", status_code=exc.status_code, message=exc.detail)
+        return error_page(request, exc.status_code, str(exc.detail))
     return JSONResponse({"detail": exc.detail}, status_code=exc.status_code,
                         headers=getattr(exc, "headers", None))
 

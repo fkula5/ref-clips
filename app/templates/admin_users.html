@@ -3,7 +3,7 @@
 {% block content %}
 <h1>Użytkownicy</h1>
 
-{% if error %}<div class="banner error">{{ error }}</div>{% endif %}
+{% if error %}<div class="banner error" role="alert">{{ error }}</div>{% endif %}
 {% if invite_link %}
 <div class="card invite-box">
   <strong>Link dla {{ invite_for.name }} ({{ invite_for.email }})</strong>
@@ -19,12 +19,12 @@
 <form method="post" action="/admin/users" class="card form">
   {{ csrf_input() }}
   <div class="grid2">
-    <label>Imię i nazwisko <input name="name" required maxlength="100"></label>
-    <label>E-mail (login) <input type="email" name="email" required></label>
+    <label>Imię i nazwisko <input name="name" required maxlength="100" value="{{ new_values.name }}"></label>
+    <label>E-mail (login) <input type="email" name="email" required value="{{ new_values.email }}"></label>
   </div>
   <fieldset><legend>Role (można kilka)</legend>
     {% for key, label in USER_ROLES.items() %}
-      <label class="inline"><input type="checkbox" name="roles" value="{{ key }}" {{ 'checked' if key == 'referee' }}> {{ label }}</label>
+      <label class="inline"><input type="checkbox" name="roles" value="{{ key }}" {{ 'checked' if key in new_values.roles }}> {{ label }}</label>
     {% endfor %}
   </fieldset>
   <button class="btn primary">Utwórz konto i pokaż link</button>
@@ -41,8 +41,9 @@
       <td>
         <form method="post" action="/admin/users/{{ u.id }}/roles" class="row">
           {{ csrf_input() }}
+          {% set shown = roles_edit.get(u.id, u.roles) %}
           {% for key, label in USER_ROLES.items() %}
-            <label class="inline"><input type="checkbox" name="roles" value="{{ key }}" {{ 'checked' if key in u.roles }}> {{ label }}</label>
+            <label class="inline"><input type="checkbox" name="roles" value="{{ key }}" {{ 'checked' if key in shown }}> {{ label }}</label>
           {% endfor %}
           <button class="btn small">Zapisz role</button>
         </form>

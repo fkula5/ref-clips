@@ -1,4 +1,4 @@
-"""Mecze: lista, formularz z obsadą (CC/U1/U2), szczegóły."""
+"""Mecze: lista z filtrami, formularz z obsadą (CC/U1/U2), szczegóły, usuwanie."""
 from __future__ import annotations
 
 from datetime import date as date_type
@@ -8,7 +8,7 @@ from fastapi.responses import RedirectResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
-from app import permissions, services
+from app import match_list, permissions, services
 from app.auth import require
 from app.db import get_db
 from app.loaders import get_match
@@ -56,18 +56,30 @@ def _form_values(match: Match | None, user: User | None = None) -> dict:
 def _render_form(request: Request, db: Session, match: Match | None, values: dict,
                  error: str | None = None, status_code: int = 200):
     return render(request, "match_form.html", status_code=status_code, match=match, values=values,
-                  error=error, referees=services.referee_candidates(db))
+                  error=error, referees=services.referee_candidates(db),
+                  levels=services.known_levels(db))
+
+
+FIELD_LIMITS = {"level": ("Liga", 100), "team_a_name": ("Nazwa drużyny A", 100),
+                "team_a_color": ("Kolor strojów drużyny A", 50), "team_b_name": ("Nazwa drużyny B", 100),
+                "team_b_color": ("Kolor strojów drużyny B", 50)}
 
 
 def _save(db: Session, user: User, match: Match, form: dict[str, str]) -> None:
-    """Zapisuje dane meczu i obsadę; sędzia (tylko) musi być w obsadzie, inaczej 403."""
+    """Zapisuje dane meczu i obsadę. Błędy walidacji to MatchFormError (422); sędzia (tylko
+    sędzia) spoza obsady to MatchForbiddenError (403) — oba wracają do formularza."""
     try:
         match.date = date_type.fromisoformat(form["date"])
     except ValueError:
         raise services.MatchFormError("Podaj poprawną datę meczu.") from None
+    for field, (label, limit) in FIELD_LIMITS.items():
+        if len(form[field].strip()) > limit:
+            raise services.MatchFormError(f"{label}: najwyżej {limit} znaków.")
     officials = services.officials_from_form(db, form)
     if not permissions.can_save_match(user, [user_id for _, user_id, _ in officials]):
-        raise HTTPException(403, "Jako sędzia możesz zapisać tylko mecz, w którego obsadzie jesteś")
+        raise services.MatchForbiddenError(
+            "Jako sędzia możesz zapisać tylko mecz, w którego obsadzie jesteś — wybierz swoje konto "
+            "na jednej z pozycji.")
     match.level = form["level"].strip()
     for field in TEAM_FIELDS:
         setattr(match, field, form[field].strip())
@@ -77,11 +89,11 @@ def _save(db: Session, user: User, match: Match, form: dict[str, str]) -> None:
 @router.get("/")
 def index(request: Request, db: Session = Depends(get_db),
           user: User = require(permissions.can_view)):
-    matches = db.scalars(
-        select(Match).options(selectinload(Match.videos), selectinload(Match.clips),
-                              selectinload(Match.officials))
-        .order_by(Match.date.desc(), Match.id.desc())).all()
-    return render(request, "index.html", matches=matches)
+    filters = match_list.parse_filters(request.query_params)
+    result = match_list.list_matches(db, filters, user.id)
+    return render(request, "index.html", f=filters, result=result, levels=services.known_levels(db),
+                  people=services.people(db),
+                  prev_query=filters.query(result.page - 1), next_query=filters.query(result.page + 1))
 
 
 @router.get("/matches/new")
@@ -98,7 +110,8 @@ def create_match(request: Request, db: Session = Depends(get_db),
     try:
         _save(db, user, match, form)
     except services.MatchFormError as exc:
-        return _render_form(request, db, None, form, str(exc), 422)
+        db.rollback()
+        return _render_form(request, db, None, form, str(exc), exc.status_code)
     db.add(match)
     db.commit()
     return RedirectResponse(f"/matches/{match.id}", status_code=303)
@@ -106,9 +119,12 @@ def create_match(request: Request, db: Session = Depends(get_db),
 
 @router.get("/matches/{match_id}")
 def match_detail(request: Request, match: Match = Depends(get_match),
-                 user: User = require(permissions.can_view)):
+                 db: Session = Depends(get_db), user: User = require(permissions.can_view)):
     busy = any(v.status in ("uploading", "queued", "processing") for v in match.videos)
-    return render(request, "match_detail.html", match=match, busy=busy)
+    clips = sorted(match.clips, key=lambda c: (c.video_id, c.time_sec))
+    return render(request, "match_detail.html", match=match, busy=busy, clips=clips,
+                  state=services.match_state(match.videos, services.transcode_queue(db)),
+                  undescribed=sum(1 for c in clips if not c.is_described))
 
 
 @router.get("/matches/{match_id}/edit")
@@ -125,9 +141,18 @@ def update_match(request: Request, db: Session = Depends(get_db), match: Match =
         _save(db, user, match, form)
     except services.MatchFormError as exc:
         db.rollback()
-        return _render_form(request, db, match, form, str(exc), 422)
+        return _render_form(request, db, match, form, str(exc), exc.status_code)
     db.commit()
     return RedirectResponse(f"/matches/{match.id}", status_code=303)
+
+
+@router.get("/matches/{match_id}/delete")
+def confirm_delete_match(request: Request, match: Match = Depends(get_match),
+                         user: User = require(permissions.can_delete_match, get_match)):
+    """Potwierdzenie usunięcia: ile nagrań i klipów zniknie razem z meczem."""
+    clips = len(match.clips)
+    return render(request, "match_delete.html", match=match, videos=len(match.videos), clips=clips,
+                  undescribed=sum(1 for c in match.clips if not c.is_described))
 
 
 @router.post("/matches/{match_id}/delete")

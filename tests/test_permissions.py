@@ -210,6 +210,9 @@ def forbidden_requests(w):
         ("obcy szkoleniowiec: edycja meczu", "other_coach", "post", f"/matches/{m.id}", {"data": form}),
         ("obcy szkoleniowiec: formularz edycji", "other_coach", "get", f"/matches/{m.id}/edit", {}),
         ("obcy szkoleniowiec: usunięcie meczu", "other_coach", "post", f"/matches/{m.id}/delete", {}),
+        ("obcy szkoleniowiec: potwierdzenie usunięcia meczu", "other_coach", "get", f"/matches/{m.id}/delete", {}),
+        ("sędzia z obsady: potwierdzenie usunięcia cudzego meczu", "member", "get", f"/matches/{m.id}/delete", {}),
+        ("sędzia spoza obsady: potwierdzenie usunięcia meczu", "outsider", "get", f"/matches/{m.id}/delete", {}),
         ("obcy szkoleniowiec: usunięcie klipu", "other_coach", "post", f"/clips/{c.id}/delete", {}),
         ("obcy szkoleniowiec: usunięcie nagrania", "other_coach", "post", f"/videos/{v.id}/delete", {}),
         ("sędzia z obsady: usunięcie cudzego klipu", "member", "post", f"/clips/{c.id}/delete", {}),
@@ -236,10 +239,18 @@ def test_forbidden_requests_are_rejected_by_server(world, db):
     assert "admin" not in db.get(User, world["member_user"].id).roles
 
 
+def test_match_delete_confirmation_allowed_for_owner_and_admin_only(world):
+    url = f"/matches/{world['match'].id}/delete"
+    assert world["coach"].get(url).status_code == 200      # właściciel meczu
+    assert world["admin"].get(url).status_code == 200
+
+
 def test_user_without_roles_can_only_view_and_comment(make_client, db, world):
     client, _ = make_client()  # konto bez żadnej roli
     assert client.get("/").status_code == 200
+    assert client.get("/?mine=1&level=II+liga").status_code == 200
     assert client.get(f"/matches/{world['match'].id}").status_code == 200
+    assert client.get(f"/matches/{world['match'].id}/delete").status_code == 403
     assert client.get("/matches/new").status_code == 403
     assert client.post("/matches", data={"date": "2026-10-28"}).status_code == 403
     assert client.post(f"/api/videos/{world['video'].id}/quick-clip", json={"time_sec": 5}).status_code == 403
