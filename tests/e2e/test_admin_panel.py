@@ -210,3 +210,18 @@ def test_nie_administrator_nie_widzi_panelu(ui):
         assert response.status == 403, path
         expect(page.get_by_role("heading", name="Brak dostępu")).to_be_visible()
         expect(page.locator(".admin-tabs")).to_have_count(0)
+
+
+def test_komorki_wierszy_tabel_admina_maja_jedna_wysokosc(ui):
+    """Komórka z przyciskami akcji nie może być kontenerem flex (rozjeżdżała wiersz tabeli)."""
+    admin = ui.page("admin")
+    for path in ("/admin/categories", "/admin/users"):
+        admin.goto(path)
+        bad = admin.evaluate("""() => [...document.querySelectorAll('tbody tr')].filter(tr => {
+            const cells = [...tr.children];
+            const rects = cells.map(c => c.getBoundingClientRect());
+            return cells.some(c => getComputedStyle(c).display !== 'table-cell')
+                || Math.max(...rects.map(r => r.top)) - Math.min(...rects.map(r => r.top)) > 0.5
+                || Math.max(...rects.map(r => r.bottom)) - Math.min(...rects.map(r => r.bottom)) > 0.5;
+        }).length""")
+        assert bad == 0, f"{path}: {bad} wierszy z nierównymi komórkami"

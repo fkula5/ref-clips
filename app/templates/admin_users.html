@@ -54,7 +54,7 @@
         {% elif not u.password_hash %}<span class="badge queued">czeka na ustawienie hasła</span>
         {% else %}<span class="badge ready">aktywne</span>{% endif %}
       </td>
-      <td class="row">
+      <td class="actions-cell"><div class="table-actions">
         {% if u.is_active %}
           <form method="post" action="/admin/users/{{ u.id }}/invite">{{ csrf_input() }}
             <button class="btn small">{{ 'Link resetu hasła' if u.password_hash else 'Nowy link zaproszenia' }}</button></form>
@@ -64,7 +64,7 @@
           <form method="post" action="/admin/users/{{ u.id }}/active">{{ csrf_input() }}
             <input type="hidden" name="active" value="1"><button class="btn small">Aktywuj</button></form>
         {% endif %}
-      </td>
+      </div></td>
     </tr>
   {% endfor %}
   </tbody>
