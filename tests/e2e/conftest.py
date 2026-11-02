@@ -114,9 +114,10 @@ class UI:
         self.diag.allow(pattern)
 
     def context(self, role: str | None = None, *, mobile: bool = False, **kwargs) -> BrowserContext:
-        options = dict(base_url=self.server.base_url, locale="pl-PL", viewport=MOBILE if mobile else DESKTOP, **kwargs)
+        options = dict(base_url=self.server.base_url, locale="pl-PL", viewport=MOBILE if mobile else DESKTOP)
         if mobile:
             options.update(is_mobile=True, has_touch=True, device_scale_factor=2)
+        options.update(kwargs)  # np. własny viewport telefonu
         if role:
             options["storage_state"] = str(self.states[role])
         context = self.browser.new_context(**options)

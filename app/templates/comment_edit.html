@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{% block title %}Edycja komentarza{% endblock %}
+{% block content %}
+{# Wersja bez JavaScriptu: edycja komentarza na osobnej stronie. #}
+<h1>Edycja komentarza</h1>
+<p><a href="{{ parent_url }}#comment-{{ cm.id }}">‹ Wróć bez zapisywania</a></p>
+{% set editing = true %}
+{% include "_comment_item.html" %}
+{% endblock %}

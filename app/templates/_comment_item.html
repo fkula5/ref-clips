@@ -1,0 +1,42 @@
+{# Jeden komentarz: widok zwykły albo formularz edycji (editing). Zmienne: cm, cbase, editing,
+   edit_error, edit_draft. Treść jest zwykłym tekstem (autoescape); łamania linii zachowuje CSS pre-wrap. #}
+{% if editing %}
+<div class="comment editing" id="comment-{{ cm.id }}">
+  <form class="form" method="post" action="{{ cbase }}/comments/{{ cm.id }}/edit"
+        hx-post="{{ cbase }}/comments/{{ cm.id }}/edit" hx-target="#comment-{{ cm.id }}" hx-swap="outerHTML">
+    {{ csrf_input() }}
+    <label>Edytuj komentarz
+      <textarea name="body" rows="3" required>{{ edit_draft if edit_draft is not none else cm.body }}</textarea>
+    </label>
+    {% if edit_error %}<p class="error-text" role="alert">{{ edit_error }}</p>{% endif %}
+    <div class="row">
+      <button class="btn primary small">Zapisz</button>
+      <a class="btn small" href="{{ cbase }}/comments/{{ cm.id }}" hx-get="{{ cbase }}/comments/{{ cm.id }}"
+         hx-target="#comment-{{ cm.id }}" hx-swap="outerHTML">Anuluj</a>
+      <span class="muted small-note">najwyżej {{ TEXT_MAX_CHARS }} znaków</span>
+    </div>
+  </form>
+</div>
+{% else %}
+<div class="comment" id="comment-{{ cm.id }}">
+  <div class="meta">
+    <strong>{{ cm.author.name }}</strong>
+    <span class="muted">{{ cm.created_at.strftime("%d.%m.%Y %H:%M") if cm.created_at }}{% if cm.edited_at %} · edytowano {{ cm.edited_at.strftime("%d.%m.%Y %H:%M") }}{% endif %}</span>
+  </div>
+  <div class="body">{{ cm.body }}</div>
+  {% if perm.can_edit_comment(user, cm) or perm.can_delete_comment(user, cm) %}
+  <div class="actions">
+    {% if perm.can_edit_comment(user, cm) %}
+    <a href="{{ cbase }}/comments/{{ cm.id }}/edit" hx-get="{{ cbase }}/comments/{{ cm.id }}/edit"
+       hx-target="#comment-{{ cm.id }}" hx-swap="outerHTML">Edytuj</a>
+    {% endif %}
+    {% if perm.can_delete_comment(user, cm) %}
+    <form class="inline" method="post" action="{{ cbase }}/comments/{{ cm.id }}/delete"
+          hx-post="{{ cbase }}/comments/{{ cm.id }}/delete" hx-target="#comment-{{ cm.id }}" hx-swap="outerHTML">
+      {{ csrf_input() }}<button class="inline-btn danger-link" onclick="return confirm('Usunąć komentarz?')">Usuń</button>
+    </form>
+    {% endif %}
+  </div>
+  {% endif %}
+</div>
+{% endif %}

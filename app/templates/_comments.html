@@ -1,16 +1,11 @@
-{% set comments = c.comments %}
-{% if not comments %}<p class="muted">Brak komentarzy.</p>{% endif %}
-{% for cm in comments %}
-  <div class="comment">
-    <div class="meta">
-      <strong>{{ cm.author.name }}</strong>
-      <span class="muted">{{ cm.created_at.strftime("%d.%m.%Y %H:%M") if cm.created_at }}{% if cm.edited_at %} · edytowany{% endif %}</span>
-    </div>
-    <div class="body">{{ cm.body }}</div>
-    {% if perm.can_delete_comment(user, cm) %}
-    <div class="actions">
-      <a href="#" class="danger-link" hx-post="/comments/{{ cm.id }}/delete" hx-target="#comments" hx-swap="innerHTML" hx-confirm="Usunąć komentarz?">Usuń</a>
-    </div>
-    {% endif %}
+{# Sekcja komentarzy meczu albo klipu. Poza obszarami odświeżanymi co 3 s, więc wpisywany tekst i
+   otwarta edycja przeżywają odświeżanie. Zmienne: comments, cbase ("/clips/5" albo "/matches/3"),
+   comment_error i comment_draft (po błędzie dodawania bez JS). #}
+<section id="komentarze" class="comments-box">
+  <h2>Komentarze</h2>
+  <div id="comments" aria-live="polite">
+    {% for cm in comments %}{% set editing = false %}{% set edit_error = none %}{% set edit_draft = none %}{% include "_comment_item.html" %}{% endfor %}
   </div>
-{% endfor %}
+  <p id="no-comments" class="muted empty-note">{% if not comments %}Brak komentarzy.{% endif %}</p>
+  {% include "_comment_form.html" %}
+</section>

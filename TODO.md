@@ -10,7 +10,7 @@
 
 - [x] HTMX przypięty lokalnie: `app/static/vendor/htmx-2.0.4.min.js` (bez CDN).
 - [x] Błędy 403/404/422 przy wysyłce formularza pokazują prostą stronę błędu; warto je zamienić na komunikaty w formularzach. *(segment 2: formularz meczu i panel admina pokazują błąd z zachowanymi wartościami; `error.html` zostaje dla 403/404/422 przy nawigacji, z tekstem i linkiem powrotu)*
-- [ ] Komentarze do meczu (tabela gotowa, brak trasy i widoku) oraz edycja komentarza (reguła `can_edit_comment` gotowa) — segment 6.
+- [x] Komentarze do meczu (tabela gotowa, brak trasy i widoku) oraz edycja komentarza (reguła `can_edit_comment` gotowa) — segment 6. *(segment 6: komentarze do meczu i klipu z edycją inline, usuwaniem i testami uprawnień; trasy `/matches/{id}/comments…` i `/clips/{id}/comments…`)*
 - [ ] Sędzia usunięty z obsady przestaje mieć dostęp do meczu, ale jego klipy zostają bez powiązania z pozycją (`official_id` = NULL).
 - [x] Obsada: to samo ręcznie wpisane imię i nazwisko na dwóch pozycjach jest po cichu scalane w jedną pozycję (`set_officials` indeksuje po tożsamości). Formularz powinien odrzucić duplikat, tak jak robi to dla kont. *(segment 2; także konto i wpisane nazwisko tej samej osoby)*
 - [x] Obsada: zamiana wpisanego nazwiska na konto tej samej osoby (np. sędzia założył konto później) jest traktowana jako nowa osoba, więc jej klipy tracą przypisanie. Warto dopasowywać też po nazwisku konta. *(segment 2: dopasowanie w obie strony po znormalizowanym nazwisku konta; przy dwóch kontach o tej samej nazwie nie łączymy)*
@@ -51,10 +51,23 @@
 
 ## Uwagi z segmentu 5 (drobne, odłożone)
 
-- [ ] Oceny szkoleniowców: na stronie klipu i w tabeli klipów jest tylko miejsce (kolumna „Oceny”, karta „Oceny szkoleniowców”) — segment 6.
+- [x] Oceny szkoleniowców: na stronie klipu i w tabeli klipów jest tylko miejsce (kolumna „Oceny”, karta „Oceny szkoleniowców”) — segment 6. *(segment 6: karta ocen z formularzem dla szkoleniowca, podsumowanie w tabeli klipów i filtr „Oceny” w adresie)*
 - [ ] Sędzia wpisany ręcznie i usunięty z obsady: klipy tracą przypisanie (`official_id` = NULL) i trzeba je opisać od nowa — ekran opisywania ich nie wyłapuje, bo mają `described_at`.
 - [ ] Klip z kwartą nieustaloną jest blokowany także, gdy znaczniki kwart są niekompletne, a sam klip leży w ustawionej kwarcie (zgodnie ze specyfikacją: do czasu kompletu kwart klipy z pliku mają kwartę nieustaloną). Lista znaczników w odtwarzaczu i tabela klipów pokazują w tym stanie najlepszą znaną kwartę, a ekran opisywania „kwarta nieustalona”.
 - [ ] Po usunięciu pełnego nagrania (retencja, segment 7) klipu z nieustaloną kwartą nie da się już opisać (nie ma gdzie ustawić kwart) — rozważyć, czy panel admina ma dawać wyjście.
 - [ ] Podgląd klipu w kolejce używa wersji roboczej (zakres klipu, zatrzymanie na końcu robi `describe.js`); strona ekranu nie przełącza się sama na plik klipu po wycięciu — wystarczy odświeżyć.
 - [ ] `Enter` na liście kategorii zapisuje formularz tylko przy zamkniętej liście (otwarta lista zużywa Enter na wybór opcji).
 - [ ] Opis (`description`) klipów ze znacznika `M` zawiera całą linię notatki (np. „2:54 CC kroki”), więc propozycja opisu bywa powtórzeniem sędziego i kategorii — warto zapisywać tylko resztę linii po rozpoznaniu.
+
+## Uwagi z segmentu 6 (drobne, odłożone)
+
+- [ ] Użytkowników nie da się usunąć (panel tylko dezaktywuje konta), więc `ratings.coach_id` i `comments.author_id` nie mają `ON DELETE`; baza odrzuci usunięcie konta z ocenami lub komentarzami (test w `tests/test_feedback.py`). Ewentualne usuwanie kont wymaga decyzji (anonimizacja autora vs kaskada).
+- [ ] Komentarze nie mają wątków ani powiadomień; nie ma paginacji (sekcja pokazuje wszystkie komentarze meczu lub klipu).
+- [ ] Wynik zapisu przez HTMX po błędzie innym niż walidacja (403/404) to krótki komunikat (toast) bez odświeżenia listy; widok poprawia się dopiero po przeładowaniu strony. Nie ma też odświeżania komentarzy dodanych przez innych w czasie, gdy strona jest otwarta.
+- [ ] Przy dodaniu komentarza bez JavaScriptu na stronie klipu filtry listy, z której przyszedł użytkownik (poprzedni/następny klip), nie są zachowywane w adresie po przekierowaniu.
+- [ ] Usunięcie komentarza i oceny bez JavaScriptu nie pyta o potwierdzenie (przycisk w zwykłym formularzu); z JavaScriptem jest `confirm`.
+- [ ] Znacznik „zmieniona” przy ocenie i „edytowano” przy komentarzu opierają się na porównaniu `updated_at`/`edited_at`; ponowny zapis identycznej treści nie jest uznawany za zmianę. Daty pokazywane są w UTC, jak w reszcie aplikacji.
+- [ ] Filtr ocen „ma ocenę: X” oznacza „co najmniej jedna ocena X” (klip z oceną prawidłową i dyskusyjną pasuje do obu); brak filtru „oceny sprzeczne” czy „zgodne”.
+- [ ] Indeksy dodano tylko dla `comments.clip_id` i `comments.match_id` (migracja `mvp0003`); `ratings.clip_id` pokrywa unikalność (clip_id, coach_id), a `ratings.coach_id` bez indeksu (tylko kontrola kluczy obcych).
+- [ ] Widoki mobilne sprawdzone w Chromium 375×740, nie na prawdziwym iPhonie/Safari (pole `<details>` do zmiany cudzej oceny i `confirm` w przycisku warto obejrzeć ręcznie).
+- [ ] Test E2E `test_player.py::test_podwojne_z_to_jeden_znacznik_a_backspace_cofa` raz nie przeszedł podczas prac nad segmentem 6; zależy od czasu (blokada podwójnego `Z` przez 1 s), może być niestabilny przy obciążonej maszynie — obserwować.

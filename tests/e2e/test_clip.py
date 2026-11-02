@@ -57,7 +57,7 @@ def test_klip_przy_poczatku_nagrania_jest_krotszy(ui):
 
 def test_komentarz_dodany_i_usuniety_przez_htmx_bez_przeladowania(ui):
     page, _ = cut_clip(ui, 30.0)
-    expect(page.locator("#comments")).to_contain_text("Brak komentarzy.")
+    expect(page.locator("#no-comments")).to_have_text("Brak komentarzy.")
     page.evaluate("window.__bez_przeladowania = true")
     page.on("dialog", lambda d: d.accept())  # hx-confirm przy usuwaniu
 
@@ -69,7 +69,7 @@ def test_komentarz_dodany_i_usuniety_przez_htmx_bez_przeladowania(ui):
     expect(comment).to_contain_text("Adam Admin")
     expect(comment).to_contain_text("Moim zdaniem prawidłowa decyzja.")
     expect(box).to_have_value("")  # formularz wyczyszczony (hx-on::after-request)
-    expect(page.locator("#comments")).not_to_contain_text("Brak komentarzy.")
+    expect(page.locator("#no-comments")).to_have_text("")
     assert page.evaluate("window.__bez_przeladowania === true")
 
     # drugi komentarz; treść jest tekstem, nie HTML
@@ -79,11 +79,11 @@ def test_komentarz_dodany_i_usuniety_przez_htmx_bez_przeladowania(ui):
     expect(page.locator("#comments .comment").nth(1).locator(".body")).to_have_text("<b>pogrubione</b> & drugi")
 
     # usunięcie pierwszego
-    page.locator("#comments .comment").first.get_by_role("link", name="Usuń").click()
+    page.locator("#comments .comment").first.get_by_role("button", name="Usuń").click()
     expect(page.locator("#comments .comment")).to_have_count(1)
     expect(page.locator("#comments")).not_to_contain_text("Moim zdaniem")
-    page.locator("#comments .comment").first.get_by_role("link", name="Usuń").click()
-    expect(page.locator("#comments")).to_contain_text("Brak komentarzy.")
+    page.locator("#comments .comment").first.get_by_role("button", name="Usuń").click()
+    expect(page.locator("#no-comments")).to_have_text("Brak komentarzy.")
     assert page.evaluate("window.__bez_przeladowania === true")
 
 
@@ -96,7 +96,7 @@ def test_cudzego_komentarza_nie_mozna_usunac(ui):
     other = ui.page("outsider")
     other.goto(f"/clips/{clip_id}")
     expect(other.locator("#comments .comment")).to_contain_text("Komentarz admina")
-    expect(other.locator("#comments .comment").get_by_role("link", name="Usuń")).to_have_count(0)
+    expect(other.locator("#comments .comment").get_by_role("button", name="Usuń")).to_have_count(0)
     # każdy zalogowany może komentować
     other.get_by_label("Nowy komentarz").fill("Komentarz sędziego")
     other.get_by_role("button", name="Dodaj komentarz").click()

@@ -163,7 +163,7 @@ def test_strona_klipu_pokazuje_pelny_opis_oceny_i_link_do_nagrania(ui):
     info = page.locator("#clip-info")
     for text in ("cały zespół", "Kontakt z ławką", "Q2 · 0:10 od początku kwarty (czas nagrania)", "Adam Admin", "Opisano"):
         expect(info).to_contain_text(text)
-    expect(page.locator("#oceny")).to_contain_text("Oceny szkoleniowców pojawią się w kolejnym etapie.")
+    expect(page.locator("#oceny")).to_contain_text("Klip nie ma jeszcze ocen.")
     page.get_by_role("link", name="pokaż w pełnym nagraniu").click()
     expect(page).to_have_url(re.compile(rf"/videos/{video_id}\?t=45"))
 

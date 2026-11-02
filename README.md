@@ -3,7 +3,7 @@
 Aplikacja webowa do wycinania i analizy decyzji sędziowskich z meczów koszykówki, dla sędziów
 i szkoleniowców jednego okręgu. Wgrywasz nagranie, zaznaczasz momenty albo wklejasz notatki typu
 `2:54 Filip kroki`, a aplikacja wycina z każdego wpisu klip (15 s przed i 15 s po) i porządkuje
-klipy z opisem, komentarzami i (docelowo) ocenami szkoleniowców.
+klipy z opisem, komentarzami i ocenami szkoleniowców.
 
 Dokumentacja projektu: [specyfikacja MVP](docs/specyfikacja-mvp.md),
 [plan techniczny](docs/plan-techniczny.md). Stan prac: segment 1 („Fundament”) — konta,
@@ -13,8 +13,9 @@ wznawialne wgrywanie (tus), deklaracja zawartości pliku, usuwanie oryginału po
 segment 2a („Docker lokalnie”) — obraz i Compose do testów na innych komputerach;
 segment 4 („Znaczniki”) — klawisz „Zaznacz”, początki kwart wg deklaracji pliku, notatki przy wgrywaniu;
 segment 4a („Testy interfejsu”) — automatyczne testy w przeglądarce (Playwright, Chromium);
-segment 5 („Klipy”) — ekran opisywania znaczników, zakładka „Klipy” meczu z filtrami, widok klipu.
-Kolejne segmenty (oceny i komentarze, retencja, wdrożenie) opisuje plan.
+segment 5 („Klipy”) — ekran opisywania znaczników, zakładka „Klipy” meczu z filtrami, widok klipu;
+segment 6 („Oceny i komentarze”) — oceny szkoleniowców, komentarze do meczu i klipu, widoki mobilne.
+Kolejne segmenty (retencja i panel admina, wdrożenie) opisuje plan.
 
 ## Wymagania i instalacja
 
@@ -348,21 +349,37 @@ i ustawieniem hasła wymaga zalogowania (strony przekierowują na `/login`, API 
    Opisywać mogą administrator i szkoleniowiec w każdym meczu oraz sędzia w meczach, w których jest w obsadzie
    (`can_describe_clip`; serwer odmawia pozostałym kodem 403 na ekranie i wszystkich trasach zapisu).
 6. **Klipy meczu** — na stronie meczu sekcja „Klipy” z filtrami: **sędzia** (obsada meczu albo „cały zespół”),
-   **kategoria**, **kwarta** (także „nieustalona”) i **opisane / nieopisane**. Filtry są w adresie
-   (`?person=…&category_id=…&period=Q2&described=0`), działają bez JavaScriptu (zwykły formularz GET), a HTMX
+   **kategoria**, **kwarta** (także „nieustalona”), **oceny** (z dowolną oceną, „ma ocenę: prawidłowa /
+   nieprawidłowa / dyskusyjna”, bez ocen) i **opisane / nieopisane**. Filtry są w adresie
+   (`?person=…&category_id=…&period=Q2&rating=none&described=0`), działają bez JavaScriptu (zwykły formularz GET), a HTMX
    podmienia tylko listę i wpisuje filtry do adresu. Wiersz: sędzia (funkcja + nazwisko), kategoria,
    „kwarta · czas od początku kwarty” (czas nagrania, nie zegar meczowy), czas w nagraniu, skrót opisu, stan,
-   miejsce na oceny szkoleniowców (do segmentu 6 pusta kolumna) i link do klipu; na telefonie wiersze to karty.
+   podsumowanie ocen (np. „2× prawidłowa”, „1× dyskusyjna”) z liczbą komentarzy i link do klipu; na telefonie
+   wiersze to karty.
    Globalna lista `/clips` ma te same filtry (plus mecz).
 7. **Klip** — odtwarzacz klipu, opis (sędzia, kategoria, „Q2 · 4:12 od początku kwarty (czas nagrania)” z dopiskiem
    „czas nagrania – nie zegar meczowy”, opis, kto dodał znacznik i kiedy, kiedy opisano), pobranie MP4 (nazwa
    pliku `data_kwarta_czas_sędzia_kategoria.mp4`, np. `2026-10-28_Q2_02m54s_CC_blok-szarza.mp4`; liczona na bieżąco,
    więc po zmianie opisu pobrany plik ma nową nazwę; tylko znaki ASCII, nazwa własnej kategorii skrócona do 40 znaków),
-   komentarze, link do tego momentu w pełnym nagraniu (tylko gdy pełne nagranie nie zostało usunięte), formularz
+   oceny szkoleniowców, komentarze, link do tego momentu w pełnym nagraniu (tylko gdy pełne nagranie nie zostało usunięte), formularz
    edycji opisu (te same pola i walidacja co na ekranie opisywania) i **poprzedni / następny klip meczu**
    według filtrów, z których użytkownik przyszedł (filtry przechodzą w adresie; bez filtrów — wg czasu).
    Klip w stanie błędu pokazuje przyczynę; uprawnieni mają „Wytnij ponownie” (nie, gdy moment jest poza nagraniem
    albo pełnego nagrania już nie ma) i „Usuń klip”. Klip bez opisu jest oznaczony „nieopisany”.
+8. **Oceny i komentarze** (segment 6).
+   - **Oceny:** na stronie klipu każdy szkoleniowiec (rola `coach`; sama rola administratora nie wystarcza)
+     wystawia własną ocenę — prawidłowa / nieprawidłowa / dyskusyjna — z opcjonalnym komentarzem. Ocena jest jedna
+     na parę (klip, szkoleniowiec): ponowny zapis ją aktualizuje (strona pokazuje „zmieniona” z datą). Widać
+     wszystkie oceny z autorem i datą; sędzia widzi je bez formularza. Zmienić lub usunąć ocenę może jej autor
+     albo administrator; administrator zmienia cudzą ocenę, ale autorem zostaje szkoleniowiec.
+   - **Komentarze** do meczu (strona meczu) i klipu (strona klipu): komentuje każdy zalogowany; autor edytuje swój
+     (przy komentarzu „edytowano” z datą), autor albo administrator usuwa (administrator nie edytuje cudzych).
+     Treść to zwykły tekst (do 5000 znaków, łamania linii zachowane), bez HTML. Dodawanie, edycja inline
+     (z „Anuluj”) i usuwanie (z potwierdzeniem) działają przez HTMX bez przeładowania strony, a bez JavaScriptu jako
+     zwykłe formularze z przekierowaniem. Sekcja komentarzy meczu jest poza obszarem odświeżanym co 3 s, więc
+     wpisywany tekst i otwarta edycja przeżywają odświeżanie panelu nagrań.
+   - **Telefon:** strona klipu, tabela klipów (karty) i komentarze są czytelne na szerokości ok. 375 px bez
+     poziomego przewijania; odtwarzacz meczu i ekran opisywania zostają pod komputer.
 
 Słownik kategorii (grupy Faule, Naruszenia, Bez gwizdka, Mechanika, Inne) jest zakładany
 przy pierwszym uruchomieniu (`app/seed.py`); edycja z poziomu panelu to segment 7. Klipy
@@ -390,7 +407,7 @@ obejmują każdy wiersz tabeli uprawnień ze specyfikacji dla każdej roli i ich
 Testy w prawdziwej przeglądarce (Chromium sterowany przez [Playwright](https://playwright.dev/python/)):
 logowanie, konta i zaproszenia, formularz meczu, wgrywanie (tus, przerwanie i wznowienie, notatki
 z podglądem), odtwarzacz i skróty klawiszowe, znaczniki, uprawnienia w interfejsie, strona klipu
-z komentarzami (HTMX), ekran opisywania (skróty klawiszowe, propozycje z notatek, kwarta nieustalona),
+z ocenami i komentarzami (HTMX, także bez JavaScriptu; odświeżanie strony meczu a wpisywany komentarz; widoki 375×740), ekran opisywania (skróty klawiszowe, propozycje z notatek, kwarta nieustalona),
 zakładka klipów meczu (filtry HTMX i bez JS, karty na telefonie), nawigacja poprzedni/następny, lista meczów
 (filtry, paginacja, widok mobilny) i strony błędów.
 Test uruchamia prawdziwy serwer (uvicorn) i worker na wolnym porcie z tymczasowym katalogiem danych,
@@ -420,7 +437,8 @@ app/accounts.py        logowanie z limitem prób, sesje, zaproszenia, zarządzan
 app/permissions.py     uprawnienia (czyste funkcje, jedno miejsce)
 app/create_admin.py    polecenie zakładające pierwszego administratora
 app/routers/           trasy: logowanie, panel admina, mecze, nagrania/odtwarzacz/notatki, klipy, ekran opisywania
-app/clip_list.py       filtry klipów z adresu (zakładka meczu, /clips, poprzedni/następny)
+app/clip_list.py       filtry klipów z adresu (zakładka meczu, /clips, poprzedni/następny), podsumowanie ocen
+app/feedback.py        oceny i komentarze: walidacja, zapis oceny (upsert), liczniki; trasy: app/routers/feedback.py
 app/models.py          model danych (SQLAlchemy 2), migracje w alembic/
 app/seed.py            słownik kategorii i ustawienia domyślne
 app/notes_parser.py    parser notatek (czysta funkcja)

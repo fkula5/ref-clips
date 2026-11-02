@@ -21,6 +21,9 @@ CUT_OUTSIDE_TOLERANCE = 1.0      # klip dalej niż tyle za końcem nagrania to b
 NOTES_MAX_CHARS = 20_000         # notatki przy wgrywaniu i na stronie notatek
 NOTES_MAX_LINES = 300
 
+# --- oceny i komentarze -------------------------------------------------------------
+TEXT_MAX_CHARS = 5000            # komentarz do meczu/klipu i komentarz do oceny
+
 # --- konta i sesje ----------------------------------------------------------------
 SESSION_COOKIE = "rc_session"
 CSRF_COOKIE = "rc_csrf"  # tylko dla formularzy bez sesji (logowanie, ustawienie hasła)

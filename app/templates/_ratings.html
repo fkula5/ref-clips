@@ -1,0 +1,65 @@
+{# Karta „Oceny szkoleniowców” na stronie klipu (HTMX podmienia ją w całości). Zmienne: c, ratings,
+   rating_error, rating_error_for ("own" albo id oceny), rating_draft ({verdict, comment}).
+   Formularz „Twoja ocena” widzi tylko rola szkoleniowca; administrator zmienia i usuwa cudze oceny,
+   a autorem oceny (coach_id) zostaje szkoleniowiec. #}
+{% set mine = ratings|selectattr('coach_id', 'equalto', user.id)|first if perm.can_rate(user) else none %}
+{% macro verdict_choices(current) %}
+<fieldset class="choice-group">
+  <legend>Ocena</legend>
+  {% for key, label in RATING_VERDICTS.items() %}
+  <label class="choice"><input type="radio" name="verdict" value="{{ key }}" {{ 'checked' if current == key }} required> {{ label }}</label>
+  {% endfor %}
+</fieldset>
+{% endmacro %}
+<div class="card" id="oceny">
+  <h3>Oceny szkoleniowców</h3>
+  {% for r in ratings %}
+  <div class="rating" id="rating-{{ r.id }}">
+    <div class="meta">
+      <span class="verdict {{ r.verdict }}">{{ RATING_VERDICTS[r.verdict] }}</span>
+      <strong>{{ r.coach.name }}</strong>
+    </div>
+    <div class="muted small-note">{{ r.created_at.strftime("%d.%m.%Y %H:%M") }}{% if rating_edited(r) %} · zmieniona {{ r.updated_at.strftime("%d.%m.%Y %H:%M") }}{% endif %}</div>
+    {% if r.comment %}<div class="body">{{ r.comment }}</div>{% endif %}
+    {% if perm.can_edit_rating(user, r) or perm.can_delete_rating(user, r) %}
+    <div class="actions">
+      {% if perm.can_edit_rating(user, r) and not (mine and mine.id == r.id) %}
+      <details class="rating-edit" {{ 'open' if rating_error_for == r.id }}>
+        <summary>Zmień</summary>
+        <form class="form" method="post" action="/clips/{{ c.id }}/ratings/{{ r.id }}/edit"
+              hx-post="/clips/{{ c.id }}/ratings/{{ r.id }}/edit" hx-target="#oceny" hx-swap="outerHTML">
+          {{ csrf_input() }}
+          {% set draft = rating_draft if rating_error_for == r.id and rating_draft else none %}
+          {{ verdict_choices(draft.verdict if draft else r.verdict) }}
+          <label>Komentarz (opcjonalnie)<textarea name="comment" rows="2">{{ draft.comment if draft else r.comment }}</textarea></label>
+          {% if rating_error and rating_error_for == r.id %}<p class="error-text" role="alert">{{ rating_error }}</p>{% endif %}
+          <button class="btn primary small">Zapisz zmianę</button>
+        </form>
+      </details>
+      {% endif %}
+      {% if perm.can_delete_rating(user, r) %}
+      <form class="inline" method="post" action="/clips/{{ c.id }}/ratings/{{ r.id }}/delete"
+            hx-post="/clips/{{ c.id }}/ratings/{{ r.id }}/delete" hx-target="#oceny" hx-swap="outerHTML">
+        {{ csrf_input() }}<button class="inline-btn danger-link" onclick="return confirm('Usunąć ocenę?')">Usuń</button>
+      </form>
+      {% endif %}
+    </div>
+    {% endif %}
+  </div>
+  {% else %}
+  <p class="muted">Klip nie ma jeszcze ocen.</p>
+  {% endfor %}
+
+  {% if perm.can_rate(user) %}
+  <form class="form rating-form" id="rating-form" method="post" action="/clips/{{ c.id }}/rating"
+        hx-post="/clips/{{ c.id }}/rating" hx-target="#oceny" hx-swap="outerHTML">
+    {{ csrf_input() }}
+    {% set draft = rating_draft if rating_error_for == 'own' and rating_draft else none %}
+    <h4>{{ 'Zmień swoją ocenę' if mine else 'Twoja ocena' }}</h4>
+    {{ verdict_choices(draft.verdict if draft else (mine.verdict if mine else '')) }}
+    <label>Komentarz (opcjonalnie)<textarea name="comment" rows="2">{{ draft.comment if draft else (mine.comment if mine else '') }}</textarea></label>
+    {% if rating_error and rating_error_for == 'own' %}<p class="error-text" role="alert">{{ rating_error }}</p>{% endif %}
+    <button class="btn primary">{{ 'Zapisz zmianę' if mine else 'Zapisz ocenę' }}</button>
+  </form>
+  {% endif %}
+</div>

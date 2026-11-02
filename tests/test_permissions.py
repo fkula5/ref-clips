@@ -310,11 +310,12 @@ def test_comment_deletion_rules(world, db):
     r = author_client.post(f"/clips/{c.id}/comments", data={"body": "Mój komentarz"})
     assert r.status_code == 200
     comment = db.scalar(select(Comment))
-    assert world["other_coach"].post(f"/comments/{comment.id}/delete").status_code == 403
-    assert world["coach"].post(f"/comments/{comment.id}/delete").status_code == 403
+    url = f"/clips/{c.id}/comments/{comment.id}/delete"
+    assert world["other_coach"].post(url).status_code == 403
+    assert world["coach"].post(url).status_code == 403
     assert db.get(Comment, comment.id) is not None
-    assert world["admin"].post(f"/comments/{comment.id}/delete").status_code == 200   # admin usuwa każdy
+    assert world["admin"].post(url).status_code == 200                                # admin usuwa każdy
     assert db.scalar(select(Comment)) is None
     world["coach"].post(f"/clips/{c.id}/comments", data={"body": "Komentarz trenera"})
     own = db.scalar(select(Comment))
-    assert world["coach"].post(f"/comments/{own.id}/delete").status_code == 200       # autor usuwa swój
+    assert world["coach"].post(f"/clips/{c.id}/comments/{own.id}/delete").status_code == 200   # autor usuwa swój

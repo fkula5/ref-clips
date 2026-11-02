@@ -10,7 +10,7 @@ from fastapi.templating import Jinja2Templates
 from jinja2 import pass_context
 from markupsafe import Markup, escape
 
-from app import config, services
+from app import clip_list, config, feedback, services
 from app.auth import set_anon_csrf_cookie
 from app import models as m
 from app import permissions
@@ -52,6 +52,8 @@ env.globals.update(
     csrf_input=csrf_input,
     perm=permissions,
     USER_ROLES=m.USER_ROLES, OFFICIAL_FUNCTIONS=m.OFFICIAL_FUNCTIONS,
+    RATING_VERDICTS=m.RATING_VERDICTS, RATING_CHOICES=clip_list.RATING_CHOICES,
+    TEXT_MAX_CHARS=config.TEXT_MAX_CHARS, rating_edited=feedback.is_edited,
     VIDEO_STATUSES=m.VIDEO_STATUSES, CLIP_STATUSES=m.CLIP_STATUSES, PERIODS=m.PERIODS,
     period_for=lambda c: services.period_for(c.video.marks, c.time_sec),
     period_label=lambda c: services.period_label(c.video.marks, c.time_sec),
@@ -89,6 +91,13 @@ def render(request: Request, name: str, status_code: int = 200, **context):
     if anon_cookie:
         set_anon_csrf_cookie(response, anon_cookie)
     return response
+
+
+def is_htmx(request: Request) -> bool:
+    """Żądanie wysłane przez HTMX (odświeżanie fragmentu, a nie nawigacja). Odtworzenie strony z historii
+    (wstecz przy braku kopii w pamięci HTMX) też ma nagłówek HX-Request, ale podmienia całe body, więc
+    traktujemy je jak zwykłą nawigację."""
+    return "hx-request" in request.headers and "hx-history-restore-request" not in request.headers
 
 
 def back_url(request: Request) -> str | None:

@@ -1,0 +1,3 @@
+{# Odpowiedź HTMX po usunięciu: pusta (komentarz znika), a komunikat „Brak komentarzy” wraca poza celem,
+   gdy lista jest pusta. #}
+<p id="no-comments" class="muted empty-note" hx-swap-oob="true">{% if empty %}Brak komentarzy.{% endif %}</p>

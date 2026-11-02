@@ -61,7 +61,7 @@ def test_tab_shows_all_columns_per_row(client, tab):
     assert "Kontakt z ławką" in page and "kroki" in page
     assert "Przekroczył linię bardzo" in page and "bardzo długo" not in page and "…" in page   # opis skrócony
     assert "to nie jest zegar meczowy" in page
-    assert 'title="Oceny szkoleniowców pojawią się w kolejnym etapie"' in page             # miejsce na oceny
+    assert 'data-label="Oceny"' in page                                                    # kolumna ocen
     assert "Klipy (5, nieopisane: 2)" in page and 'id="btn-describe"' in page and "Opisz znaczniki (2)" in page
 
 
@@ -208,13 +208,13 @@ def test_clip_page_links_back_to_the_filtered_tab(client, tab):
 
 
 # --- strona klipu ------------------------------------------------------------------------
-def test_clip_page_shows_description_fields_and_ratings_placeholder(client, tab, admin):
+def test_clip_page_shows_description_fields_and_ratings_card(client, tab, admin):
     page = clip_page(client, tab["clips"]["q2_team"])
     info = page.split('id="clip-info"')[1].split('id="oceny"')[0]
     for text in ("cały zespół", "Kontakt z ławką", "Q2 · 1:20 od początku kwarty (czas nagrania)",
                  "czas nagrania – nie zegar meczowy", "Znacznik dodał(a)", "Opisano", "29.10.2026 12:00"):
         assert text in info, text
-    assert "Oceny szkoleniowców pojawią się w kolejnym etapie." in page
+    assert "Klip nie ma jeszcze ocen." in page
 
 
 def test_full_recording_link_only_while_the_full_video_exists(client, tab, db):

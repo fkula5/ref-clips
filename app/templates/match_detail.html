@@ -88,13 +88,13 @@
 {% elif not clips %}
   <p class="muted">Brak klipów dla wybranych filtrów. <a href="/matches/{{ match.id }}#klipy">Wyczyść filtry</a></p>
 {% else %}
-  {{ clips_table(clips, nav) }}
+  {{ clips_table(clips, nav, false, stats) }}
   <p class="muted small-note">{% if f.active %}Pokazano {{ clips|length }} z {{ total_clips }}. {% endif %}Czas w kolumnie „Kwarta” liczony jest od początku kwarty w nagraniu — to nie jest zegar meczowy.</p>
 {% endif %}
 </div>
 </section>
 
-{# Komentarze do meczu: segment 6 (tabela comments i reguły w permissions gotowe, brak tras i widoku). #}
-<section id="komentarze"></section>
+{# Komentarze do meczu: poza #videos-panel, #clips-head i #clips-list (odświeżanie co 3 s ich nie rusza). #}
+{% if comments is not none %}{% set cbase = "/matches/" ~ match.id %}{% include "_comments.html" %}{% endif %}
 {% endblock %}
-{% block scripts %}<script src="/static/vendor/tus-js-client-4.3.1.min.js"></script><script src="/static/upload.js"></script>{% endblock %}
+{% block scripts %}<script src="/static/vendor/tus-js-client-4.3.1.min.js"></script><script src="/static/upload.js"></script><script src="/static/feedback.js"></script>{% endblock %}
