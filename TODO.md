@@ -70,7 +70,7 @@
 - [ ] Filtr ocen „ma ocenę: X” oznacza „co najmniej jedna ocena X” (klip z oceną prawidłową i dyskusyjną pasuje do obu); brak filtru „oceny sprzeczne” czy „zgodne”.
 - [ ] Indeksy dodano tylko dla `comments.clip_id` i `comments.match_id` (migracja `mvp0003`); `ratings.clip_id` pokrywa unikalność (clip_id, coach_id), a `ratings.coach_id` bez indeksu (tylko kontrola kluczy obcych).
 - [ ] Widoki mobilne sprawdzone w Chromium 375×740, nie na prawdziwym iPhonie/Safari (pole `<details>` do zmiany cudzej oceny i `confirm` w przycisku warto obejrzeć ręcznie).
-- [ ] Test E2E `test_player.py::test_podwojne_z_to_jeden_znacznik_a_backspace_cofa` raz nie przeszedł podczas prac nad segmentem 6; zależy od czasu (blokada podwójnego `Z` przez 1 s), może być niestabilny przy obciążonej maszynie — obserwować.
+- [ ] Test E2E `test_player.py::test_podwojne_z_to_jeden_znacznik_a_backspace_cofa` raz nie przeszedł podczas prac nad segmentem 6; zależy od czasu (blokada podwójnego `Z` przez 1 s), może być niestabilny przy obciążonej maszynie — obserwować. W review segmentu 7 jeden z czterech pełnych przebiegów E2E miał 1 porażkę (nazwa testu nie została zapisana, kolejne przebiegi i 8× sam `test_player.py` zielone) — przy następnym wystąpieniu uruchamiać z `-rf` i ustabilizować ten test.
 
 ## Uwagi z segmentu 7 (drobne, odłożone)
 
@@ -83,3 +83,5 @@
 - [ ] Konflikty aliasów wykrywamy tylko na równość znormalizowanych napisów; aliasy będące fragmentem innych (np. „blok” i „blok / szarża”) rozstrzyga parser (dłuższy alias wygrywa), bez ostrzeżenia w panelu.
 - [ ] Zmiana `retention_days` z przeliczeniem nadaje termin także nagraniom bez terminu (`expires_at` NULL, np. sprzed wprowadzenia retencji); bez przeliczenia takie nagrania nigdy nie wygasają.
 - [ ] Daty w panelu retencji są w UTC, jak w reszcie aplikacji; „dostępne jeszcze X dni” zaokrągla w górę do pełnych dni.
+- [ ] `retention.purge_video` usuwa pliki przed zapisem `purged_at` w bazie; jeśli commit się nie uda (np. zajęta baza), nagranie zostaje „gotowe” bez pliku do najbliższego przebiegu retencji. Bezpieczniejsza kolejność: najpierw `purged_at` (commit), potem pliki, a nieudane usunięcie pliku zostawić sprzątaniu.
+- [ ] Formularze panelu admina (kategorie, retencja, usunięcie nagrania) odpowiadają stroną zamiast przekierowania 303 — odświeżenie strony po zapisie wysyła formularz ponownie (tak jak dotychczasowa strona kont).
