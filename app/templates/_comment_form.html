@@ -1,0 +1,15 @@
+{# Formularz nowego komentarza. HTMX dopisuje komentarz na koniec listy (#comments) i podmienia ten
+   formularz na czysty (oob); przy błędzie (422) podmienia go na wersję z komunikatem i wpisaną treścią.
+   Zmienne: cbase, comment_error, comment_draft; oob — odpowiedź z podmianą poza celem. #}
+<form id="comment-form" class="card form" method="post" action="{{ cbase }}/comments"
+      hx-post="{{ cbase }}/comments" hx-target="#comments" hx-swap="beforeend"{% if oob %} hx-swap-oob="true"{% endif %}>
+  {{ csrf_input() }}
+  <label>Nowy komentarz
+    <textarea name="body" rows="3" required>{{ comment_draft or '' }}</textarea>
+  </label>
+  {% if comment_error %}<p class="error-text" role="alert">{{ comment_error }}</p>{% endif %}
+  <div class="row">
+    <button class="btn primary">Dodaj komentarz</button>
+    <span class="muted small-note">najwyżej {{ TEXT_MAX_CHARS }} znaków</span>
+  </div>
+</form>

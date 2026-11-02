@@ -243,12 +243,13 @@ def test_comments_and_clip_page(client, db, admin):
     video = make_ready_video(db, make_match(db))
     clip_id = quick(client, video.id, 100, "Filip kroki").json()["clip"]["id"]
     assert client.get(f"/clips/{clip_id}").status_code == 200
-    r = client.post(f"/clips/{clip_id}/comments", data={"body": "Za późno gwizdek"})
+    r = client.post(f"/clips/{clip_id}/comments", data={"body": "Za późno gwizdek"},
+                    headers={"HX-Request": "true"})
     assert r.status_code == 200 and "Za późno gwizdek" in r.text and "Admin Testowy" in r.text
     comment = db.scalar(select(Comment))
     assert comment.clip_id == clip_id and comment.match_id is None and comment.author_id == admin[1].id
-    r = client.post(f"/comments/{comment.id}/delete")
-    assert "Za późno gwizdek" not in r.text and db.scalar(select(Comment)) is None
+    r = client.post(f"/clips/{clip_id}/comments/{comment.id}/delete", headers={"HX-Request": "true"})
+    assert r.status_code == 200 and "Brak komentarzy." in r.text and db.scalar(select(Comment)) is None
 
 
 def test_download(client, db):

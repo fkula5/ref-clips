@@ -169,3 +169,26 @@ tr.inactive td { color: var(--muted); }
   .clips-table td.desc-cell { max-width: none; }
   table.responsive td.open-cell { justify-content: flex-end; }
 }
+
+/* oceny i komentarze */
+.comments-box textarea, .rating-form textarea, .rating-edit textarea { font-family: inherit; }
+.comment .body, .rating .body { white-space: pre-wrap; overflow-wrap: anywhere; margin: 4px 0; }
+.comment .meta { flex-wrap: wrap; gap: 2px 10px; }
+.comment .actions, .rating .actions { margin-top: 4px; align-items: flex-start; flex-wrap: wrap; }
+.comment.editing { border-color: var(--accent); }
+.empty-note:empty { display: none; }
+.inline-btn { background: none; border: 0; padding: 0; font: inherit; cursor: pointer; }
+.inline-btn:hover { text-decoration: underline; }
+.verdict { display: inline-block; padding: 1px 9px; margin: 1px 4px 1px 0; border-radius: 10px; font-size: 13px; font-weight: 600; white-space: nowrap; background: #e9edf5; }
+.verdict.correct { background: #d8f0da; color: var(--ok); }
+.verdict.incorrect { background: #fbd9d6; color: var(--danger); }
+.verdict.debatable { background: #fff0cc; color: var(--warn); }
+.rating { border-top: 1px solid var(--line); padding: 8px 0; }
+.rating:first-of-type { border-top: 0; }
+.rating .meta { display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: center; }
+.rating-form { border-top: 1px solid var(--line); margin-top: 8px; padding-top: 4px; }
+.rating-form h4 { margin: 8px 0 4px; font-size: 15px; }
+.rating-edit summary { cursor: pointer; color: var(--accent); }
+.ratings-cell { min-width: 120px; }
+.toast { max-width: calc(100vw - 24px); text-align: center; }
+.rating .actions { font-size: 13px; display: flex; gap: 6px 14px; }

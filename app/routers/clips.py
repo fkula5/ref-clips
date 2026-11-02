@@ -1,4 +1,5 @@
-"""Klipy: lista z filtrami, strona klipu, opis i edycja, ponowne cięcie, usuwanie, komentarze, pobieranie."""
+"""Klipy: lista z filtrami, strona klipu, opis i edycja, ponowne cięcie, usuwanie, pobieranie.
+Oceny i komentarze: app/routers/feedback.py."""
 from __future__ import annotations
 
 from urllib.parse import urlencode
@@ -8,15 +9,15 @@ from fastapi.responses import RedirectResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app import clip_list, permissions, services
+from app import clip_list, feedback, permissions, services
 from app.auth import require, via_match
 from app.clip_list import query_clips  # noqa: F401 - używane też przez app/routers/clips_v2.py
 from app.db import get_db
-from app.loaders import get_clip, get_comment
-from app.models import Clip, Comment, Match, User
+from app.loaders import get_clip
+from app.models import Clip, Match, User
 from app.routers import describe
 from app.storage import storage
-from app.web import file_response, render
+from app.web import file_response, is_htmx, render
 
 router = APIRouter()
 
@@ -34,6 +35,7 @@ def clips_list(request: Request, db: Session = Depends(get_db),
     return render(
         request, "clips.html", clips=clips, f=f, created=created, skipped=skipped,
         pending=any(c.status in ("new", "queued") for c in clips),
+        stats=clip_list.clip_stats(db, clips),
         matches=db.scalars(select(Match).order_by(Match.date.desc(), Match.id.desc())).all(),
         people=person_choices(db), categories=services.all_categories(db),
         nav=f.query(scope=False), query=str(request.url.query))
@@ -41,9 +43,12 @@ def clips_list(request: Request, db: Session = Depends(get_db),
 
 # --- strona klipu ---------------------------------------------------------------
 def render_clip(request: Request, db: Session, clip: Clip, f: clip_list.ClipFilters, *,
-                values: dict | None = None, error: str | None = None, status_code: int = 200):
+                values: dict | None = None, error: str | None = None, status_code: int = 200, **extra):
     """Strona klipu; `f` to filtry, z których przyszedł użytkownik (poprzedni/następny klip w meczu
-    liczony wg nich, a klip bieżący nie musi do nich pasować)."""
+    liczony wg nich, a klip bieżący nie musi do nich pasować). `extra` to stan formularzy ocen i
+    komentarzy po błędzie. Odświeżanie sekcji klipu przez HTMX nie potrzebuje ocen ani komentarzy,
+    więc ich wtedy nie wczytujemy."""
+    partial = is_htmx(request)
     previous, following = services.neighbours(clip_list.select_clips(db, f, match_id=clip.match_id), clip)
     nav = f.query(scope=False)
     full_video = clip.video.purged_at is None and clip.video.status == "ready" and bool(clip.video.proxy_path)
@@ -53,7 +58,9 @@ def render_clip(request: Request, db: Session, clip: Clip, f: clip_list.ClipFilt
         previous=previous, following=following, nav=nav, nav_q=f"?{nav}" if nav else "",
         full_video=full_video, problem=describe.cut_problem(clip),
         blocker=services.describe_block(clip), error=error,
-        values=values if values is not None else describe.form_values(clip))
+        values=values if values is not None else describe.form_values(clip),
+        ratings=None if partial else feedback.ratings_of(db, clip),
+        comments=None if partial else feedback.comments_of(db, clip_id=clip.id), **extra)
 
 
 @router.get("/clips/{clip_id}")
@@ -153,27 +160,3 @@ def clip_file(clip: Clip = Depends(get_clip), user: User = require(permissions.c
 @router.get("/clips/{clip_id}/download")
 def clip_download(clip: Clip = Depends(get_clip), user: User = require(permissions.can_view)):
     return _clip_file(clip, download=True)
-
-
-# --- komentarze -----------------------------------------------------------------
-@router.post("/clips/{clip_id}/comments")
-def add_comment(request: Request, db: Session = Depends(get_db), clip: Clip = Depends(get_clip),
-                user: User = require(permissions.can_comment), body: str = Form()):
-    if body.strip():
-        db.add(Comment(clip_id=clip.id, author_id=user.id, body=body.strip()))
-        db.commit()
-        db.refresh(clip)
-    return render(request, "_comments.html", c=clip)
-
-
-@router.post("/comments/{comment_id}/delete")
-def delete_comment(request: Request, db: Session = Depends(get_db),
-                   comment: Comment = Depends(get_comment),
-                   user: User = require(permissions.can_delete_comment, get_comment)):
-    clip, match_id = comment.clip, comment.match_id
-    db.delete(comment)
-    db.commit()
-    if clip is None:
-        return RedirectResponse(f"/matches/{match_id}", status_code=303)
-    db.refresh(clip)
-    return render(request, "_comments.html", c=clip)

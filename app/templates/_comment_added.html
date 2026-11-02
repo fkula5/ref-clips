@@ -1,0 +1,5 @@
+{# Odpowiedź HTMX po dodaniu: nowy komentarz (dopisany na koniec #comments) oraz poza celem:
+   ukryty komunikat „Brak komentarzy” i czysty formularz. #}
+{% include "_comment_item.html" %}
+<p id="no-comments" class="muted empty-note" hx-swap-oob="true"></p>
+{% set oob = true %}{% set comment_error = none %}{% set comment_draft = none %}{% include "_comment_form.html" %}

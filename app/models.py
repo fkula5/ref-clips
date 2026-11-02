@@ -314,7 +314,7 @@ class Clip(Base):
 
 
 class Rating(Base):
-    """Ocena szkoleniowca; jedna na parę (klip, szkoleniowiec). Interfejs: segment 6."""
+    """Ocena szkoleniowca; jedna na parę (klip, szkoleniowiec)."""
     __tablename__ = "ratings"
     __table_args__ = (
         UniqueConstraint("clip_id", "coach_id"),
@@ -343,8 +343,8 @@ class Comment(Base):
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    match_id: Mapped[int | None] = mapped_column(ForeignKey("matches.id", ondelete="CASCADE"))
-    clip_id: Mapped[int | None] = mapped_column(ForeignKey("clips.id", ondelete="CASCADE"))
+    match_id: Mapped[int | None] = mapped_column(ForeignKey("matches.id", ondelete="CASCADE"), index=True)
+    clip_id: Mapped[int | None] = mapped_column(ForeignKey("clips.id", ondelete="CASCADE"), index=True)
     author_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
     body: Mapped[str] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())

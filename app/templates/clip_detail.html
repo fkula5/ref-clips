@@ -55,10 +55,7 @@
       </dl>
     </div>
 
-    <div class="card" id="oceny">
-      <h3>Oceny szkoleniowców</h3>
-      <p class="muted">Oceny szkoleniowców pojawią się w kolejnym etapie.</p>
-    </div>
+    {% if ratings is not none %}{% include "_ratings.html" %}{% endif %}
 
     {% if perm.can_describe_clip(user, c) %}
     <div class="card" id="clip-edit">
@@ -80,16 +77,9 @@
   </aside>
 </div>
 
-<h2>Komentarze</h2>
-<div id="comments-box">
-  <div id="comments">{% include "_comments.html" %}</div>
-  <form class="card form" hx-post="/clips/{{ c.id }}/comments" hx-target="#comments" hx-swap="innerHTML" hx-on::after-request="this.reset()">
-    <label>Nowy komentarz<textarea name="body" rows="2" required></textarea></label>
-    <button class="btn primary">Dodaj komentarz</button>
-  </form>
-</div>
+{% if comments is not none %}{% set cbase = "/clips/" ~ c.id %}{% include "_comments.html" %}{% endif %}
 {% if c.status != 'error' and perm.can_delete_clip(user, c) %}
 <form method="post" action="/clips/{{ c.id }}/delete" onsubmit="return confirm('Usunąć klip?')">{{ csrf_input() }}<button class="btn danger small">Usuń klip</button></form>
 {% endif %}
 {% endblock %}
-{% block scripts %}<script src="/static/clip.js"></script>{% endblock %}
+{% block scripts %}<script src="/static/clip.js"></script><script src="/static/feedback.js"></script>{% endblock %}

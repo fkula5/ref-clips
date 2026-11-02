@@ -50,7 +50,8 @@ def export_zip(db: Session = Depends(get_db), user: User = require(permissions.c
                category_id: int | None = None, period: str = "",
                ids: list[int] = Query(default=[])):
     clips = query_clips(db, match_id=match_id, video_id=video_id, person=person or None,
-                        category_id=category_id, period=period or None, ids=ids or None)
+                        category_id=category_id, period=period or None, ids=ids or None,
+                        with_comments=True)
     clips = [c for c in clips if c.clip_path and storage.exists(c.clip_path)]
     if not clips:
         raise HTTPException(404, "Brak wyciętych klipów do wyeksportowania")

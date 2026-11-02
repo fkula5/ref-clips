@@ -13,7 +13,7 @@
 {% if not clips %}
   <p class="muted">Brak klipów dla wybranych filtrów.</p>
 {% else %}
-  {{ clips_table(clips, nav, true) }}
+  {{ clips_table(clips, nav, true, stats) }}
   <p class="muted small-note">Klipów: {{ clips|length }}. Czas w kolumnie „Kwarta” liczony jest od początku kwarty w nagraniu — to nie jest zegar meczowy.</p>
 {% endif %}
 </div>

@@ -72,3 +72,26 @@ def test_notes_column_migration_keeps_existing_uploads(tmp_path):
         assert compare_metadata(MigrationContext.configure(conn), Base.metadata) == []
     command.downgrade(cfg, "mvp0001")
     assert "notes" not in {c["name"] for c in inspect(create_engine(url)).get_columns("upload_sessions")}
+
+
+def test_comment_indexes_migration_is_additive(tmp_path):
+    """Migracja mvp0003 dodaje tylko indeksy komentarzy; dane zostają, a schemat zgadza się z modelami."""
+    from sqlalchemy import text
+
+    url = f"sqlite:///{tmp_path / 'm.db'}"
+    cfg = _config(url)
+    command.upgrade(cfg, "mvp0002")
+    engine = create_engine(url)
+    assert not {"ix_comments_clip_id", "ix_comments_match_id"} & {i["name"] for i in inspect(engine).get_indexes("comments")}
+    with engine.begin() as conn:
+        conn.execute(text("INSERT INTO users (id, email, name, is_active) VALUES (1, 'a@b.pl', 'A', 1)"))
+        conn.execute(text("INSERT INTO matches (id, date, level, team_a_name, team_a_color, team_b_name, team_b_color) "
+            "VALUES (1, '2026-10-28', '', '', '', '', '')"))
+        conn.execute(text("INSERT INTO comments (match_id, author_id, body) VALUES (1, 1, 'Zostaje')"))
+    command.upgrade(cfg, "head")
+    assert {"ix_comments_clip_id", "ix_comments_match_id"} <= {i["name"] for i in inspect(engine).get_indexes("comments")}
+    with engine.connect() as conn:
+        assert conn.execute(text("SELECT body FROM comments")).scalar() == "Zostaje"
+        assert compare_metadata(MigrationContext.configure(conn), Base.metadata) == []
+    command.downgrade(cfg, "mvp0002")
+    assert "ix_comments_clip_id" not in {i["name"] for i in inspect(create_engine(url)).get_indexes("comments")}

@@ -29,6 +29,9 @@
     <select name="period"><option value="">Każda</option>
       {% for p in PERIODS %}<option value="{{ p }}" {{ 'selected' if f.period == p }}>{{ p }}</option>{% endfor %}
       <option value="none" {{ 'selected' if f.period == 'none' }}>nieustalona</option></select></label>
+  <label>Oceny
+    <select name="rating"><option value="">Wszystkie</option>
+      {% for value, label in RATING_CHOICES %}<option value="{{ value }}" {{ 'selected' if f.rating == value }}>{{ label }}</option>{% endfor %}</select></label>
   <label>Opis
     <select name="described"><option value="">Wszystkie</option>
       <option value="1" {{ 'selected' if f.described == '1' }}>opisane</option>
@@ -41,14 +44,14 @@
 
 {# Tabela klipów; `nav` to filtry (bez meczu) dopisywane do linków, żeby strona klipu wiedziała,
    z jakiej listy przyszedł użytkownik (poprzedni/następny). #}
-{% macro clips_table(clips, nav, show_match=false) %}
+{% macro clips_table(clips, nav, show_match=false, stats=none) %}
 {% set nav_q = '?' ~ nav if nav else '' %}
 <table class="responsive clips-table">
   <thead><tr>
     {% if show_match %}<th>Mecz</th>{% endif %}
     <th>Sędzia</th><th>Kategoria</th>
     <th title="Kwarta i czas od jej początku w czasie nagrania (nie zegar meczowy)">Kwarta · od początku kwarty</th>
-    <th>Czas w nagraniu</th><th>Opis</th><th>Stan</th><th title="Oceny szkoleniowców — w kolejnym etapie">Oceny</th><th></th>
+    <th>Czas w nagraniu</th><th>Opis</th><th>Stan</th><th title="Oceny szkoleniowców: liczba ocen każdego rodzaju">Oceny</th><th></th>
   </tr></thead>
   <tbody>
   {% for c in clips %}
@@ -62,9 +65,11 @@
       <td data-label="Stan">
         {% if not c.is_described %}<span class="chip warn">nieopisany</span>{% endif %}
         <span class="badge {{ c.status }}">{{ CLIP_STATUSES.get(c.status, c.status) }}</span>
-        {% if c.comments %}<span class="chip" title="Komentarze">💬 {{ c.comments|length }}</span>{% endif %}
+        {% if stats and stats[c.id].comments %}<span class="chip" title="Komentarze">💬 {{ stats[c.id].comments }}</span>{% endif %}
       </td>
-      <td data-label="Oceny" class="muted" title="Oceny szkoleniowców pojawią się w kolejnym etapie">—</td>
+      <td data-label="Oceny" class="ratings-cell">
+        {% for verdict, n in (stats[c.id].ratings if stats else []) %}<span class="verdict {{ verdict }}" title="{{ RATING_VERDICTS[verdict] }}: {{ n }}">{{ n }}× {{ RATING_VERDICTS[verdict] }}</span>{% else %}<span class="muted">—</span>{% endfor %}
+      </td>
       <td class="open-cell"><a class="btn small" href="/clips/{{ c.id }}{{ nav_q }}">Otwórz klip</a></td>
     </tr>
   {% endfor %}
