@@ -39,6 +39,11 @@ def can_manage_categories(user) -> bool:
     return _has(user, ADMIN)
 
 
+def can_manage_retention(user) -> bool:
+    """Retencja i dysk: ustawienie liczby dni, zajętość dysku, ręczne usunięcie pełnego nagrania."""
+    return _has(user, ADMIN)
+
+
 # --- przeglądanie i komentowanie ------------------------------------------------
 def can_view(user) -> bool:
     """Przeglądanie wszystkich meczów i klipów: każdy zalogowany, aktywny użytkownik."""

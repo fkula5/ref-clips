@@ -59,6 +59,10 @@ ROWS = [
     _row("słownik kategorii", lambda u, _: p.can_manage_categories(u), [None],
          **{"brak ról": (False,), "admin": (True,), "coach": (False,), "referee": (False,),
             "admin+coach": (True,), "admin+referee": (True,), "coach+referee": (False,)}),
+    # 2b. Retencja, zajętość dysku i ręczne usuwanie pełnych nagrań
+    _row("retencja i dysk", lambda u, _: p.can_manage_retention(u), [None],
+         **{"brak ról": (False,), "admin": (True,), "coach": (False,), "referee": (False,),
+            "admin+coach": (True,), "admin+referee": (True,), "coach+referee": (False,)}),
     # 3. Przeglądanie wszystkich meczów i klipów (każdy zalogowany, także bez ról)
     _row("przeglądanie", lambda u, _: p.can_view(u), [None],
          **{k: (True,) for k in ROLE_SETS}),
@@ -227,6 +231,17 @@ def forbidden_requests(w):
         ("sędzia: zmiana ról", "member", "post", f"/admin/users/{w['member_user'].id}/roles", {"data": {"roles": ["admin"]}}),
         ("sędzia: link resetu", "member", "post", f"/admin/users/{w['coach_user'].id}/invite", {}),
         ("sędzia: dezaktywacja", "outsider", "post", f"/admin/users/{w['coach_user'].id}/active", {"data": {"active": "0"}}),
+        # kategorie, retencja, dysk
+        ("szkoleniowiec: lista kategorii", "coach", "get", "/admin/categories", {}),
+        ("sędzia: nowa kategoria", "member", "post", "/admin/categories", {"data": {"name": "X", "group": "Inne"}}),
+        ("szkoleniowiec: zmiana kategorii", "coach", "post", "/admin/categories/1/update", {"data": {"name": "X", "group": "Inne"}}),
+        ("szkoleniowiec: dezaktywacja kategorii", "coach", "post", "/admin/categories/1/active", {"data": {"active": "0"}}),
+        ("sędzia: przesunięcie kategorii", "outsider", "post", "/admin/categories/1/move", {"data": {"direction": "up"}}),
+        ("szkoleniowiec: usunięcie kategorii", "coach", "post", "/admin/categories/1/delete", {}),
+        ("szkoleniowiec: retencja i dysk", "coach", "get", "/admin/retention", {}),
+        ("sędzia: zmiana retencji", "member", "post", "/admin/retention", {"data": {"days": "1", "recalculate": "1"}}),
+        ("szkoleniowiec: ręczne usunięcie pełnego nagrania", "coach", "post", f"/admin/videos/{v.id}/purge", {}),
+        ("sędzia z obsady: ręczne usunięcie pełnego nagrania", "member", "post", f"/admin/videos/{v.id}/purge", {}),
     ]
 
 
@@ -237,6 +252,7 @@ def test_forbidden_requests_are_rejected_by_server(world, db):
     db.expire_all()  # nic się nie zmieniło
     assert db.get(Match, world["match"].id) is not None
     assert db.get(Clip, world["clip"].id).described_at is None
+    assert db.get(Video, world["video"].id).purged_at is None  # nic nie usunięto
     assert db.query(Video).count() == 1 and db.query(User).filter_by(email="x@example.com").count() == 0
     assert "admin" not in db.get(User, world["member_user"].id).roles
 

@@ -4,8 +4,10 @@ W bazie zapisujemy wyłącznie ścieżki względne (klucze magazynu).
 """
 from __future__ import annotations
 
+import os
 import shutil
 from abc import ABC, abstractmethod
+from collections.abc import Iterator
 from pathlib import Path
 from typing import BinaryIO
 
@@ -32,6 +34,11 @@ class Storage(ABC):
 
     @abstractmethod
     def size(self, key: str) -> int: ...
+
+    @abstractmethod
+    def iter_files(self, prefix: str) -> Iterator[tuple[str, int, float]]:
+        """Pliki bezpośrednio w „katalogu” `prefix` jako (klucz, rozmiar w bajtach, czas modyfikacji
+        w sekundach epoki) — jedno przejście po katalogu, bez osobnych zapytań o każdy plik."""
 
 
 class LocalStorage(Storage):
@@ -65,8 +72,24 @@ class LocalStorage(Storage):
     def size(self, key: str) -> int:
         return self.local_path(key).stat().st_size
 
+    def iter_files(self, prefix: str) -> Iterator[tuple[str, int, float]]:
+        folder = self.local_path(prefix)
+        if not folder.is_dir():
+            return
+        with os.scandir(folder) as entries:
+            for entry in entries:
+                try:
+                    if entry.is_file(follow_symlinks=False):
+                        stat = entry.stat(follow_symlinks=False)
+                        yield f"{prefix.rstrip('/')}/{entry.name}", stat.st_size, stat.st_mtime
+                except FileNotFoundError:  # plik zniknął w trakcie przeglądania katalogu
+                    continue
+
     def free_bytes(self) -> int:
         return shutil.disk_usage(self.root).free
+
+    def total_bytes(self) -> int:
+        return shutil.disk_usage(self.root).total
 
 
 storage = LocalStorage(config.DATA_DIR)

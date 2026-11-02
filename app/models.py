@@ -181,7 +181,10 @@ class Video(Base):
     original_filename: Mapped[str] = mapped_column(String(255), default="")
     original_path: Mapped[str | None] = mapped_column(String(500))  # względem DATA_DIR
     proxy_path: Mapped[str | None] = mapped_column(String(500))     # względem DATA_DIR
-    size_bytes: Mapped[int] = mapped_column(BigInteger, default=0)
+    size_bytes: Mapped[int] = mapped_column(BigInteger, default=0)  # rozmiar wgranego oryginału
+    # Rozmiar wersji roboczej (ustawiany po konwersji; dla starszych wierszy uzupełniany leniwie
+    # w panelu dysku), żeby panel admina nie sprawdzał rozmiarów plików przy każdym żądaniu.
+    proxy_bytes: Mapped[int | None] = mapped_column(BigInteger)
     duration: Mapped[float | None] = mapped_column(Float)
     fps: Mapped[float | None] = mapped_column(Float)
     # Zawartość pliku: "full" (cały mecz) albo kwarty po przecinku, np. "Q1" lub "Q1,Q2".
@@ -227,6 +230,20 @@ class UploadSession(Base):
     notes: Mapped[str] = mapped_column(Text, default="", server_default="")
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())
+
+
+class UploadRejection(Base):
+    """Upload odrzucony z braku miejsca na dysku (plan 6.1) — ostrzeżenie w panelu admina."""
+    __tablename__ = "upload_rejections"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, index=True)
+    user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    filename: Mapped[str] = mapped_column(String(255), default="")
+    size_bytes: Mapped[int] = mapped_column(BigInteger)   # rozmiar odrzuconego pliku
+    free_bytes: Mapped[int] = mapped_column(BigInteger)   # wolne miejsce w chwili odrzucenia
+
+    user: Mapped[User | None] = relationship()
 
 
 class PeriodMark(Base):
@@ -360,7 +377,7 @@ class Job(Base):
     __tablename__ = "jobs"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    type: Mapped[str] = mapped_column(String(20))  # transcode / cut (dalej: retention, cleanup)
+    type: Mapped[str] = mapped_column(String(20))  # transcode / cut (retencja i sprzątanie: bez zadań w tabeli)
     status: Mapped[str] = mapped_column(String(20), default="pending")  # pending/running/done/error
     progress: Mapped[float] = mapped_column(Float, default=0.0)  # 0..1
     error: Mapped[str | None] = mapped_column(Text)

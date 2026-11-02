@@ -34,6 +34,14 @@ def get_setting(db: Session, key: str, default: str = "") -> str:
     return row.value if row is not None else default
 
 
+def set_setting(db: Session, key: str, value: str) -> None:
+    row = db.get(Setting, key)
+    if row is None:
+        db.add(Setting(key=key, value=value))
+    else:
+        row.value = value
+
+
 def retention_days(db: Session) -> int:
     try:
         return max(1, int(get_setting(db, "retention_days", "30")))
@@ -695,11 +703,16 @@ def describe_block(clip: Clip) -> DescribeBlock | None:
     """Klip z nagrania, które wymaga znaczników kwart, a ich nie ma (kwarta nieustalona), nie może
     być opisany (spec). Dotyczy też momentu przed początkiem pierwszej kwarty."""
     video = clip.video
+    if video.purged_at is not None:
+        # Pełnego nagrania już nie ma, więc początków kwart nie da się ustawić; blokada zostawiłaby
+        # klip na zawsze nieopisany. Kwarta liczy się dalej z istniejących znaczników (period_marks),
+        # a przy ich braku klip pokazuje „kwarta nieustalona” — ale można go opisać.
+        return None
     marks = video.marks
     missing = missing_periods(video.content, (m.period for m in marks))
     if not missing and period_position(marks, clip.time_sec) is not None:
         return None
-    fixable = video.purged_at is None and video.status == "ready"
+    fixable = video.status == "ready"
     url = f"/videos/{video.id}#poczatki-kwart" if fixable else None
     if missing:
         message = (f"Kwarta tego klipu jest nieustalona: nagranie „{video.display_name}” nie ma ustawionych "
@@ -708,8 +721,6 @@ def describe_block(clip: Clip) -> DescribeBlock | None:
         message = (f"Kwarta tego klipu jest nieustalona: moment {format_clock(clip.time_sec)} wypada przed "
                    "początkiem pierwszej kwarty, więc klipu nie można opisać. Przesuń początek pierwszej kwarty "
                    "albo usuń ten znacznik.")
-    if not fixable:
-        message += " Pełne nagranie nie jest już dostępne, więc kwart nie da się ustawić."
     return DescribeBlock(message, url, "Ustaw początki kwart w odtwarzaczu" if url else "")
 
 

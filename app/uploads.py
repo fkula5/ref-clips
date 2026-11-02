@@ -15,11 +15,11 @@ import secrets
 import time
 from datetime import timedelta
 
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
 from app import config, permissions, services
-from app.models import Match, UploadSession, User, Video
+from app.models import Match, UploadRejection, UploadSession, User, Video
 from app.storage import storage
 from app.textutil import safe_filename
 from app.timeutil import utcnow
@@ -93,14 +93,26 @@ def reserved_bytes(db: Session) -> int:
     return int(pending) + converting * config.DRAFT_RESERVE_BYTES
 
 
-def check_space(db: Session, size: int) -> None:
+def check_space(db: Session, size: int, user: User | None = None, filename: str = "") -> None:
     """Przyjmuje upload tylko, gdy po uwzględnieniu rezerwacji zostanie miejsce na plik,
-    wersję roboczą i zapas."""
+    wersję roboczą i zapas. Odrzucenie zostaje zapisane (czas, rozmiar, użytkownik), żeby panel
+    admina mógł ostrzec o zapełnionym dysku."""
     need = size + config.DRAFT_RESERVE_BYTES + config.DISK_SAFETY_BYTES + reserved_bytes(db)
     free = storage.free_bytes()
     if free < need:
         log.warning("Odrzucono upload %d B: wolne %d B, potrzeba %d B", size, free, need)
+        db.add(UploadRejection(created_at=utcnow(), user_id=user.id if user else None,
+                               filename=filename[:255], size_bytes=size, free_bytes=free))
+        db.commit()
         raise UploadError(507, NO_SPACE_MESSAGE)
+
+
+def prune_rejections(db: Session) -> int:
+    """Usuwa stare wpisy o odrzuconych uploadach (po `REJECTION_KEEP_DAYS`)."""
+    cutoff = utcnow() - timedelta(days=config.REJECTION_KEEP_DAYS)
+    removed = db.execute(delete(UploadRejection).where(UploadRejection.created_at < cutoff)).rowcount
+    db.commit()
+    return removed
 
 
 # --- tworzenie, kończenie, usuwanie ---------------------------------------------
@@ -122,7 +134,7 @@ def create_session(db: Session, user: User, match: Match, size: int, filename: s
             raise UploadError(
                 409, f"Masz niedokończone wgrywanie pliku „{previous.filename}”. Dokończ je (wybierz "
                      "ten sam plik) albo je przerwij.", {"X-Active-Upload": f"/uploads/{previous.id}"})
-    check_space(db, size)
+    check_space(db, size, user, filename)
     up = UploadSession(
         id=secrets.token_hex(16), user_id=user.id, match_id=match.id, filename=filename,
         size_bytes=size, offset_bytes=0, reserved_bytes=size + config.DRAFT_RESERVE_BYTES,

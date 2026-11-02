@@ -29,7 +29,8 @@
       {% else %}<span class="muted">brak</span>{% endfor %}
     </dd>
     <dt>Dodał(a)</dt><dd>{{ match.creator.name if match.creator else '—' }}, {{ match.created_at.strftime("%d.%m.%Y") }}</dd>
-    <dt>Stan</dt><dd id="match-state"><span class="badge state-{{ state.code }}">{{ state.label }}</span> {% if state.detail %}<small class="muted">{{ state.detail }}</small>{% endif %}</dd>
+    <dt>Stan</dt><dd id="match-state"><span class="badge state-{{ state.code }}">{{ state.label }}</span> {% if state.detail %}<small class="muted">{{ state.detail }}</small>{% endif %}
+      {% set expiry = expiry_note(match.videos) %}{% if expiry %}<span class="expiry-note warn-text" id="expiry-note">{{ expiry }}</span>{% endif %}</dd>
   </dl>
 </div>
 

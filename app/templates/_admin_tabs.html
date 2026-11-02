@@ -1,0 +1,12 @@
+{# Zakładki panelu administratora. Zmienne: tab ("users" / "categories" / "retention"), rejected_count. #}
+<nav class="admin-tabs" aria-label="Panel administratora">
+  {% if perm.can_manage_users(user) %}<a href="/admin/users" {{ 'class=active aria-current=page' if tab == 'users' }}>Użytkownicy</a>{% endif %}
+  {% if perm.can_manage_categories(user) %}<a href="/admin/categories" {{ 'class=active aria-current=page' if tab == 'categories' }}>Kategorie</a>{% endif %}
+  {% if perm.can_manage_retention(user) %}<a href="/admin/retention" {{ 'class=active aria-current=page' if tab == 'retention' }}>Retencja i dysk{% if rejected_count %} <span class="chip warn" title="Odrzucone uploady z braku miejsca">{{ rejected_count }}</span>{% endif %}</a>{% endif %}
+</nav>
+{% if rejected_count and tab != 'retention' %}
+<div class="banner warn" id="rejected-banner" role="alert">
+  <strong>Brak miejsca na dysku:</strong> w ostatnich {{ warn_days }} dniach odrzucono uploady z tego powodu ({{ rejected_count }}).
+  <a href="/admin/retention#odrzucone">Zobacz szczegóły i zwolnij miejsce</a>.
+</div>
+{% endif %}

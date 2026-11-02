@@ -9,7 +9,7 @@ from urllib.parse import urlencode
 from sqlalchemy import case, func, or_, select
 from sqlalchemy.orm import Session, selectinload
 
-from app import services
+from app import retention, services
 from app.models import Clip, Match, MatchOfficial, Video
 
 PAGE_SIZE = 25
@@ -65,6 +65,7 @@ class MatchRow:
     state: services.MatchState
     clips: int
     undescribed: int
+    expiry: str | None = None   # „pełne nagranie dostępne jeszcze X dni” na tydzień przed terminem
 
 
 @dataclass
@@ -121,6 +122,7 @@ def list_matches(db: Session, filters: MatchFilters, user_id: int,
                func.sum(case((Clip.described_at.is_(None), 1), else_=0)))
         .where(Clip.match_id.in_(ids)).group_by(Clip.match_id))}
     queue = services.transcode_queue(db)
-    rows = [MatchRow(m, services.match_state(m.videos, queue), *counts.get(m.id, (0, 0)))
+    rows = [MatchRow(m, services.match_state(m.videos, queue), *counts.get(m.id, (0, 0)),
+                     expiry=retention.expiry_note(m.videos))
             for m in matches]
     return MatchPage(rows, total, page, pages)

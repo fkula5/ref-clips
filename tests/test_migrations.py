@@ -10,7 +10,7 @@ from app.db import Base
 EXPECTED_TABLES = {
     "users", "user_roles", "sessions", "invites", "login_attempts", "matches", "match_officials",
     "videos", "upload_sessions", "period_marks", "categories", "clips", "ratings", "comments",
-    "jobs", "settings",
+    "jobs", "settings", "upload_rejections",
 }
 
 
@@ -95,3 +95,32 @@ def test_comment_indexes_migration_is_additive(tmp_path):
         assert compare_metadata(MigrationContext.configure(conn), Base.metadata) == []
     command.downgrade(cfg, "mvp0002")
     assert "ix_comments_clip_id" not in {i["name"] for i in inspect(create_engine(url)).get_indexes("comments")}
+
+
+def test_retention_migration_is_additive(tmp_path):
+    """Migracja mvp0004 dodaje videos.proxy_bytes i tabelę upload_rejections; dane zostają, a schemat
+    zgadza się z modelami. Rozmiar wersji roboczej starych nagrań jest pusty (uzupełnia go panel)."""
+    from sqlalchemy import text
+
+    url = f"sqlite:///{tmp_path / 'm.db'}"
+    cfg = _config(url)
+    command.upgrade(cfg, "mvp0003")
+    engine = create_engine(url)
+    assert "proxy_bytes" not in {c["name"] for c in inspect(engine).get_columns("videos")}
+    assert "upload_rejections" not in inspect(engine).get_table_names()
+    with engine.begin() as conn:
+        conn.execute(text("INSERT INTO users (id, email, name, is_active) VALUES (1, 'a@b.pl', 'A', 1)"))
+        conn.execute(text("INSERT INTO matches (id, date, level, team_a_name, team_a_color, team_b_name, team_b_color) "
+            "VALUES (1, '2026-10-28', '', '', '', '', '')"))
+        conn.execute(text("INSERT INTO videos (id, match_id, size_bytes, content, status, label, original_filename) "
+                          "VALUES (1, 1, 123, 'full', 'ready', 'Całość', 'm.mp4')"))
+    command.upgrade(cfg, "head")
+    with engine.begin() as conn:
+        assert tuple(conn.execute(text("SELECT size_bytes, proxy_bytes, label FROM videos")).one()) == (123, None, "Całość")
+        conn.execute(text("INSERT INTO upload_rejections (created_at, user_id, filename, size_bytes, free_bytes) "
+                          "VALUES ('2026-11-02 10:00:00', 1, 'a.mp4', 10, 5)"))
+        assert conn.execute(text("SELECT filename FROM upload_rejections")).scalar() == "a.mp4"
+        assert compare_metadata(MigrationContext.configure(conn), Base.metadata) == []
+    command.downgrade(cfg, "mvp0003")
+    assert "upload_rejections" not in inspect(create_engine(url)).get_table_names()
+    assert "proxy_bytes" not in {c["name"] for c in inspect(create_engine(url)).get_columns("videos")}

@@ -18,12 +18,17 @@
   <label>Etykieta (opcjonalnie)
     <input name="label" value="{{ label if label is defined else video.label }}" maxlength="100" placeholder="np. Całość / Q1–Q2">
   </label>
+  {% if video.purged_at %}
+  <p class="muted small-note">Pełne nagranie zostało usunięte, więc deklaracja zawartości ({{ content_label(video.content) }})
+    i początki kwart są zamrożone — kwarty klipów zostają takie, jakie były. Zmienić można tylko etykietę.</p>
+  {% else %}
   <label>Co zawiera plik
     {{ content_picker(kind, checked) }}
   </label>
   <p class="muted small-note">Plik z jedną kwartą nie wymaga znaczników (kwarta zaczyna się od 0:00). Plik z całym meczem
     albo z kilkoma kwartami wymaga znaczników początku kwart. Zmiana deklaracji przelicza kwarty klipów; jeśli usuwa
     znaczniki kwart, zobaczysz ostrzeżenie przed zapisem.</p>
+  {% endif %}
   <div class="row">
     <button class="btn primary">{{ 'Potwierdzam — zapisz i zmień znaczniki' if warnings else 'Zapisz' }}</button>
     <a class="btn" href="/matches/{{ match.id }}">Anuluj</a>
