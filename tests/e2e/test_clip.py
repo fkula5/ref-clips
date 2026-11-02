@@ -132,3 +132,19 @@ def test_strona_klipu_na_telefonie(ui):
     page.get_by_label("Nowy komentarz").fill("Z telefonu")
     page.get_by_role("button", name="Dodaj komentarz").tap()
     expect(page.locator("#comments .comment")).to_have_count(1)
+
+
+def test_uklad_strony_klipu_wideo_i_pierwsza_karta_w_jednej_linii_a_pasek_akcji_pod_wideo(ui):
+    page, _clip_id = cut_clip(ui, 30.0)
+    wait_clip_ready(page)
+    box = page.evaluate("""() => {
+        const v = document.querySelector('#clip-video').getBoundingClientRect();
+        const c = document.querySelector('.player-layout aside .card').getBoundingClientRect();
+        const bar = document.querySelector('.clip-actions').getBoundingClientRect();
+        const b = document.querySelector('.clip-actions .btn').getBoundingClientRect();
+        return {videoTop: v.top, cardTop: c.top, gap: b.top - v.bottom, barLeft: bar.left, videoLeft: v.left,
+                barRight: bar.right, videoRight: v.right};
+    }""")
+    assert abs(box["videoTop"] - box["cardTop"]) <= 1, box
+    assert box["gap"] >= 8, box
+    assert abs(box["barLeft"] - box["videoLeft"]) <= 1 and abs(box["barRight"] - box["videoRight"]) <= 1, box

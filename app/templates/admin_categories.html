@@ -44,7 +44,7 @@
       <td data-label="Aliasy"><input form="cat-{{ c.id }}" name="aliases" class="wide" aria-label="Aliasy" value="{{ v.aliases if v else c.alias_list|join(', ') }}"></td>
       <td data-label="Klipy">{{ used.get(c.id, 0) }}</td>
       <td data-label="Stan">{% if c.is_active %}<span class="badge ready">aktywna</span>{% else %}<span class="badge error">nieaktywna</span>{% endif %}</td>
-      <td class="row actions-cell">
+      <td class="actions-cell"><div class="table-actions">
         <button form="cat-{{ c.id }}" class="btn small primary">Zapisz</button>
         <form method="post" action="/admin/categories/{{ c.id }}/move" class="inline">{{ csrf_input() }}<input type="hidden" name="direction" value="up"><button class="btn small" aria-label="Wyżej: {{ c.name }}" title="Wyżej" {{ 'disabled' if loop.first }}>↑</button></form>
         <form method="post" action="/admin/categories/{{ c.id }}/move" class="inline">{{ csrf_input() }}<input type="hidden" name="direction" value="down"><button class="btn small" aria-label="Niżej: {{ c.name }}" title="Niżej" {{ 'disabled' if loop.last }}>↓</button></form>
@@ -60,7 +60,7 @@
           <form method="post" action="/admin/categories/{{ c.id }}/delete" class="inline" onsubmit="return confirm('Usunąć kategorię „{{ c.name }}”?')">
             {{ csrf_input() }}<button class="btn small danger">Usuń</button></form>
         {% endif %}
-      </td>
+      </div></td>
     </tr>
   {% endfor %}
   </tbody>

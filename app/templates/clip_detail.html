@@ -22,9 +22,9 @@
   <section id="clip-area" {% if busy %}hx-get="/clips/{{ c.id }}{{ nav_q }}" hx-trigger="every 3s" hx-select="#clip-area" hx-select-oob="#clip-status" hx-swap="outerHTML"{% endif %}>
     {% if c.status == 'cut' and c.clip_path %}
       <video id="clip-video" src="/clips/{{ c.id }}/file?v={{ c.clip_version }}" controls preload="auto" playsinline></video>
-      <div class="row">
+      <div class="clip-actions">
         <a class="btn primary" href="/clips/{{ c.id }}/download">Pobierz MP4</a>
-        <span class="muted">{{ filename }}</span>
+        <span class="muted clip-filename" title="{{ filename }}">{{ filename }}</span>
       </div>
     {% elif c.status == 'error' %}
       <div class="banner error" id="cut-problem">{{ problem.message }}</div>
