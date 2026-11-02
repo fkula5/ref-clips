@@ -217,7 +217,7 @@ def test_clip_outside_recording_ends_in_error_state(client, db):
     outside = db.get(Clip, outside.id)
     assert outside.status == "error" and "moment poza nagraniem" in outside.error.lower()
     assert outside.clip_path is None
-    assert "Błąd wycinania: Moment poza nagraniem" in client.get(f"/clips/{outside.id}").text
+    assert "Moment poza nagraniem" in client.get(f"/clips/{outside.id}").text
 
 
 @needs_ffmpeg

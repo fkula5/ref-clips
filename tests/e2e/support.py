@@ -216,6 +216,36 @@ class Server:
             db.commit()
             return clip.id
 
+    def insert_clip(self, video_id: int, time_sec: float, *, author: str = "admin", official: str | None = None,
+                    category: str | None = None, custom: str | None = None, whole_team: bool = False,
+                    description: str = "", described: bool = False, status: str = "cut",
+                    error: str | None = None, margin: float = 15.0) -> int:
+        """Klip wprost w bazie, bez zadania cięcia (worker go nie dotknie): dowolny stan, sędzia (funkcja
+        z obsady meczu), kategoria (nazwa), opis. Do testów list, filtrów i ekranu opisywania."""
+        from datetime import datetime
+        from app.models import Category, Clip
+        with self.db() as db:
+            video = db.get(Video, video_id)
+            official_row = next((o for o in video.match.officials if o.function == official), None) if official else None
+            cat = db.scalar(select(Category).where(Category.name == category)) if category else None
+            clip = Clip(match_id=video.match_id, video_id=video_id, author_id=self.users[author], time_sec=time_sec,
+                        official_id=official_row.id if official_row else None, whole_team=whole_team,
+                        category_id=cat.id if cat else None, custom_category=custom, description=description,
+                        described_at=datetime(2026, 10, 29, 12, 0) if described else None, status=status,
+                        error=error, margin_before=margin, margin_after=margin)
+            db.add(clip)
+            db.commit()
+            return clip.id
+
+    def clip(self, clip_id: int):
+        from app.models import Clip
+        with self.db() as db:
+            clip = db.get(Clip, clip_id)
+            if clip is not None:
+                db.refresh(clip)
+                db.expunge(clip)
+            return clip
+
     def clips_of(self, video_id: int):
         from app.models import Clip
         with self.db() as db:

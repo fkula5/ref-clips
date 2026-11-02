@@ -158,6 +158,8 @@
       list.appendChild(empty);
     }
     $("dec-count").textContent = `(${state.clips.length})`;
+    const undescribed = $("undescribed-count");  // przycisk „Opisz znaczniki (N)” w nagłówku
+    if (undescribed) undescribed.textContent = String(state.clips.filter((c) => !c.described).length);
     $("mark-count").textContent = `Znaczniki: ${state.clips.length}`;
   }
 

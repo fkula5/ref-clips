@@ -8,7 +8,7 @@ from fastapi.responses import RedirectResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
-from app import match_list, permissions, services, uploads
+from app import clip_list, match_list, permissions, services, uploads
 from app.auth import require
 from app.db import get_db
 from app.loaders import get_match
@@ -121,13 +121,20 @@ def create_match(request: Request, db: Session = Depends(get_db),
 @router.get("/matches/{match_id}")
 def match_detail(request: Request, match: Match = Depends(get_match),
                  db: Session = Depends(get_db), user: User = require(permissions.can_view)):
-    clips = sorted(match.clips, key=lambda c: (c.video_id, c.time_sec))
-    # Strona odświeża panel nagrań, stan meczu i klipy, dopóki trwa konwersja albo cięcie klipów.
-    busy = (any(v.status in ("uploading", "queued", "processing") for v in match.videos)
-            or any(c.status in ("new", "queued") for c in clips))
-    return render(request, "match_detail.html", match=match, busy=busy, clips=clips,
+    """Strona meczu z zakładką „Klipy”: filtry (sędzia, kategoria, kwarta, opisane/nieopisane) są w adresie."""
+    f = clip_list.parse_filters(request.query_params)
+    clips = clip_list.select_clips(db, f, match_id=match.id)
+    all_clips = match.clips
+    # Panel nagrań odświeża się, dopóki trwa wgrywanie lub konwersja, a lista klipów — dopóki któryś
+    # z pokazanych klipów czeka na cięcie.
+    busy = any(v.status in ("uploading", "queued", "processing") for v in match.videos)
+    return render(request, "match_detail.html", match=match, busy=busy, clips=clips, f=f,
+                  pending=any(c.status in ("new", "queued") for c in clips),
+                  nav=f.query(scope=False), total_clips=len(all_clips),
+                  people=[*clip_list.match_people(db, match), (clip_list.TEAM, "cały zespół")],
+                  categories=services.all_categories(db),
                   state=services.match_state(match.videos, services.transcode_queue(db)),
-                  undescribed=sum(1 for c in clips if not c.is_described))
+                  undescribed=sum(1 for c in all_clips if not c.is_described))
 
 
 @router.get("/matches/{match_id}/edit")

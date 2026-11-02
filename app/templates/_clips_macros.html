@@ -1,0 +1,73 @@
+{# Wspólne elementy zakładki „Klipy” meczu i globalnej listy /clips: filtry (HTMX nad zwykłym formularzem GET)
+   i tabela, która na telefonie zamienia się w karty. #}
+
+{% macro category_options(categories, selected) %}
+  {% for group, items in category_groups(categories) %}
+    <optgroup label="{{ group }}">
+      {% for cat in items %}<option value="{{ cat.id }}" data-custom="{{ 1 if cat.is_custom else 0 }}" {{ 'selected' if selected == cat.id }}>{{ cat.name }}{{ '' if cat.is_active else ' (nieaktywna)' }}</option>{% endfor %}
+    </optgroup>
+  {% endfor %}
+{% endmacro %}
+
+{# Filtry w adresie (person, category_id, period, described; na /clips także match_id). Działa bez JS;
+   HTMX podmienia tylko #clips-list i wpisuje filtry do adresu. #}
+{% macro clip_filters(f, action, people, categories, matches=none) %}
+<form method="get" action="{{ action }}" class="card row filters clip-filters" id="clip-filters" data-clean-params
+      hx-get="{{ action }}" hx-target="#clips-list" hx-select="#clips-list" hx-swap="outerHTML"
+      hx-trigger="change, submit" hx-push-url="true">
+  {% if matches is not none %}
+  <label>Mecz
+    <select name="match_id"><option value="">Wszystkie mecze</option>
+      {% for m in matches %}<option value="{{ m.id }}" {{ 'selected' if f.match_id == m.id }}>{{ m.title }}</option>{% endfor %}</select></label>
+  {% endif %}
+  <label>Sędzia
+    <select name="person"><option value="">Wszyscy</option>
+      {% for key, name in people %}<option value="{{ key }}" {{ 'selected' if f.person == key }}>{{ name }}</option>{% endfor %}</select></label>
+  <label>Kategoria
+    <select name="category_id"><option value="">Wszystkie</option>{{ category_options(categories, f.category_id) }}</select></label>
+  <label>Kwarta
+    <select name="period"><option value="">Każda</option>
+      {% for p in PERIODS %}<option value="{{ p }}" {{ 'selected' if f.period == p }}>{{ p }}</option>{% endfor %}
+      <option value="none" {{ 'selected' if f.period == 'none' }}>nieustalona</option></select></label>
+  <label>Opis
+    <select name="described"><option value="">Wszystkie</option>
+      <option value="1" {{ 'selected' if f.described == '1' }}>opisane</option>
+      <option value="0" {{ 'selected' if f.described == '0' }}>nieopisane</option></select></label>
+  {% if f.video_id %}<input type="hidden" name="video_id" value="{{ f.video_id }}">{% endif %}
+  <button class="btn">Filtruj</button>
+  <a class="btn" href="{{ action }}">Wyczyść</a>
+</form>
+{% endmacro %}
+
+{# Tabela klipów; `nav` to filtry (bez meczu) dopisywane do linków, żeby strona klipu wiedziała,
+   z jakiej listy przyszedł użytkownik (poprzedni/następny). #}
+{% macro clips_table(clips, nav, show_match=false) %}
+{% set nav_q = '?' ~ nav if nav else '' %}
+<table class="responsive clips-table">
+  <thead><tr>
+    {% if show_match %}<th>Mecz</th>{% endif %}
+    <th>Sędzia</th><th>Kategoria</th>
+    <th title="Kwarta i czas od jej początku w czasie nagrania (nie zegar meczowy)">Kwarta · od początku kwarty</th>
+    <th>Czas w nagraniu</th><th>Opis</th><th>Stan</th><th title="Oceny szkoleniowców — w kolejnym etapie">Oceny</th><th></th>
+  </tr></thead>
+  <tbody>
+  {% for c in clips %}
+    <tr>
+      {% if show_match %}<td data-label="Mecz"><a href="/matches/{{ c.match_id }}">{{ c.match.date.strftime("%d.%m.%Y") }} {{ c.match.team_a_name or c.match.team_a_color }}–{{ c.match.team_b_name or c.match.team_b_color }}</a></td>{% endif %}
+      <td data-label="Sędzia" class="main-cell"><a href="/clips/{{ c.id }}{{ nav_q }}">{{ c.official_label or 'bez sędziego' }}</a></td>
+      <td data-label="Kategoria">{% if c.category_label %}<span class="chip">{{ c.category_label }}</span>{% else %}—{% endif %}</td>
+      <td data-label="Kwarta · od początku">{{ period_short(c) }}</td>
+      <td data-label="Czas w nagraniu">{{ c.time_sec|clock }}</td>
+      <td data-label="Opis" class="desc-cell">{{ (c.description|truncate(80, true, '…')) if c.description else '—' }}</td>
+      <td data-label="Stan">
+        {% if not c.is_described %}<span class="chip warn">nieopisany</span>{% endif %}
+        <span class="badge {{ c.status }}">{{ CLIP_STATUSES.get(c.status, c.status) }}</span>
+        {% if c.comments %}<span class="chip" title="Komentarze">💬 {{ c.comments|length }}</span>{% endif %}
+      </td>
+      <td data-label="Oceny" class="muted" title="Oceny szkoleniowców pojawią się w kolejnym etapie">—</td>
+      <td class="open-cell"><a class="btn small" href="/clips/{{ c.id }}{{ nav_q }}">Otwórz klip</a></td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endmacro %}

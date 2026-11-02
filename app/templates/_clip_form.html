@@ -1,0 +1,31 @@
+{# Pola opisu klipu (ekran opisywania i strona klipu). Zmienne: c, values, categories, form_action,
+   submit_label, keys (czy pokazać skróty 1/2/3/0), skip_url (opcjonalnie), error. #}
+{% from "_clips_macros.html" import category_options %}
+<form method="post" action="{{ form_action }}" class="form clip-form" id="clip-form">
+  {{ csrf_input() }}
+  {% if error %}<div class="banner error" role="alert" id="form-error">{{ error }}</div>{% endif %}
+  <fieldset class="choice-group">
+    <legend>Sędzia</legend>
+    {% for o in c.match.officials %}
+      {% set key = {'CC': '1', 'U1': '2', 'U2': '3'}[o.function] %}
+      <label class="choice"><input type="radio" name="official" value="{{ o.id }}" data-key="{{ key }}" {{ 'checked' if values.official == o.id|string }} required>
+        {% if keys %}<kbd>{{ key }}</kbd> {% endif %}{{ o.label }}</label>
+    {% endfor %}
+    <label class="choice"><input type="radio" name="official" value="team" data-key="0" {{ 'checked' if values.official == 'team' }} required>
+      {% if keys %}<kbd>0</kbd> {% endif %}cały zespół</label>
+  </fieldset>
+  <label>Kategoria {% if keys %}<kbd title="Skrót: przejdź do wyboru kategorii">K</kbd>{% endif %}
+    <select name="category_id" id="category-select" required>
+      <option value="">— wybierz kategorię —</option>
+      {{ category_options(categories, values.category_id|int(0)) }}
+    </select></label>
+  <label id="custom-label">Nazwa własnej kategorii
+    <input name="custom_category" maxlength="100" value="{{ values.custom_category }}"></label>
+  <label>Opis (opcjonalnie) {% if keys %}<kbd title="Skrót: przejdź do opisu (dopisek)">D</kbd>{% endif %}
+    <textarea name="description" id="description" rows="3" maxlength="2000">{{ values.description }}</textarea></label>
+  <div class="row">
+    <button class="btn primary" id="btn-save">{{ submit_label }}</button>
+    {% if skip_url %}<a class="btn" id="btn-skip" href="{{ skip_url }}" title="Przejdź do następnego bez zapisywania">Pomiń</a>{% endif %}
+    {% if keys %}<span class="muted small-note">Enter w formularzu albo Ctrl+Enter w opisie zapisuje i przechodzi dalej.</span>{% endif %}
+  </div>
+</form>

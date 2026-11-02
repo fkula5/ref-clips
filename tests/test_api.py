@@ -2,7 +2,7 @@ from sqlalchemy import select
 
 from app.models import Category, Clip, Comment, Job, Match, Video
 from app.storage import storage
-from tests.helpers import make_match, make_ready_video, make_user, tus_create, tus_upload
+from tests.helpers import make_match, make_ready_video, make_user, mark_periods, tus_create, tus_upload
 
 MATCH_FORM = {
     "date": "2026-10-28", "level": "II liga", "team_a_name": "Legia", "team_a_color": "białe",
@@ -192,7 +192,7 @@ def test_quick_clip_parses_line_and_clamps(client, db):
 
 
 def test_describe_clip(client, db):
-    video = make_ready_video(db, make_match(db))
+    video = mark_periods(db, make_ready_video(db, make_match(db)))
     clip_id = quick(client, video.id, 100, "").json()["clip"]["id"]
     clip = db.get(Clip, clip_id)
     cc = video.match.official("CC")
@@ -206,6 +206,8 @@ def test_describe_clip(client, db):
     # cały zespół + kategoria „własna” wymaga nazwy
     own = str(category_id(db, "własna"))
     assert client.post(f"/clips/{clip_id}/update", data={"official": "team", "category_id": own}).status_code == 422
+    assert "Dla kategorii „własna” wpisz jej nazwę." in client.post(
+        f"/clips/{clip_id}/update", data={"official": "team", "category_id": own}).text
     client.post(f"/clips/{clip_id}/update", data={"official": "team", "category_id": own,
                                                   "custom_category": "kontakt z trenerem"})
     db.refresh(clip)
@@ -226,7 +228,7 @@ def test_clips_filters(client, db):
 
     def listed(**params):
         html = client.get("/clips", params=params).text
-        return [i for i in ids.values() if f'href="/clips/{i}"' in html]
+        return [i for i in ids.values() if f'href="/clips/{i}"' in html or f'href="/clips/{i}?' in html]
 
     assert len(listed()) == 2
     assert listed(period="Q2") == [ids[400]]

@@ -1,4 +1,4 @@
-<div id="videos-panel" {% if busy %}hx-get="/matches/{{ match.id }}" hx-trigger="every 3s" hx-select="#videos-panel" hx-select-oob="#match-state,#clips-section" hx-swap="outerHTML"{% endif %}>
+<div id="videos-panel" {% if busy %}hx-get="/matches/{{ match.id }}" hx-vals='js:{...Object.fromEntries(new URLSearchParams(location.search))}' hx-trigger="every 3s" hx-select="#videos-panel" hx-select-oob="#match-state,#clips-head,#clips-list" hx-swap="outerHTML"{% endif %}>
 {% set pending_marks = [] %}
 {% for v in match.videos %}{% set miss = missing_periods_of(v) %}{% if miss %}{% set _ = pending_marks.append((v, miss)) %}{% endif %}{% endfor %}
 {% if pending_marks %}

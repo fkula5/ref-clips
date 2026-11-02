@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% from "_content_picker.html" import content_picker %}
+{% from "_clips_macros.html" import clip_filters, clips_table %}
 {% block title %}{{ match.title }}{% endblock %}
 {% block content %}
 {% macro team(name, color) %}
@@ -73,34 +74,25 @@
 <p class="muted">Wgrywać nagrania do tego meczu mogą administratorzy, szkoleniowcy i sędziowie z obsady.</p>
 {% endif %}
 
-<div id="clips-section">
-<div class="row between">
-  <h2 id="klipy">Klipy ({{ clips|length }}{% if undescribed %}, nieopisane: {{ undescribed }}{% endif %})</h2>
-  {% if clips %}<a class="btn small" href="/clips?match_id={{ match.id }}">Filtry klipów</a>{% endif %}
+<section id="clips-section">
+<div id="clips-head" class="row between">
+  <h2 id="klipy">Klipy ({{ total_clips }}{% if undescribed %}, nieopisane: {{ undescribed }}{% endif %})</h2>
+  {% if perm.can_manage_clips(user, match) and total_clips %}
+    <a class="btn {{ 'primary' if undescribed }}" id="btn-describe" href="/matches/{{ match.id }}/describe">Opisz znaczniki ({{ undescribed }})</a>
+  {% endif %}
 </div>
-{% if not clips %}
+{{ clip_filters(f, "/matches/" ~ match.id ~ "#klipy", people, categories) }}
+<div id="clips-list" {% if pending %}hx-get="/matches/{{ match.id }}{{ '?' ~ nav if nav }}" hx-trigger="every 3s" hx-select="#clips-list" hx-select-oob="#clips-head" hx-swap="outerHTML"{% endif %}>
+{% if not total_clips %}
   <p class="muted">Ten mecz nie ma jeszcze klipów. Klipy powstają ze znaczników zaznaczonych w odtwarzaczu albo z wklejonych notatek.</p>
+{% elif not clips %}
+  <p class="muted">Brak klipów dla wybranych filtrów. <a href="/matches/{{ match.id }}#klipy">Wyczyść filtry</a></p>
 {% else %}
-<table class="responsive">
-  <thead><tr><th>Sędzia</th><th>Kategoria</th><th title="Kwarta i czas od jej początku w czasie nagrania (nie zegar meczowy)">Kwarta · od początku kwarty</th><th>Czas w nagraniu</th><th>Stan</th></tr></thead>
-  <tbody>
-  {% for c in clips %}
-    <tr>
-      <td data-label="Sędzia" class="main-cell"><a href="/clips/{{ c.id }}">{{ c.official_label or '—' }}</a></td>
-      <td data-label="Kategoria">{% if c.category_label %}<span class="chip">{{ c.category_label }}</span>{% else %}—{% endif %}</td>
-      <td data-label="Kwarta · od początku">{{ period_short(c) }}</td>
-      <td data-label="Czas w nagraniu">{{ c.time_sec|clock }}</td>
-      <td data-label="Stan">
-        {% if not c.is_described %}<span class="chip warn">nieopisany</span>{% endif %}
-        <span class="badge {{ c.status }}">{{ CLIP_STATUSES.get(c.status, c.status) }}</span>
-      </td>
-    </tr>
-  {% endfor %}
-  </tbody>
-</table>
-<p class="muted small-note">Czas w kolumnie „Kwarta” liczony jest od początku kwarty w nagraniu — to nie jest zegar meczowy.</p>
+  {{ clips_table(clips, nav) }}
+  <p class="muted small-note">{% if f.active %}Pokazano {{ clips|length }} z {{ total_clips }}. {% endif %}Czas w kolumnie „Kwarta” liczony jest od początku kwarty w nagraniu — to nie jest zegar meczowy.</p>
 {% endif %}
 </div>
+</section>
 
 {# Komentarze do meczu: segment 6 (tabela comments i reguły w permissions gotowe, brak tras i widoku). #}
 <section id="komentarze"></section>

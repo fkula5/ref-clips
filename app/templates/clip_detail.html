@@ -5,14 +5,21 @@
   <div>
     <h1>{{ c.match.team_a_name or c.match.team_a_color }} – {{ c.match.team_b_name or c.match.team_b_color }} · {{ c.time_sec|clock }}</h1>
     <a href="/matches/{{ c.match_id }}">{{ c.match.title }}</a> ·
-    <a href="/videos/{{ c.video_id }}?t={{ c.time_sec }}">pokaż w pełnym nagraniu</a> ·
-    <a href="/clips?match_id={{ c.match_id }}">wszystkie klipy meczu</a>
+    {% if full_video %}<a href="/videos/{{ c.video_id }}?t={{ c.time_sec }}">pokaż w pełnym nagraniu</a> ·{% endif %}
+    <a href="/matches/{{ c.match_id }}{{ nav_q }}#klipy">wszystkie klipy meczu</a>
   </div>
   <span id="clip-status" class="badge {{ c.status }}">{{ CLIP_STATUSES.get(c.status, c.status) }}</span>
 </div>
 
+<nav class="clip-nav row between" aria-label="Poprzedni i następny klip w meczu">
+  {% if previous %}<a class="btn" id="prev-clip" rel="prev" href="/clips/{{ previous.id }}{{ nav_q }}">‹ Poprzedni klip ({{ previous.time_sec|clock }})</a>
+  {% else %}<span class="btn" aria-disabled="true">‹ Poprzedni klip</span>{% endif %}
+  {% if following %}<a class="btn" id="next-clip" rel="next" href="/clips/{{ following.id }}{{ nav_q }}">Następny klip ({{ following.time_sec|clock }}) ›</a>
+  {% else %}<span class="btn" aria-disabled="true">Następny klip ›</span>{% endif %}
+</nav>
+
 <div class="player-layout">
-  <section id="clip-area" {% if busy %}hx-get="/clips/{{ c.id }}" hx-trigger="every 3s" hx-select="#clip-area" hx-select-oob="#clip-status" hx-swap="outerHTML"{% endif %}>
+  <section id="clip-area" {% if busy %}hx-get="/clips/{{ c.id }}{{ nav_q }}" hx-trigger="every 3s" hx-select="#clip-area" hx-select-oob="#clip-status" hx-swap="outerHTML"{% endif %}>
     {% if c.status == 'cut' and c.clip_path %}
       <video id="clip-video" src="/clips/{{ c.id }}/file?v={{ c.clip_version }}" controls preload="auto" playsinline></video>
       <div class="row">
@@ -20,52 +27,56 @@
         <span class="muted">{{ filename }}</span>
       </div>
     {% elif c.status == 'error' %}
-      <div class="banner error">Błąd wycinania: {{ c.error }}</div>
-      {% if perm.can_manage_clips(user, c.match) %}
-      <form method="post" action="/clips/{{ c.id }}/recut">{{ csrf_input() }}<button class="btn">Spróbuj ponownie</button></form>
-      {% endif %}
+      <div class="banner error" id="cut-problem">{{ problem.message }}</div>
+      <div class="row">
+        {% if problem.can_recut and perm.can_manage_clips(user, c.match) %}
+        <form method="post" action="/clips/{{ c.id }}/recut{{ nav_q }}">{{ csrf_input() }}<button class="btn primary">Wytnij ponownie</button></form>
+        {% endif %}
+        {% if perm.can_delete_clip(user, c) %}
+        <form method="post" action="/clips/{{ c.id }}/delete" onsubmit="return confirm('Usunąć klip?')">{{ csrf_input() }}<button class="btn danger">Usuń klip</button></form>
+        {% endif %}
+      </div>
     {% else %}
       <div class="banner">Klip czeka na wycięcie{% if not ffmpeg_ok() %} — {{ ffmpeg_message }}{% else %} (worker: <code>python -m app.worker</code>){% endif %}.</div>
     {% endif %}
   </section>
 
   <aside>
-    <div class="card">
+    <div class="card" id="clip-info">
       <h3>Opis klipu</h3>
-      <p class="muted">{{ period_label(c) }}</p>
-      {% if not c.is_described %}<p><span class="chip">nieopisany</span></p>{% endif %}
-      {% if perm.can_describe_clip(user, c) %}
-      <form method="post" action="/clips/{{ c.id }}/update" class="form">
-        {{ csrf_input() }}
-        <label>Sędzia
-          <select name="official">
-            <option value="">—</option>
-            {% for o in c.match.officials %}<option value="{{ o.id }}" {{ 'selected' if c.official_id == o.id and not c.whole_team }}>{{ o.label }}</option>{% endfor %}
-            <option value="team" {{ 'selected' if c.whole_team }}>cały zespół</option>
-          </select></label>
-        <label>Kategoria
-          <select name="category_id" id="category-select">
-            <option value="">—</option>
-            {% for cat in categories %}
-              {% if loop.first or categories[loop.index0 - 1].group_name != cat.group_name %}{% if not loop.first %}</optgroup>{% endif %}<optgroup label="{{ cat.group_name }}">{% endif %}
-              <option value="{{ cat.id }}" data-custom="{{ 1 if cat.is_custom else 0 }}" {{ 'selected' if c.category_id == cat.id }}>{{ cat.name }}</option>
-              {% if loop.last %}</optgroup>{% endif %}
-            {% endfor %}
-          </select></label>
-        <label id="custom-label">Nazwa własnej kategorii
-          <input name="custom_category" maxlength="100" value="{{ c.custom_category or '' }}"></label>
-        <label>Opis
-          <textarea name="description" rows="3">{{ c.description }}</textarea></label>
-        <button class="btn primary">Zapisz opis</button>
-      </form>
-      {% else %}
+      <p class="muted">{{ period_label(c) }}<br><small>czas nagrania – nie zegar meczowy</small></p>
+      {% if not c.is_described %}<p><span class="chip warn">nieopisany</span></p>{% endif %}
       <dl class="facts">
         <dt>Sędzia</dt><dd>{{ c.official_label or '—' }}</dd>
         <dt>Kategoria</dt><dd>{{ c.category_label or '—' }}</dd>
         <dt>Opis</dt><dd>{{ c.description or '—' }}</dd>
+        <dt>Znacznik dodał(a)</dt><dd>{{ c.author.name if c.author else '—' }}, {{ c.created_at.strftime("%d.%m.%Y %H:%M") if c.created_at }}</dd>
+        <dt>Opisano</dt><dd>{{ c.described_at.strftime("%d.%m.%Y %H:%M") if c.described_at else '—' }}</dd>
       </dl>
+    </div>
+
+    <div class="card" id="oceny">
+      <h3>Oceny szkoleniowców</h3>
+      <p class="muted">Oceny szkoleniowców pojawią się w kolejnym etapie.</p>
+    </div>
+
+    {% if perm.can_describe_clip(user, c) %}
+    <div class="card" id="clip-edit">
+      <h3>{{ 'Edytuj opis' if c.is_described else 'Opisz klip' }}</h3>
+      {% if blocker %}
+        <div class="banner error" id="describe-block" role="alert">{{ blocker.message }}
+          {% if blocker.url %}<div><a class="btn" id="set-periods-link" href="{{ blocker.url }}">{{ blocker.link_text }}</a></div>{% endif %}
+        </div>
+      {% else %}
+        {% if not c.is_described %}<p class="small-note"><a href="/matches/{{ c.match_id }}/describe?clip={{ c.id }}">Opisz w kolejce znaczników</a> (skróty klawiszowe, kolejne nieopisane).</p>{% endif %}
+        {% set form_action = "/clips/" ~ c.id ~ "/update" ~ nav_q %}
+        {% set submit_label = "Zapisz opis" %}
+        {% set keys = false %}
+        {% set skip_url = none %}
+        {% include "_clip_form.html" %}
       {% endif %}
     </div>
+    {% endif %}
   </aside>
 </div>
 
@@ -77,7 +88,7 @@
     <button class="btn primary">Dodaj komentarz</button>
   </form>
 </div>
-{% if perm.can_delete_clip(user, c) %}
+{% if c.status != 'error' and perm.can_delete_clip(user, c) %}
 <form method="post" action="/clips/{{ c.id }}/delete" onsubmit="return confirm('Usunąć klip?')">{{ csrf_input() }}<button class="btn danger small">Usuń klip</button></form>
 {% endif %}
 {% endblock %}

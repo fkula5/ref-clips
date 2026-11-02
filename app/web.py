@@ -57,6 +57,9 @@ env.globals.update(
     period_label=lambda c: services.period_label(c.video.marks, c.time_sec),
     period_short=lambda c: services.period_short(c.video.marks, c.time_sec),
     color_hex=color_hex,
+    category_groups=services.category_groups,
+    is_proposal=services.is_proposal,
+    describe_block=services.describe_block,
     content_label=services.content_label,
     missing_periods_of=lambda v: (services.missing_periods(v.content, (mk.period for mk in v.marks))
                                   if v.status == "ready" and v.purged_at is None else []),
