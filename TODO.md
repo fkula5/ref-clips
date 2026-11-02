@@ -70,3 +70,4 @@
 - [ ] Filtr ocen „ma ocenę: X” oznacza „co najmniej jedna ocena X” (klip z oceną prawidłową i dyskusyjną pasuje do obu); brak filtru „oceny sprzeczne” czy „zgodne”.
 - [ ] Indeksy dodano tylko dla `comments.clip_id` i `comments.match_id` (migracja `mvp0003`); `ratings.clip_id` pokrywa unikalność (clip_id, coach_id), a `ratings.coach_id` bez indeksu (tylko kontrola kluczy obcych).
 - [ ] Widoki mobilne sprawdzone w Chromium 375×740, nie na prawdziwym iPhonie/Safari (pole `<details>` do zmiany cudzej oceny i `confirm` w przycisku warto obejrzeć ręcznie).
+- [ ] Test E2E `test_player.py::test_podwojne_z_to_jeden_znacznik_a_backspace_cofa` raz nie przeszedł podczas prac nad segmentem 6; zależy od czasu (blokada podwójnego `Z` przez 1 s), może być niestabilny przy obciążonej maszynie — obserwować.

@@ -94,8 +94,10 @@ def render(request: Request, name: str, status_code: int = 200, **context):
 
 
 def is_htmx(request: Request) -> bool:
-    """Żądanie wysłane przez HTMX (odświeżanie fragmentu, a nie nawigacja)."""
-    return "hx-request" in request.headers
+    """Żądanie wysłane przez HTMX (odświeżanie fragmentu, a nie nawigacja). Odtworzenie strony z historii
+    (wstecz przy braku kopii w pamięci HTMX) też ma nagłówek HX-Request, ale podmienia całe body, więc
+    traktujemy je jak zwykłą nawigację."""
+    return "hx-request" in request.headers and "hx-history-restore-request" not in request.headers
 
 
 def back_url(request: Request) -> str | None:

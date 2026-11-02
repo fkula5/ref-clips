@@ -554,6 +554,17 @@ def test_htmx_refresh_of_match_page_does_not_render_comments(world, db):
     assert 'id="komentarze"' not in clip_partial and 'id="oceny"' not in clip_partial
 
 
+def test_htmx_history_restore_renders_comments_and_ratings(world, db):
+    """Wstecz przy braku kopii w pamięci HTMX: żądanie ma HX-Request, ale podmienia całe body, więc
+    strona musi mieć komentarze i oceny jak przy zwykłej nawigacji."""
+    add_comment(db, world["users"]["coach"], "Komentarz po powrocie", match=world["match"])
+    client = world["clients"]["coach"]
+    restore = {**HTMX, "HX-History-Restore-Request": "true"}
+    assert "Komentarz po powrocie" in client.get(f"/matches/{world['match'].id}", headers=restore).text
+    clip_page = client.get(f"/clips/{world['clip'].id}", headers=restore).text
+    assert 'id="komentarze"' in clip_page and 'id="oceny"' in clip_page
+
+
 def test_failed_comment_on_page_without_js_rerenders_page_with_draft(world, db):
     client = world["clients"]["coach"]
     r = client.post(f"/matches/{world['match'].id}/comments", data={"body": "q" * 5001})
