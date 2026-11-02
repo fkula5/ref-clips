@@ -10,7 +10,7 @@ from fastapi.templating import Jinja2Templates
 from jinja2 import pass_context
 from markupsafe import Markup, escape
 
-from app import clip_list, config, feedback, services
+from app import clip_list, config, feedback, retention, services
 from app.auth import set_anon_csrf_cookie
 from app import models as m
 from app import permissions
@@ -22,6 +22,23 @@ BASE = Path(__file__).parent
 templates = Jinja2Templates(directory=str(BASE / "templates"))
 env = templates.env
 env.filters["clock"] = format_clock
+
+
+def human_bytes(value: int | float | None) -> str:
+    """Rozmiar po polsku: „512 B”, „1,3 GB”."""
+    if value is None:
+        return "—"
+    size = float(value)
+    for unit in ("B", "KB", "MB", "GB"):
+        if size < 1024 or unit == "GB":
+            break
+        size /= 1024
+    if unit == "B":
+        return f"{int(size)} B"
+    return f"{size:.1f}".replace(".", ",") + f" {unit}"
+
+
+env.filters["filesize"] = human_bytes
 
 
 # Kolory strojów wpisywane ręcznie: rozpoznajemy początek nazwy (np. „czerwone”, „Czerwony”).
@@ -68,6 +85,7 @@ env.globals.update(
     NOTES_MAX_CHARS=config.NOTES_MAX_CHARS, NOTES_MAX_LINES=config.NOTES_MAX_LINES,
     max_upload_gb=lambda: config.UPLOAD_MAX_BYTES / config.GB,
     upload_chunk_bytes=config.UPLOAD_CHUNK_BYTES,
+    expiry_note=retention.expiry_note, video_expiry_note=retention.video_expiry_note,
     clip_bounds=services.clip_range,
     DEFAULT_MARGIN=config.DEFAULT_MARGIN_BEFORE,
 )

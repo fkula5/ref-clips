@@ -176,6 +176,7 @@ def test_full_flow_tus_upload_worker_ready_original_removed(client, db, short_so
     assert video.status == "ready" and video.error is None
     assert video.original_path is None and not storage.exists(original)
     assert storage.exists(video.proxy_path) and video.duration == pytest.approx(6, abs=0.3)
+    assert video.proxy_bytes == storage.size(video.proxy_path) > 0      # rozmiar do panelu dysku
     assert video.expires_at is not None and video.content == "Q2"
     assert vid.probe(storage.local_path(video.proxy_path))["height"] == 240
     r = client.get(f"/videos/{video.id}/stream", headers={"Range": "bytes=0-99"})

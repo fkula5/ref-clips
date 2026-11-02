@@ -7,7 +7,7 @@ import time
 from sqlalchemy import and_, case, exists, or_, select, update
 from sqlalchemy.orm import Session
 
-from app import config, services, uploads, video as vid
+from app import config, retention, services, uploads, video as vid
 from app.db import SessionLocal
 from app.models import Clip, Job, Video
 from app.storage import storage
@@ -65,6 +65,7 @@ def run_transcode(db: Session, job: Job) -> None:
     video.duration = final["video_duration"] or final["duration"]
     video.fps = final["fps"] or video.fps
     video.proxy_path = proxy_key
+    video.proxy_bytes = storage.size(proxy_key)
     original_key, video.original_path = video.original_path, None
     video.status = "ready"
     db.commit()
@@ -79,6 +80,9 @@ def run_cut(db: Session, job: Job) -> None:
     if clip is None:
         return
     video = clip.video
+    if video.purged_at is not None or not video.proxy_path or not storage.exists(video.proxy_path):
+        # np. nagranie usunięte (retencja, panel admina) między dodaniem znacznika a cięciem
+        raise FileNotFoundError("Pełne nagranie zostało usunięte przed wycięciem klipu.")
     if video.duration is not None and clip.time_sec > video.duration + config.CUT_OUTSIDE_TOLERANCE:
         # np. moment z notatek wpisanych przy wgrywaniu, zanim znaliśmy długość nagrania
         raise ValueError(f"Moment poza nagraniem: {format_clock(clip.time_sec)} "
@@ -139,9 +143,18 @@ def recover_interrupted() -> None:
 
 
 def run_maintenance() -> None:
-    """Okresowe sprzątanie: porzucone uploady (> 24 h bez aktywności)."""
-    with SessionLocal() as db:
-        uploads.cleanup_stale(db)
+    """Okresowe sprzątanie (co godzinę, także zaraz po starcie): porzucone uploady (> 24 h bez
+    aktywności), osierocone pliki klipów, stare wpisy o odrzuconych uploadach oraz retencja —
+    usuwanie wersji roboczych po terminie, raz na dobę (`retention.run_if_due` pilnuje, żeby restart
+    ani drugi worker nie uruchomił jej drugi raz). Błąd jednego kroku nie wstrzymuje pozostałych."""
+    steps = (uploads.cleanup_stale, uploads.prune_rejections, retention.run_if_due,
+             retention.cleanup_orphan_clips)
+    for step in steps:
+        try:
+            with SessionLocal() as db:
+                step(db)
+        except Exception:  # noqa: BLE001
+            log.exception("Sprzątanie: krok %s nie powiódł się", step.__name__)
 
 
 def main() -> None:

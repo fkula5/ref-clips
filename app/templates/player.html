@@ -21,6 +21,8 @@
 {% elif video.status != 'ready' %}
   <div class="banner error">Wersja robocza nie jest jeszcze gotowa (status: {{ VIDEO_STATUSES.get(video.status, video.status) }}). Wróć do <a href="/matches/{{ match.id }}">meczu</a>.</div>
 {% else %}
+{% set expiry = video_expiry_note(video) %}
+{% if expiry %}<div class="banner warn" id="expiry-banner">Uwaga: {{ expiry }} (do {{ video.expires_at.strftime("%d.%m.%Y") }}). Po tym terminie nie będzie odtwarzacza ani możliwości dodawania znaczników; wycięte klipy zostają.</div>{% endif %}
 <div id="marks-banner" class="banner warn hidden">
   <strong>Ustaw początki kwart, żeby klipy miały kwartę i czas.</strong>
   Brakuje: <span id="missing-list"></span>. Do tego czasu klipy mają kwartę „nieustaloną” (wycinanie działa). Użyj panelu „Początki kwart”.

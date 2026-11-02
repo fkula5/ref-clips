@@ -29,7 +29,11 @@
           {% else %}<span class="muted">czeka na worker (python -m app.worker)</span>{% endif %}
         {% endif %}
         {% if v.status == 'queued' or v.status == 'processing' %}<div class="muted small-note">Po konwersji oryginał jest usuwany — zostaje wersja robocza.</div>{% endif %}
-        {% if v.purged_at %}<div class="muted small-note">Pełne nagranie zostało usunięte; klipy zostają.</div>{% endif %}
+        {% if v.purged_at %}<div class="muted small-note">Pełne nagranie zostało usunięte; klipy zostają.</div>
+        {% elif v.status == 'ready' and v.expires_at %}
+          {% set note = video_expiry_note(v) %}
+          <div class="small-note {{ 'warn-text' if note else 'muted' }} video-expiry">{{ note|capitalize if note else 'Pełne nagranie dostępne do ' ~ v.expires_at.strftime("%d.%m.%Y") }}{% if note %} (do {{ v.expires_at.strftime("%d.%m.%Y") }}){% endif %}.</div>
+        {% endif %}
         {% if v.error %}<div class="error-text">{{ v.error }}</div>{% endif %}
         {% if v.status == 'error' and not v.original_path %}<div class="error-text">Oryginał został już usunięty — ponowna konwersja jest niemożliwa. Usuń nagranie i wgraj plik jeszcze raz.</div>{% endif %}
       </div>

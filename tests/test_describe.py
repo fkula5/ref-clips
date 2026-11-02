@@ -231,15 +231,21 @@ def test_incomplete_marks_block_even_when_clip_has_a_quarter(setup, db):
     assert approve(s["coach"], inside, db, "team").status_code == 303
 
 
-def test_blocked_clip_after_purge_has_no_link_to_set_periods(setup, db):
+def test_clip_with_unset_quarter_can_be_described_after_purge(setup, db):
+    """Po usunięciu pełnego nagrania kwart nie da się ustawić, więc blokada opisu znika: klip
+    można opisać, a jego kwarta zostaje „nieustalona” (liczona z period_marks)."""
     s = setup
     bare = make_ready_video(db, s["match"], duration=700)
     bare.purged_at = datetime(2026, 11, 1)
     clip = Clip(match_id=s["match"].id, video_id=bare.id, time_sec=50)
     db.add(clip)
     db.commit()
-    block = services.describe_block(clip)
-    assert block.url is None and "nie da się ustawić" in block.message
+    assert services.describe_block(clip) is None
+    page = screen(s["coach"], s["match"], clip=clip.id).text
+    assert "klipu nie można opisać" not in page and "kwarta nieustalona" in page
+    assert approve(s["coach"], clip, db, "team").status_code == 303
+    db.refresh(clip)
+    assert clip.described_at is not None and services.period_short(bare.marks, clip.time_sec) == "nieustalona"
 
 
 def test_editing_a_described_clip_whose_quarters_vanished_is_blocked(setup, db):

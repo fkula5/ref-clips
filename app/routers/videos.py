@@ -36,6 +36,8 @@ def videos_panel(request: Request, match: Match = Depends(get_match),
 # --- serwowanie wideo (Range) ---------------------------------------------------
 @router.get("/videos/{video_id}/stream")
 def stream_video(video: Video = Depends(get_video), user: User = require(permissions.can_view)):
+    if video.purged_at is not None:
+        raise HTTPException(409, "Pełne nagranie zostało usunięte")
     if video.status != "ready" or not video.proxy_path or not storage.exists(video.proxy_path):
         raise HTTPException(409, "Wersja robocza nie jest jeszcze gotowa")
     return file_response(storage.local_path(video.proxy_path))
@@ -68,7 +70,13 @@ def update_video(request: Request, label: str = Form(""), content_kind: str = Fo
                  db: Session = Depends(get_db), video: Video = Depends(get_video),
                  user: User = require(can_upload_video, get_video)):
     """Etykieta i deklaracja zawartości pliku (cały mecz / kwarta / kilka kwart). Zmiana, która
-    usuwa lub przepisuje znaczniki kwart, wymaga potwierdzenia (formularz pokazuje które)."""
+    usuwa lub przepisuje znaczniki kwart, wymaga potwierdzenia (formularz pokazuje które).
+    Po usunięciu pełnego nagrania zmienia się tylko etykieta: deklaracja i znaczniki kwart są
+    zamrożone (kwarty klipów mają zostać takie, jakie były)."""
+    if video.purged_at is not None:
+        video.label = label.strip()[:100]
+        db.commit()
+        return RedirectResponse(f"/matches/{video.match_id}", status_code=303)
     try:
         content = services.content_from_form(content_kind, periods)
     except services.MatchFormError as exc:
@@ -187,6 +195,7 @@ def set_mark(body: MarkIn, db: Session = Depends(get_db), video: Video = Depends
 def delete_mark(db: Session = Depends(get_db), mark: PeriodMark = Depends(get_mark),
                 user: User = require(lambda u, mk: can_upload_video(u, mk.video), get_mark)):
     video = mark.video
+    _require_playable(video)  # po usunięciu pełnego nagrania znaczniki kwart są zamrożone
     if services.allowed_periods(video.content) == [mark.period]:
         raise HTTPException(409, "Plik z jedną kwartą zawsze ma znacznik początku — przesuń go "
                                  "(Ustaw tutaj) zamiast usuwać.")

@@ -72,6 +72,14 @@ try:
 except ValueError:
     pass
 TRANSCODE_MAX_FPS = 30
+
+# --- retencja i sprzątanie (segment 7) ------------------------------------------------
+RETENTION_DAYS_MIN, RETENTION_DAYS_MAX = 1, 365   # zakres ustawienia `retention_days`
+EXPIRY_WARN_DAYS = 7                    # tyle dni przed terminem mecz pokazuje „dostępne jeszcze X dni”
+RETENTION_INTERVAL_HOURS = 24           # zadanie `retention` raz na dobę (z zapisem czasu uruchomienia)
+ORPHAN_MIN_AGE_SECONDS = 3600           # plik klipu bez klipu w bazie sprzątamy po godzinie
+REJECTION_WARN_DAYS = 7                 # baner o odrzuconych uploadach: ostatnie 7 dni
+REJECTION_KEEP_DAYS = 30                # wpisy o odrzuconych uploadach są usuwane po 30 dniach
 # Weryfikacja konwersji: czas wideo wyniku może różnić się od oryginału o max(2 s, 1% długości).
 VERIFY_MIN_SECONDS = float(os.environ.get("REFCLIPS_VERIFY_MIN_SECONDS", "2"))
 VERIFY_RELATIVE = float(os.environ.get("REFCLIPS_VERIFY_RELATIVE", "0.01"))

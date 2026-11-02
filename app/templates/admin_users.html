@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% block title %}Użytkownicy{% endblock %}
 {% block content %}
+{% set tab = "users" %}{% include "_admin_tabs.html" %}
 <h1>Użytkownicy</h1>
 
 {% if error %}<div class="banner error" role="alert">{{ error }}</div>{% endif %}

@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% block title %}Kategorie{% endblock %}
+{% block content %}
+{% set tab = "categories" %}{% include "_admin_tabs.html" %}
+<h1>Kategorie klipów</h1>
+<p class="muted">Słownik używany w opisie klipów i w rozpoznawaniu notatek (nazwa i aliasy, bez względu na wielkość liter i polskie znaki).
+  Kategorię użytą w klipach można tylko dezaktywować: znika z wyboru w formularzach i z rozpoznawania w notatkach,
+  a istniejące klipy dalej ją pokazują. Nieużywaną kategorię można usunąć. Kategorii „własna” nie można dezaktywować ani usunąć.</p>
+
+{% if error %}<div class="banner error" role="alert" id="admin-error">{{ error }}</div>{% endif %}
+{% if notice %}<div class="banner ok" role="status" id="admin-notice">{{ notice }}</div>{% endif %}
+
+<h2>Nowa kategoria</h2>
+<form method="post" action="/admin/categories" class="card form" id="new-category">
+  {{ csrf_input() }}
+  <div class="grid2">
+    <label>Nazwa <input name="name" required maxlength="100" value="{{ new_values.name }}"></label>
+    <label>Grupa
+      <select name="group">{% for g in group_names %}<option value="{{ g }}" {{ 'selected' if g == new_values.group }}>{{ g }}</option>{% endfor %}</select></label>
+  </div>
+  <label>Aliasy (po przecinku, opcjonalnie)
+    <input name="aliases" class="wide" value="{{ new_values.aliases }}" placeholder="np. kroki, krok, traveling"></label>
+  <button class="btn primary">Dodaj kategorię</button>
+</form>
+
+{% for group, items in groups %}
+<h2>{{ group }}</h2>
+{% if not items %}<p class="muted">Brak kategorii w tej grupie.</p>{% else %}
+<table class="responsive categories-table">
+  <thead><tr><th>Nazwa</th><th>Grupa</th><th>Aliasy</th><th>Klipy</th><th>Stan</th><th></th></tr></thead>
+  <tbody>
+  {% for c in items %}
+    {% set v = edit_values.get(c.id) %}
+    <tr class="{{ 'inactive' if not c.is_active }}" data-category="{{ c.name }}">
+      <td data-label="Nazwa">
+        <form id="cat-{{ c.id }}" method="post" action="/admin/categories/{{ c.id }}/update">{{ csrf_input() }}</form>
+        <input form="cat-{{ c.id }}" name="name" required maxlength="100" aria-label="Nazwa kategorii" value="{{ v.name if v else c.name }}">
+        {% if c.is_custom %}<span class="chip" title="Klip z tą kategorią ma własną, wpisaną ręcznie nazwę">własna</span>{% endif %}
+      </td>
+      <td data-label="Grupa">
+        <select form="cat-{{ c.id }}" name="group" aria-label="Grupa">{% set cur = v.group if v else c.group_name %}
+          {% for g in group_names %}<option value="{{ g }}" {{ 'selected' if g == cur }}>{{ g }}</option>{% endfor %}</select>
+      </td>
+      <td data-label="Aliasy"><input form="cat-{{ c.id }}" name="aliases" class="wide" aria-label="Aliasy" value="{{ v.aliases if v else c.alias_list|join(', ') }}"></td>
+      <td data-label="Klipy">{{ used.get(c.id, 0) }}</td>
+      <td data-label="Stan">{% if c.is_active %}<span class="badge ready">aktywna</span>{% else %}<span class="badge error">nieaktywna</span>{% endif %}</td>
+      <td class="row actions-cell">
+        <button form="cat-{{ c.id }}" class="btn small primary">Zapisz</button>
+        <form method="post" action="/admin/categories/{{ c.id }}/move" class="inline">{{ csrf_input() }}<input type="hidden" name="direction" value="up"><button class="btn small" aria-label="Wyżej: {{ c.name }}" title="Wyżej" {{ 'disabled' if loop.first }}>↑</button></form>
+        <form method="post" action="/admin/categories/{{ c.id }}/move" class="inline">{{ csrf_input() }}<input type="hidden" name="direction" value="down"><button class="btn small" aria-label="Niżej: {{ c.name }}" title="Niżej" {{ 'disabled' if loop.last }}>↓</button></form>
+        {% if c.is_active %}
+          {% if not c.is_custom %}
+          <form method="post" action="/admin/categories/{{ c.id }}/active" class="inline" onsubmit="return confirm('Dezaktywować kategorię? Zniknie z wyboru w formularzach i z rozpoznawania w notatkach; istniejące klipy ją zachowają.')">
+            {{ csrf_input() }}<input type="hidden" name="active" value="0"><button class="btn small">Dezaktywuj</button></form>
+          {% endif %}
+        {% else %}
+          <form method="post" action="/admin/categories/{{ c.id }}/active" class="inline">{{ csrf_input() }}<input type="hidden" name="active" value="1"><button class="btn small">Aktywuj</button></form>
+        {% endif %}
+        {% if not c.is_custom and not used.get(c.id, 0) %}
+          <form method="post" action="/admin/categories/{{ c.id }}/delete" class="inline" onsubmit="return confirm('Usunąć kategorię „{{ c.name }}”?')">
+            {{ csrf_input() }}<button class="btn small danger">Usuń</button></form>
+        {% endif %}
+      </td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+{% endfor %}
+{% endblock %}

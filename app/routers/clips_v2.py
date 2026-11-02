@@ -80,6 +80,8 @@ def clip_adjust(db: Session = Depends(get_db), clip: Clip = Depends(get_clip),
                 user: User = require(via_match(permissions.can_manage_clips), get_clip),
                 start: str = Form(), end: str = Form()):
     """Korekta początku/końca klipu (m:ss lub liczba sekund) i ponowne wycięcie."""
+    if clip.video.purged_at is not None or not clip.video.proxy_path:
+        raise HTTPException(409, "Pełnego nagrania nie ma już na serwerze — klipu nie da się wyciąć ponownie")
     def to_seconds(text: str) -> float | None:
         text = text.strip().replace(",", ".")
         parsed = parse_time(text)

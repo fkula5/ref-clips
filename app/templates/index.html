@@ -46,7 +46,8 @@
       <td data-label="Liga">{{ m.level or '—' }}</td>
       <td data-label="Obsada">{% for o in m.officials %}<span class="chip">{{ o.function }} {{ o.display_name }}</span>{% endfor %}</td>
       <td data-label="Stan"><span class="badge state-{{ row.state.code }}">{{ row.state.label }}</span>
-        {% if row.state.detail %}<small class="muted">{{ row.state.detail }}</small>{% endif %}</td>
+        {% if row.state.detail %}<small class="muted">{{ row.state.detail }}</small>{% endif %}
+        {% if row.expiry %}<div class="expiry-note warn-text">{{ row.expiry }}</div>{% endif %}</td>
       <td data-label="Klipy"><a href="/clips?match_id={{ m.id }}">{{ row.clips }}</a></td>
       <td data-label="Nieopisane">{% if row.undescribed %}<span class="chip warn">{{ row.undescribed }}</span>{% else %}0{% endif %}</td>
     </tr>

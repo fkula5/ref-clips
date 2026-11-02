@@ -16,7 +16,7 @@
     <nav>
       <a href="/">Mecze</a>
       <a href="/clips">Klipy</a>
-      {% if perm.can_manage_users(user) %}<a href="/admin/users">Użytkownicy</a>{% endif %}
+      {% if perm.can_manage_users(user) %}<a href="/admin/users">Administracja</a>{% endif %}
     </nav>
     <div class="who">
       <span>{{ user.name }}</span>
