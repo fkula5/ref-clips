@@ -85,3 +85,9 @@
 - [ ] Daty w panelu retencji są w UTC, jak w reszcie aplikacji; „dostępne jeszcze X dni” zaokrągla w górę do pełnych dni.
 - [ ] `retention.purge_video` usuwa pliki przed zapisem `purged_at` w bazie; jeśli commit się nie uda (np. zajęta baza), nagranie zostaje „gotowe” bez pliku do najbliższego przebiegu retencji. Bezpieczniejsza kolejność: najpierw `purged_at` (commit), potem pliki, a nieudane usunięcie pliku zostawić sprzątaniu.
 - [ ] Formularze panelu admina (kategorie, retencja, usunięcie nagrania) odpowiadają stroną zamiast przekierowania 303 — odświeżenie strony po zapisie wysyła formularz ponownie (tak jak dotychczasowa strona kont).
+
+## Uwagi z testów UI (2026-11-03)
+
+- [ ] Strona klipu: odtwarzacz nie jest wyrównany do bocznego panelu („Opis klipu”, „Oceny szkoleniowców”) — górne krawędzie wideo i pierwszej karty powinny być w jednej linii.
+- [ ] Strona klipu: „Pobierz MP4” przylega do odtwarzacza (brak odstępu) i jest słabo umiejscowiony — dodać odstęp i przemyśleć miejsce (np. pasek akcji pod wideo razem z nazwą pliku, wyrównany do krawędzi odtwarzacza).
+- [ ] Wszystkie tabele (m.in. panel kategorii, użytkownicy): kolumna z przyciskami akcji rozjeżdża się względem wierszy danych — linie wierszy w kolumnie akcji nie pokrywają się z resztą, wysokości komórek są różne. Ujednolicić wyrównanie pionowe i wysokość wierszy we wszystkich tabelach.
