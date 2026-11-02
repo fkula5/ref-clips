@@ -14,8 +14,9 @@ segment 2a („Docker lokalnie”) — obraz i Compose do testów na innych komp
 segment 4 („Znaczniki”) — klawisz „Zaznacz”, początki kwart wg deklaracji pliku, notatki przy wgrywaniu;
 segment 4a („Testy interfejsu”) — automatyczne testy w przeglądarce (Playwright, Chromium);
 segment 5 („Klipy”) — ekran opisywania znaczników, zakładka „Klipy” meczu z filtrami, widok klipu;
-segment 6 („Oceny i komentarze”) — oceny szkoleniowców, komentarze do meczu i klipu, widoki mobilne.
-Kolejne segmenty (retencja i panel admina, wdrożenie) opisuje plan.
+segment 6 („Oceny i komentarze”) — oceny szkoleniowców, komentarze do meczu i klipu, widoki mobilne;
+segment 7 („Admin i retencja”) — panel kategorii, retencji i dysku, zadanie `retention` w workerze.
+Kolejny segment (wdrożenie na VPS) opisuje plan.
 
 ## Wymagania i instalacja
 
@@ -205,6 +206,72 @@ limit 5 nieudanych prób logowania na 15 minut osobno na konto i na adres IP; to
 w każdym formularzu i w nagłówku `X-CSRF-Token` zapytań HTMX/fetch. Każda strona poza logowaniem
 i ustawieniem hasła wymaga zalogowania (strony przekierowują na `/login`, API zwraca 401).
 
+## Panel administratora (segment 7)
+
+Menu **Administracja** (tylko rola administratora; serwer sprawdza to na każdej trasie, pozostałe role dostają 403,
+niezalogowani 401/przekierowanie na logowanie, a zapisy wymagają tokenu CSRF) ma trzy zakładki.
+
+**Użytkownicy** — konta, role, linki zaproszeń (opisane wyżej).
+
+**Kategorie** (`/admin/categories`) — słownik w grupach Faule / Naruszenia / Bez gwizdka / Mechanika / Inne:
+- dodawanie, zmiana nazwy, grupy i aliasów (po przecinku), kolejność (↑/↓ w obrębie grupy), aktywacja i dezaktywacja;
+- nazwa i aliasy są porównywane bez względu na wielkość liter i polskie znaki, tak jak w parserze notatek. Nazwa musi być
+  unikalna, a alias nie może powtarzać nazwy ani aliasu innej kategorii (także nieaktywnej) ani funkcji CC/U1/U2 —
+  parser nie umiałby wtedy rozstrzygnąć, którą kategorię wybrać, więc zapis jest odrzucany z czytelnym błędem;
+- **kategorię użytą w klipach można tylko dezaktywować** (nie usunąć). Nieaktywna znika z wyboru w formularzach opisu,
+  w podglądzie notatek i z rozpoznawania w parserze, ale klipy, które ją mają, dalej ją pokazują (z dopiskiem
+  „nieaktywna” w formularzu), a zapis opisu bez zmian zachowuje kategorię; filtry klipów nadal ją znają. Kategorię
+  nieużywaną można usunąć;
+- kategorii „własna” (nazwa wpisywana przy klipie) nie można dezaktywować ani usunąć.
+
+**Retencja i dysk** (`/admin/retention`):
+- *Retencja pełnych nagrań:* liczba dni (1–365, domyślnie 30), po których usuwana jest wersja robocza pełnego nagrania.
+  Zmiana dotyczy **nowych** nagrań; termin istniejących zostaje, chyba że zaznaczysz „przelicz termin dla istniejących
+  nagrań” — wtedy staje się on datą wgrania + N dni (ostrzeżenie przed zapisem; nagrania starsze niż N dni znikną przy
+  najbliższym sprzątaniu workera, klipy zostają). Obok widać czas i wynik ostatniego uruchomienia zadania retencji.
+- *Zajętość dysku:* pełne nagrania (wersje robocze), oryginały w konwersji i niedokończone uploady, klipy, wolne miejsce,
+  miejsce zarezerwowane dla trwających uploadów i konwersji oraz największy plik, jaki nowy upload może teraz zająć.
+  Rozmiary pochodzą z bazy (`videos.proxy_bytes`, `videos.size_bytes`, `upload_sessions.offset_bytes`); jedynie katalog
+  klipów jest czytany z dysku (jedno przejście po katalogu), więc strona nie robi zapytań o każdy plik. Rozmiar wersji
+  roboczej starszych nagrań jest uzupełniany przy pierwszym otwarciu strony.
+- *Lista nagrań* (mecz, nagranie, data wgrania, termin usunięcia, rozmiar, liczba klipów), od najbliższego terminu.
+  **Usuń pełne nagranie teraz** (z potwierdzeniem) kasuje wersję roboczą (i oryginał, jeśli został po błędzie konwersji)
+  oraz ustawia `purged_at`; klipy zostają. Przycisku nie ma (a serwer odpowiada 409), gdy nagranie jest wgrywane lub
+  konwertowane albo gdy klipy z niego czekają na wycięcie (status „nowy” / „w kolejce do cięcia”) — usunięcie
+  zostawiłoby je w kolejce na zawsze; trzeba poczekać, aż worker je wytnie.
+- *Ostrzeżenie o braku miejsca:* upload odrzucony kodem 507 zapisuje się (czas, użytkownik, plik, rozmiar, wolne miejsce,
+  tabela `upload_rejections`, wpisy starsze niż 30 dni są usuwane). Odrzucenia z ostatnich 7 dni pokazuje baner na
+  wszystkich zakładkach panelu i tabela na zakładce „Retencja i dysk”.
+
+### Retencja pełnych nagrań
+
+- Pełne nagranie dostaje termin (`videos.expires_at`) = wgranie + `retention_days` (domyślnie 30). Na **7 dni przed
+  terminem** lista meczów, strona meczu, panel nagrań i odtwarzacz pokazują „pełne nagranie dostępne jeszcze X dni”
+  (po terminie, a przed sprzątaniem: „zostanie usunięte w najbliższym sprzątaniu”). Wcześniej strona meczu pokazuje
+  tylko datę w panelu nagrań.
+- **Po usunięciu** nagranie nie ma odtwarzacza, a każda trasa zapisu, która potrzebuje wersji roboczej (znacznik `Z`,
+  cofnięcie, znacznik z notatką `M`, notatki, początki kwart, ponowne cięcie, korekta granic w wersji 2), zwraca 409
+  z komunikatem „Pełne nagranie zostało usunięte…” zamiast błędu serwera. Znaczniki kwart i deklaracja zawartości są
+  zamrożone („Edytuj” przy nagraniu zmienia już tylko etykietę), więc kwarty klipów zostają takie, jakie były. Klipy
+  wycięte wcześniej odtwarzają się normalnie.
+- **Klip z nieustaloną kwartą** (brak znaczników kwart) po usunięciu pełnego nagrania **można już opisać**: kwart nie da
+  się ustawić, więc blokada opisu przestaje obowiązywać, a klip dalej pokazuje „kwarta nieustalona” (kwarta jest
+  liczona ze znaczników `period_marks`; ich brak oznacza właśnie to).
+
+### Co robi worker poza konwersją i cięciem
+
+Raz na godzinę (i zaraz po starcie) `python -m app.worker` wykonuje sprzątanie; każdy krok jest niezależny (błąd jednego
+nie wstrzymuje pozostałych):
+1. nieaktywne uploady (> 24 h) i osierocone pliki `.part`;
+2. wpisy o odrzuconych uploadach starsze niż 30 dni;
+3. **zadanie `retention`** — raz na dobę usuwa wersje robocze nagrań po terminie (`expires_at` w przeszłości),
+   ustawia `purged_at` i loguje wynik; pomija nagrania w konwersji i takie, z których czekają klipy na cięcie
+   (wrócą w następnym przebiegu). Czas ostatniego uruchomienia zapisywany jest atomowym `UPDATE` w tabeli `settings`
+   (`retention_last_run`), więc restart workera w ciągu doby ani dwa workery naraz nie uruchomią zadania drugi raz,
+   a po dłuższej przerwie nadrobi się przy starcie;
+4. osierocone pliki klipów: pliki `.mp4` w `clips/`, do których nie prowadzi `clip_path` żadnego klipu (np. po
+   usunięciu znacznika w trakcie cięcia), starsze niż godzina.
+
 ## Workflow
 
 1. **Nowy mecz** — data, liga, drużyny (nazwa + kolor strojów) i obsada **CC / U1 / U2**
@@ -333,7 +400,8 @@ i ustawieniem hasła wymaga zalogowania (strony przekierowują na `/login`, API 
      i usuwa też plik klipu;
    - **kwarta nieustalona:** klipu z nagrania, które wymaga znaczników kwart (cały mecz, kilka kwart), a nie ma
      kompletu — albo z momentu przed początkiem pierwszej kwarty — **nie da się opisać** (serwer też odmawia).
-     Ekran pokazuje komunikat z linkiem do panelu „Początki kwart” w odtwarzaczu.
+     Ekran pokazuje komunikat z linkiem do panelu „Początki kwart” w odtwarzaczu. Wyjątek: gdy pełne nagranie
+     zostało usunięte (retencja), kwart nie da się już ustawić, więc klip można opisać z kwartą „nieustaloną”.
 
    Skróty w ekranie opisywania (nie działają w polach tekstowych):
 
@@ -382,7 +450,7 @@ i ustawieniem hasła wymaga zalogowania (strony przekierowują na `/login`, API 
      poziomego przewijania; odtwarzacz meczu i ekran opisywania zostają pod komputer.
 
 Słownik kategorii (grupy Faule, Naruszenia, Bez gwizdka, Mechanika, Inne) jest zakładany
-przy pierwszym uruchomieniu (`app/seed.py`); edycja z poziomu panelu to segment 7. Klipy
+przy pierwszym uruchomieniu (`app/seed.py`); edytuje go administrator w panelu (zakładka „Kategorie”). Klipy
 wycinane są dokładnie (z przekodowaniem) z wersji roboczej; margines przed/po to domyślnie
 15 s, obcinany do granic nagrania.
 
@@ -409,7 +477,7 @@ logowanie, konta i zaproszenia, formularz meczu, wgrywanie (tus, przerwanie i wz
 z podglądem), odtwarzacz i skróty klawiszowe, znaczniki, uprawnienia w interfejsie, strona klipu
 z ocenami i komentarzami (HTMX, także bez JavaScriptu; odświeżanie strony meczu a wpisywany komentarz; widoki 375×740), ekran opisywania (skróty klawiszowe, propozycje z notatek, kwarta nieustalona),
 zakładka klipów meczu (filtry HTMX i bez JS, karty na telefonie), nawigacja poprzedni/następny, lista meczów
-(filtry, paginacja, widok mobilny) i strony błędów.
+(filtry, paginacja, widok mobilny) i strony błędów, panel admina (kategorie, retencja, dysk, ręczne usunięcie pełnego nagrania, baner o braku miejsca).
 Test uruchamia prawdziwy serwer (uvicorn) i worker na wolnym porcie z tymczasowym katalogiem danych,
 konta zakłada kodem aplikacji, a wideo próbne generuje ffmpeg-iem. Każdy test kończy się porażką,
 gdy w konsoli przeglądarki pojawi się błąd JavaScript (poza jawnie dopuszczonymi).
@@ -445,7 +513,10 @@ app/notes_parser.py    parser notatek (czysta funkcja)
 app/routers/uploads.py protokół tus (wgrywanie wznawialne); logika sesji, rezerwacji miejsca i sprzątania: app/uploads.py
 app/video.py           ffprobe/ffmpeg: konwersja, weryfikacja wyniku i wycinanie
 app/storage.py         magazyn plików (lokalny; interfejs pod przyszłe S3)
-app/worker.py          pętla zadań z tabeli jobs
+app/worker.py          pętla zadań z tabeli jobs, sprzątanie okresowe
+app/retention.py       retencja pełnych nagrań (termin, usuwanie, zadanie dobowe), osierocone pliki klipów
+app/disk.py            zajętość dysku i lista nagrań dla panelu, odrzucone uploady
+app/categories.py      słownik kategorii: walidacja nazw i aliasów, kolejność, aktywacja
 Dockerfile, compose.yaml, .env.example   obraz i uruchomienie w Dockerze (app, worker, init)
 scripts/docker-smoke.sh                  test dymny Dockera
 scripts/e2e.sh, tests/e2e/               testy interfejsu w przeglądarce (Playwright)

@@ -113,6 +113,16 @@ przeglądarka ──HTTPS──► Caddy ──► FastAPI (uvicorn, 2 procesy) 
 - Codzienne zadanie `retention` usuwa wersje robocze po terminie i ustawia `purged_at`. Klipy zostają.
 - Na 7 dni przed terminem mecz ma w interfejsie oznaczenie „pełne nagranie dostępne jeszcze X dni”.
 - Panel admina pokazuje zajętość dysku (pełne nagrania, klipy, wolne miejsce) i pozwala usunąć pełne nagranie wcześniej.
+- **Wdrożenie w segmencie 7 (odstępstwa od planu):**
+  - zadanie `retention` nie jest wierszem w tabeli `jobs`, tylko krokiem sprzątania workera (co godzinę sprawdza, czy
+    minęła doba od `settings.retention_last_run`); czas zapisuje atomowy `UPDATE`, więc restart ani drugi worker nie
+    uruchamiają go drugi raz;
+  - nagrania w konwersji i z klipami czekającymi na cięcie są pomijane (przez retencję i ręczne usunięcie), a wrócą
+    w następnym przebiegu; po usunięciu trasy zapisu zwracają 409;
+  - zmiana `retention_days` dotyczy nowych nagrań, a istniejące admin może świadomie przeliczyć (wgranie + N dni);
+  - rozmiar wersji roboczej trzyma kolumna `videos.proxy_bytes` (migracja `mvp0004`), żeby panel nie sprawdzał plików;
+  - klip z nieustaloną kwartą po usunięciu pełnego nagrania można opisać (kwarta zostaje „nieustalona”);
+  - upload odrzucony z braku miejsca zapisuje się w `upload_rejections` i daje baner w panelu admina (plan 6.1).
 
 **Budżet dysku (40 GB):** system i Docker ok. 8 GB, rezerwa na aktywny upload ok. 8 GB, więc na pełne nagrania i klipy zostaje ok. 24 GB. To ok. 12–15 pełnych meczów naraz plus kilkaset klipów. Przy większym ruchu najpierw skracamy retencję, potem przenosimy klipy do magazynu obiektowego (warstwa `storage` jest na to przygotowana).
 

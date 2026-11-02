@@ -28,7 +28,7 @@
 - [x] Zmiana deklaracji zawartości na jedną kwartę zostawia tylko najwcześniejszy znacznik — ostrzeżenie w formularzu edycji, gdy znaczniki są usuwane. *(segment 4: lista usuwanych znaczników i potwierdzenie; zostaje znacznik tej kwarty, jeśli istnieje, inaczej najwcześniejszy przemianowany)*
 - [ ] Po zmianie deklaracji wznowionego uploadu obowiązuje deklaracja z pierwszego POST (metadane zapisane po stronie serwera); poprawka przez „Edytuj” przy nagraniu.
 - [ ] Wgrywanie wznowione bez zapamiętanego adresu (np. inna przeglądarka): ten sam plik (mecz, nazwa, rozmiar) startuje od zera, stary niedokończony upload jest wtedy usuwany.
-- [ ] Panel admina: ostrzeżenie o odrzuconych uploadach z braku miejsca (plan 6.1) — na razie tylko wpis w logu serwera (segment 7).
+- [x] Panel admina: ostrzeżenie o odrzuconych uploadach z braku miejsca (plan 6.1) — na razie tylko wpis w logu serwera (segment 7). *(segment 7: zapis w tabeli `upload_rejections` + baner na zakładkach panelu i lista na „Retencja i dysk”; wpis w logu zostaje)*
 - [ ] Pomiar czasu konwersji powtórzyć na prawdziwym VPS i na prawdziwym nagraniu (4K/HEVC), patrz plan 6.2 (segment 8).
 - [x] Wgrywanie w przeglądarce (`app/static/upload.js`) nie ma testów automatycznych. *(segment 4a: `tests/e2e/test_upload.py` — pasek postępu, notatki z podglądem, przerwanie i wznowienie, Przerwij, konflikt uploadów, dwa pliki)*
 
@@ -38,7 +38,7 @@
 - [ ] Pełny ekran działa przez kontener `.video-wrap` (własny przycisk i klawisz `F`; natywny przycisk pełnego ekranu jest ukryty przez `controlsList="nofullscreen"`, co obsługuje Chrome). W Safari natywny pełny ekran wideo nie pokazuje błysku ani toastów.
 - [ ] „Cofnij ostatni znacznik” (Backspace) usuwa ostatni własny nieopisany klip w nagraniu, także utworzony z notatek przy wgrywaniu lub klawiszem `M`; rozważyć ograniczenie do znaczników z bieżącej sesji odtwarzacza.
 - [ ] Ochrona przed podwójnym kliknięciem używa blokady w procesie (`services.MARKER_LOCK`); przy kilku procesach uvicorn wystarcza sprawdzenie czasu w bazie, ale dwa żądania w tej samej milisekundzie do różnych procesów mogłyby oba przejść.
-- [ ] Usunięcie znacznika w trakcie cięcia go przez worker może zostawić osierocony plik klipu (jak przy usuwaniu klipu na jego stronie); posprzątać w zadaniu `cleanup` (segment 7).
+- [x] Usunięcie znacznika w trakcie cięcia go przez worker może zostawić osierocony plik klipu (jak przy usuwaniu klipu na jego stronie); posprzątać w zadaniu `cleanup` (segment 7). *(segment 7: `retention.cleanup_orphan_clips` w sprzątaniu workera — pliki `.mp4` w `clips/` bez klipu o takim `clip_path`, starsze niż godzina)*
 - [ ] Notatki przy wgrywaniu: podgląd nie zna długości nagrania, więc „moment poza nagraniem” wychodzi dopiero po konwersji (klip w stanie błędu, „Spróbuj ponownie” nie pomoże — usuń klip).
 
 ## Uwagi z segmentu 4a (drobne, odłożone)
@@ -54,7 +54,7 @@
 - [x] Oceny szkoleniowców: na stronie klipu i w tabeli klipów jest tylko miejsce (kolumna „Oceny”, karta „Oceny szkoleniowców”) — segment 6. *(segment 6: karta ocen z formularzem dla szkoleniowca, podsumowanie w tabeli klipów i filtr „Oceny” w adresie)*
 - [ ] Sędzia wpisany ręcznie i usunięty z obsady: klipy tracą przypisanie (`official_id` = NULL) i trzeba je opisać od nowa — ekran opisywania ich nie wyłapuje, bo mają `described_at`.
 - [ ] Klip z kwartą nieustaloną jest blokowany także, gdy znaczniki kwart są niekompletne, a sam klip leży w ustawionej kwarcie (zgodnie ze specyfikacją: do czasu kompletu kwart klipy z pliku mają kwartę nieustaloną). Lista znaczników w odtwarzaczu i tabela klipów pokazują w tym stanie najlepszą znaną kwartę, a ekran opisywania „kwarta nieustalona”.
-- [ ] Po usunięciu pełnego nagrania (retencja, segment 7) klipu z nieustaloną kwartą nie da się już opisać (nie ma gdzie ustawić kwart) — rozważyć, czy panel admina ma dawać wyjście.
+- [x] Po usunięciu pełnego nagrania (retencja, segment 7) klipu z nieustaloną kwartą nie da się już opisać (nie ma gdzie ustawić kwart) — rozważyć, czy panel admina ma dawać wyjście. *(segment 7: po usunięciu pełnego nagrania blokada opisu znika — klip opisuje się z kwartą „nieustaloną”; ręczne wpisywanie kwart bez nagrania odłożone, patrz niżej)*
 - [ ] Podgląd klipu w kolejce używa wersji roboczej (zakres klipu, zatrzymanie na końcu robi `describe.js`); strona ekranu nie przełącza się sama na plik klipu po wycięciu — wystarczy odświeżyć.
 - [ ] `Enter` na liście kategorii zapisuje formularz tylko przy zamkniętej liście (otwarta lista zużywa Enter na wybór opcji).
 - [ ] Opis (`description`) klipów ze znacznika `M` zawiera całą linię notatki (np. „2:54 CC kroki”), więc propozycja opisu bywa powtórzeniem sędziego i kategorii — warto zapisywać tylko resztę linii po rozpoznaniu.
@@ -71,3 +71,15 @@
 - [ ] Indeksy dodano tylko dla `comments.clip_id` i `comments.match_id` (migracja `mvp0003`); `ratings.clip_id` pokrywa unikalność (clip_id, coach_id), a `ratings.coach_id` bez indeksu (tylko kontrola kluczy obcych).
 - [ ] Widoki mobilne sprawdzone w Chromium 375×740, nie na prawdziwym iPhonie/Safari (pole `<details>` do zmiany cudzej oceny i `confirm` w przycisku warto obejrzeć ręcznie).
 - [ ] Test E2E `test_player.py::test_podwojne_z_to_jeden_znacznik_a_backspace_cofa` raz nie przeszedł podczas prac nad segmentem 6; zależy od czasu (blokada podwójnego `Z` przez 1 s), może być niestabilny przy obciążonej maszynie — obserwować.
+
+## Uwagi z segmentu 7 (drobne, odłożone)
+
+- [ ] Klip z nieustaloną kwartą po usunięciu pełnego nagrania zostaje z kwartą „nieustaloną” na zawsze — admin nie może wpisać początków kwart ręcznie (bez nagrania nie ma jak ich odczytać). Ewentualny ekran „wpisz czas początku kwarty” dla usuniętych nagrań to osobna decyzja.
+- [ ] Zadanie retencji działa raz na dobę (sprawdzane co godzinę): nagranie po terminie może poczekać do ok. doby; nagranie pominięte (konwersja, klipy w kolejce) wraca dopiero w następnym przebiegu. Brak przycisku „uruchom sprzątanie teraz” w panelu.
+- [ ] Nagranie, z którego czekają klipy na cięcie, nie wygasa i nie da się go usunąć ręcznie; gdy worker nie działa (brak ffmpeg), klipy wiszą „w kolejce”, a retencja i przycisk usuwania czekają razem z nimi.
+- [ ] Nagranie w stanie błędu konwersji po terminie jest usuwane razem z oryginałem (nie da się go już ponowić); klipy czekające w jego kolejce dostają stan błędu „usunięte przed wycięciem”.
+- [ ] Zajętość dysku liczy tylko pliki znane aplikacji (wersje robocze z bazy, oryginały, uploady, katalog klipów); baza SQLite, pliki tymczasowe (`tmp/`) i inne dane na tym samym dysku nie są pokazywane osobno (widać je tylko w „wolnym miejscu”).
+- [ ] Panel kategorii używa zwykłych formularzy (pełne przeładowanie strony po każdej akcji, bez HTMX i przeciągania); grupy to stała lista pięciu grup ze specyfikacji — dodawanie nowych grup nie jest możliwe.
+- [ ] Konflikty aliasów wykrywamy tylko na równość znormalizowanych napisów; aliasy będące fragmentem innych (np. „blok” i „blok / szarża”) rozstrzyga parser (dłuższy alias wygrywa), bez ostrzeżenia w panelu.
+- [ ] Zmiana `retention_days` z przeliczeniem nadaje termin także nagraniom bez terminu (`expires_at` NULL, np. sprzed wprowadzenia retencji); bez przeliczenia takie nagrania nigdy nie wygasają.
+- [ ] Daty w panelu retencji są w UTC, jak w reszcie aplikacji; „dostępne jeszcze X dni” zaokrągla w górę do pełnych dni.
