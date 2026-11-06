@@ -5,7 +5,7 @@ from datetime import timedelta
 import pytest
 from sqlalchemy import select
 
-from app import accounts, config, security
+from app import accounts, auth, config, security
 from app.main import app
 from app.models import AuthSession, Invite, LoginAttempt, User
 from app.timeutil import utcnow
@@ -414,3 +414,33 @@ def test_create_admin_prompts(db, monkeypatch):
     monkeypatch.setattr("getpass.getpass", lambda _prompt: "hasło-z-pytania-123")
     assert create_admin.main([]) == 0
     assert db.scalar(select(User).where(User.email == "admin@example.com")).name == "Ala Admin"
+
+
+# --- adres klienta za reverse proxy (Caddy) -----------------------------------------
+def _request(headers: dict, peer="172.18.0.5"):
+    from starlette.requests import Request
+    return Request({"type": "http", "headers": [(k.lower().encode(), v.encode()) for k, v in headers.items()],
+                    "client": (peer, 5000)})
+
+
+def test_client_ip_ignores_forwarded_header_without_trust_proxy(monkeypatch):
+    monkeypatch.setattr(config, "TRUST_PROXY", False)
+    assert auth.client_ip(_request({"X-Forwarded-For": "203.0.113.7"})) == "172.18.0.5"
+
+
+def test_client_ip_uses_address_added_by_proxy(monkeypatch):
+    monkeypatch.setattr(config, "TRUST_PROXY", True)
+    assert auth.client_ip(_request({"X-Forwarded-For": "203.0.113.7"})) == "203.0.113.7"
+    assert auth.client_ip(_request({"X-Forwarded-For": "2001:db8::1"})) == "2001:db8::1"
+
+
+def test_client_ip_cannot_be_spoofed_by_client_prefix(monkeypatch):
+    """Klient podstawia własny wpis; proxy dopisuje prawdziwy adres na końcu — liczy się ostatni."""
+    monkeypatch.setattr(config, "TRUST_PROXY", True)
+    assert auth.client_ip(_request({"X-Forwarded-For": "1.2.3.4, 198.51.100.9"})) == "198.51.100.9"
+
+
+def test_client_ip_falls_back_to_peer_for_missing_or_invalid_header(monkeypatch):
+    monkeypatch.setattr(config, "TRUST_PROXY", True)
+    assert auth.client_ip(_request({})) == "172.18.0.5"
+    assert auth.client_ip(_request({"X-Forwarded-For": "nie-adres"})) == "172.18.0.5"
