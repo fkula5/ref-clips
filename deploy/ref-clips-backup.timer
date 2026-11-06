@@ -1,0 +1,11 @@
+[Unit]
+Description=Codzienna kopia zapasowa ref-clips (ok. 03:30 UTC)
+
+[Timer]
+OnCalendar=*-*-* 03:30:00 UTC
+RandomizedDelaySec=5min
+# Gdy serwer był wyłączony o 03:30, kopia ruszy po starcie.
+Persistent=true
+
+[Install]
+WantedBy=timers.target

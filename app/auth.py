@@ -1,6 +1,7 @@
 """Warstwa FastAPI dla logowania: aktualny użytkownik, CSRF, `require(...)`, ciasteczka."""
 from __future__ import annotations
 
+import ipaddress
 from collections.abc import Callable
 
 from fastapi import Depends, HTTPException, Request, Response
@@ -16,10 +17,18 @@ FORM_TYPES = ("application/x-www-form-urlencoded", "multipart/form-data")
 
 # --- adres klienta i ciasteczka ---------------------------------------------------
 def client_ip(request: Request) -> str:
+    """Adres klienta do limitu prób logowania.
+
+    Za jednym zaufanym proxy (Caddy) liczy się OSTATNI wpis X-Forwarded-For: dopisuje go proxy,
+    a wpisy po lewej mógł podstawić klient. Wpis, który nie jest adresem IP, ignorujemy."""
     if config.TRUST_PROXY:
-        forwarded = request.headers.get("x-forwarded-for", "")
-        if forwarded:
-            return forwarded.split(",")[0].strip()[:64]
+        last = request.headers.get("x-forwarded-for", "").rsplit(",", 1)[-1].strip()
+        try:
+            ipaddress.ip_address(last)
+        except ValueError:
+            pass
+        else:
+            return last
     return (request.client.host if request.client else "unknown")[:64]
 
 
