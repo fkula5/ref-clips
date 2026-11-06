@@ -19,3 +19,5 @@ requirements-dev.txt
 Dockerfile
 compose.yaml
 .dockerignore
+deploy/
+compose.prod.yaml

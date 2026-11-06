@@ -175,6 +175,13 @@ wartości domyślne. Wszystkie opcje opisuje `.env.example`.
 Test dymny całego zestawu (budowanie, start, założenie admina, wgranie wideo, konwersja):
 `scripts/docker-smoke.sh` — działa na osobnym projekcie Compose i porcie 8123, na końcu po sobie sprząta.
 
+## Wdrożenie na serwerze (produkcja)
+
+Konfiguracja produkcyjna (Caddy z HTTPS, kopie zapasowe, skrypt wdrożenia z komputera lokalnego) jest
+opisana w [docs/wdrozenie.md](docs/wdrozenie.md): `compose.prod.yaml` (nakładka na `compose.yaml`),
+`deploy/Caddyfile`, `deploy/env.prod.example`, `deploy/deploy.sh`, `deploy/backup.sh`. Odtwarzanie
+z kopii: [deploy/restore.md](deploy/restore.md).
+
 ## Konta, role i zapraszanie użytkowników
 
 1. Administrator wchodzi w **Użytkownicy** (menu na górze) i dodaje konto: imię i nazwisko, e-mail
@@ -518,6 +525,7 @@ app/retention.py       retencja pełnych nagrań (termin, usuwanie, zadanie dobo
 app/disk.py            zajętość dysku i lista nagrań dla panelu, odrzucone uploady
 app/categories.py      słownik kategorii: walidacja nazw i aliasów, kolejność, aktywacja
 Dockerfile, compose.yaml, .env.example   obraz i uruchomienie w Dockerze (app, worker, init)
+compose.prod.yaml, deploy/               produkcja: Caddy, wdrożenie (deploy.sh), kopie zapasowe; docs/wdrozenie.md
 scripts/docker-smoke.sh                  test dymny Dockera
 scripts/e2e.sh, tests/e2e/               testy interfejsu w przeglądarce (Playwright)
 app/services.py        obsada, kwarty, granice klipów, nazwy plików, kolejka
