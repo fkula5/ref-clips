@@ -35,6 +35,9 @@ cd "$(dirname "${BASH_SOURCE[0]}")/.."
 git rev-parse --is-inside-work-tree >/dev/null 2>&1 || die "to nie jest repozytorium git"
 [ -f "$KEY" ] || die "brak klucza ssh: $KEY (ustaw REFCLIPS_DEPLOY_KEY albo użyj -i)"
 case "$DIR" in /*) ;; *) die "katalog na serwerze musi być ścieżką bezwzględną: $DIR" ;; esac
+# Wysyłka czyści katalog docelowy (poza .env), więc nie pozwalamy na katalog systemowy ani zbyt płytki.
+case "${DIR%/}" in ""|/*/*) ;; *) die "katalog na serwerze musi mieć co najmniej dwa poziomy (np. /opt/ref-clips): $DIR" ;; esac
+[ -n "${DIR%/}" ] || die "katalog na serwerze nie może być /"
 
 # Wdrażamy commit, więc zmiany niezacommitowane do niego nie trafią — odmawiamy, żeby nie było niespodzianek.
 if ! git diff-index --quiet HEAD --; then
