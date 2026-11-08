@@ -5,21 +5,46 @@
 # stos (docker compose -f compose.yaml -f compose.prod.yaml up -d --build), czeka na zdrowie
 # aplikacji i pokazuje status. Można uruchamiać wielokrotnie (idempotentne). Nie wypisuje .env.
 #
-# Użycie:   deploy/deploy.sh [-H użytkownik@host] [-i klucz_ssh] [-d katalog_na_serwerze]
+# Zanim cokolwiek zmieni na serwerze, sprawdza, czy nie trwa upload (aktywność w ostatnich 10 min),
+# konwersja/cięcie ani zadania w kolejce (python -m app.busy w działającym kontenerze). Jeśli coś trwa,
+# kończy BEZ podmiany plików i restartu (kod wyjścia 3); --force pomija blokadę, --wait czeka.
+#
+# Użycie:   deploy/deploy.sh [-H użytkownik@host] [-i klucz_ssh] [-d katalog_na_serwerze] [--force] [--wait]
+#           --force   wdróż mimo trwającego uploadu/konwersji (przerwie je; konwersja zacznie od zera)
+#           --wait    poczekaj, aż będzie wolne (sprawdzanie co minutę), potem wdróż
 # Zmienne:  REFCLIPS_DEPLOY_HOST  (domyślnie ubuntu@57.131.162.204)
 #           REFCLIPS_DEPLOY_KEY   (domyślnie ~/.ssh/ref_clips_deploy)
 #           REFCLIPS_DEPLOY_DIR   (domyślnie /opt/ref-clips)
 #           REFCLIPS_DEPLOY_URL   (adres do końcowego sprawdzenia; domyślnie https://57-131-162-204.sslip.io,
 #                                  puste = pomiń)
+#           REFCLIPS_DEPLOY_FORCE=1            to samo co --force
+#           REFCLIPS_DEPLOY_WAIT_MINUTES       limit czekania przy --wait (domyślnie 120)
+#           REFCLIPS_DEPLOY_WAIT_INTERVAL      odstęp między sprawdzeniami przy --wait, w sekundach (domyślnie 60)
 set -euo pipefail
 
 HOST="${REFCLIPS_DEPLOY_HOST:-ubuntu@57.131.162.204}"
 KEY="${REFCLIPS_DEPLOY_KEY:-$HOME/.ssh/ref_clips_deploy}"
 DIR="${REFCLIPS_DEPLOY_DIR:-/opt/ref-clips}"
 URL="${REFCLIPS_DEPLOY_URL-https://57-131-162-204.sslip.io}"
+FORCE=0; [ "${REFCLIPS_DEPLOY_FORCE:-}" = 1 ] && FORCE=1
+WAIT=0
+WAIT_MINUTES="${REFCLIPS_DEPLOY_WAIT_MINUTES:-120}"
+WAIT_INTERVAL="${REFCLIPS_DEPLOY_WAIT_INTERVAL:-60}"
 
 usage() { sed -n '2,/^set -/p' "$0" | sed '$d' | sed 's/^# \{0,1\}//'; }
 die() { echo "BŁĄD: $*" >&2; exit 1; }
+
+# Opcje długie (--force, --wait, --help) wyjmujemy przed getopts, który zna tylko krótkie.
+args=()
+for arg in "$@"; do
+  case "$arg" in
+    --force) FORCE=1 ;;
+    --wait) WAIT=1 ;;
+    --help) args+=(-h) ;;
+    *) args+=("$arg") ;;
+  esac
+done
+set -- ${args[@]+"${args[@]}"}
 
 while getopts "H:i:d:h" opt; do
   case "$opt" in
@@ -55,6 +80,60 @@ SSH=(ssh -i "$KEY" -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecki
      -o ConnectTimeout=15 -o ServerAliveInterval=30 "$HOST")
 QDIR="$(printf '%q' "$DIR")"
 
+# --- czy coś trwa? Sprawdzamy PRZED podmianą plików, żeby po przerwaniu stan katalogu na serwerze
+# zgadzał się z działającą wersją. Sprawdzenie robi moduł app.busy z wdrażanego commitu, wysłany na
+# wejście `python -` działającego kontenera (działa też na obrazie sprzed dodania tego modułu).
+BUSY_B64="$(git show HEAD:app/busy.py | base64 | tr -d '\n')"
+
+# Zwraca 0 = wolne (albo stos nie działa), 1 = zajęte, 2 = nie udało się sprawdzić.
+check_busy() {
+  local out rc=0
+  out="$("${SSH[@]}" "bash -s -- $QDIR $BUSY_B64" 2>&1 <<'CHECK'
+cd "$1" 2>/dev/null || { echo "Brak katalogu na serwerze — pierwsze wdrożenie, nic nie trwa."; exit 0; }
+[ -f compose.yaml ] && [ -f .env ] || { echo "Stos jeszcze nie był uruchamiany — nic nie trwa."; exit 0; }
+DOCKER=(docker)
+docker info >/dev/null 2>&1 || DOCKER=(sudo -n docker)
+export COMPOSE_FILE=compose.yaml:compose.prod.yaml
+running="$("${DOCKER[@]}" compose ps --status running --services 2>&1)" \
+  || { echo "BŁĄD: docker compose ps nie działa: $running"; exit 2; }
+printf '%s\n' "$running" | grep -qx app || { echo "Kontener app nie działa — nic nie trwa."; exit 0; }
+printf '%s' "$2" | base64 -d | "${DOCKER[@]}" compose exec -T app python -
+CHECK
+  )" || rc=$?
+  printf '%s\n' "$out" | sed 's/^/    /'
+  if [ "$rc" -eq 1 ] && printf '%s\n' "$out" | grep -q '^ZAJĘTE'; then return 1; fi
+  [ "$rc" -eq 0 ] && return 0
+  return 2
+}
+
+echo "==> Sprawdzanie, czy coś trwa na serwerze"
+deadline=$(( $(date +%s) + WAIT_MINUTES * 60 ))
+while true; do
+  status=0; check_busy || status=$?
+  case "$status" in
+    0) break ;;
+    1)
+      if [ "$FORCE" = 1 ]; then
+        echo "UWAGA: --force — wdrażam mimo trwających zadań (zostaną przerwane)." >&2
+        break
+      elif [ "$WAIT" = 1 ] && [ "$(date +%s)" -lt "$deadline" ]; then
+        echo "    Czekam ${WAIT_INTERVAL} s i sprawdzam ponownie (limit: ${WAIT_MINUTES} min)..."
+        sleep "$WAIT_INTERVAL"
+      else
+        [ "$WAIT" = 1 ] && echo "Przekroczono limit czekania (${WAIT_MINUTES} min)." >&2
+        echo "Wdrożenie wstrzymane: na serwerze coś trwa. Nic nie zostało zmienione." >&2
+        echo "Spróbuj później, użyj --wait (poczeka na koniec) albo --force (przerwie zadania)." >&2
+        exit 3
+      fi ;;
+    *)
+      if [ "$FORCE" = 1 ]; then
+        echo "UWAGA: nie udało się sprawdzić zajętości, ale --force — wdrażam." >&2
+        break
+      fi
+      die "nie udało się sprawdzić, czy coś trwa na serwerze (patrz wyżej); --force pomija sprawdzenie" ;;
+  esac
+done
+
 echo "==> Wysyłanie plików (git archive)"
 # Rozpakowanie do .incoming, potem podmiana: usuwamy stare pliki (także te skasowane w repo),
 # ale zostaje .env i pliki techniczne wdrożenia. Dane aplikacji leżą w wolumenach, nie tutaj.
@@ -70,7 +149,7 @@ git archive --format=tar HEAD | "${SSH[@]}" "set -e
   printf '%s %s\\n' $COMMIT \"\$(date -u +%FT%TZ)\" > .deploy-commit"
 
 echo "==> Budowanie i uruchamianie na serwerze"
-"${SSH[@]}" "bash -s -- $QDIR" <<'REMOTE'
+"${SSH[@]}" "bash -s -- $QDIR $FORCE" <<'REMOTE'
 set -euo pipefail
 cd "$1"
 exec 9>.deploy.lock
@@ -85,7 +164,20 @@ DOCKER=(docker)
 docker info >/dev/null 2>&1 || DOCKER=(sudo -n docker)
 export COMPOSE_FILE=compose.yaml:compose.prod.yaml
 
-"${DOCKER[@]}" compose up -d --build --remove-orphans --wait --wait-timeout 300
+"${DOCKER[@]}" compose build
+
+# Budowanie trwa minuty — w tym czasie ktoś mógł zacząć wgrywać plik. Ostatnie sprawdzenie tuż przed restartem.
+if [ "$2" != 1 ] && "${DOCKER[@]}" compose ps --status running --services | grep -qx app; then
+  rc=0; out="$("${DOCKER[@]}" compose exec -T app python - < app/busy.py 2>&1)" || rc=$?
+  if [ "$rc" -ne 0 ]; then
+    printf '%s\n' "$out" | sed 's/^/    /' >&2
+    echo "Pliki są już na serwerze i obrazy zbudowane, ale stos NIE został zrestartowany (działa poprzednia wersja)." >&2
+    echo "Uruchom deploy/deploy.sh ponownie, gdy będzie wolne (albo z --force)." >&2
+    exit 3
+  fi
+fi
+
+"${DOCKER[@]}" compose up -d --remove-orphans --wait --wait-timeout 300
 echo "--- status:"
 "${DOCKER[@]}" compose ps
 echo "--- sprzątanie nieużywanych obrazów:"
@@ -102,5 +194,16 @@ if [ -n "$URL" ]; then
     sleep 3   # pierwszy start: Caddy dopiero wystawia certyfikat
   done
   [ "$code" = 200 ] || die "$URL/login odpowiada kodem $code (logi: ssh ... docker compose logs caddy app)"
+  # /health: baza, worker (znacznik życia odnawia się co 30 s, więc po restarcie może chwilę potrwać) i dysk.
+  echo "==> Sprawdzanie $URL/health"
+  code=000
+  for _ in $(seq 1 15); do
+    code="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 10 "$URL/health" 2>/dev/null || true)"
+    [ "$code" = 200 ] && break
+    sleep 4
+  done
+  if [ "$code" = 200 ]; then echo "    ok"; else
+    echo "UWAGA: $URL/health odpowiada kodem $code — sprawdź: curl -s $URL/health (które sprawdzenie nie przechodzi)" >&2
+  fi
 fi
 echo "==> Gotowe: $COMMIT"
