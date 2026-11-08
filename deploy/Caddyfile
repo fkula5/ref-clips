@@ -21,7 +21,6 @@
 	header {
 		Strict-Transport-Security "max-age=31536000"
 		X-Content-Type-Options "nosniff"
-		Referrer-Policy "strict-origin-when-cross-origin"
 		X-Frame-Options "SAMEORIGIN"
 		# Tylko ochrona przed osadzaniem w cudzej ramce. Celowo bez script-src/default-src:
 		# szablony mają skrypty i style w treści strony (onclick, <script>, style="...").
@@ -29,6 +28,11 @@
 		Permissions-Policy "camera=(), microphone=(), geolocation=()"
 		-Server
 	}
+
+	# Referrer-Policy: strona z tokenem zaproszenia w adresie ma `no-referrer` ustawione przez aplikację.
+	# `header` w Caddy nadpisuje nagłówek z aplikacji, więc dla tej ścieżki nie ustawiamy własnego.
+	@reszta not path /set-password/*
+	header @reszta Referrer-Policy "strict-origin-when-cross-origin"
 
 	# Wgrywanie tus: kawałki po 50 MB (52 428 800 B) w PATCH. Limit z zapasem; reszta serwisu to
 	# formularze, więc tam limit jest mały. Caddy nie buforuje żądań, więc 50 MB nie ląduje w pamięci.
@@ -41,8 +45,16 @@
 		max_size 10MB
 	}
 
+	# Dziennik dostępu: token z linku zaproszenia (/set-password/<token>) pozwala ustawić hasło do cudzego
+	# konta, więc nie zostaje w logach — ani w adresie żądania, ani w Referer. Ciasteczka i Authorization
+	# Caddy i tak zastępuje napisem REDACTED.
 	log {
 		output stdout
+		format filter {
+			wrap json
+			request>uri regexp (/set-password/)[^/?#\s"]+ $1[ukryty]
+			request>headers>Referer regexp (/set-password/)[^/?#\s"]+ $1[ukryty]
+		}
 	}
 
 	# Wideo (/videos, klipy) serwuje aplikacja (FileResponse z obsługą Range -> 206); Caddy tylko
