@@ -68,13 +68,21 @@ def logout(request: Request, db: Session = Depends(get_db)):
     return response
 
 
+def _token_page(request: Request, **context):
+    """Strona z tokenem w adresie: nie przekazuje go dalej w nagłówku Referer (żadnym linkiem ani
+    zasobem) i nie trafia do pamięci podręcznej."""
+    response = render(request, "set_password.html", **context)
+    response.headers["Referrer-Policy"] = "no-referrer"
+    response.headers["Cache-Control"] = "no-store"
+    return response
+
+
 @public_router.get("/set-password/{token}")
 def set_password_page(request: Request, token: str, db: Session = Depends(get_db)):
     invite = accounts.find_invite(db, token)
     if invite is None:
-        return render(request, "set_password.html", status_code=410, invite=None, error=None)
-    return render(request, "set_password.html", invite=invite, error=None,
-                  purpose=INVITE_PURPOSES[invite.purpose])
+        return _token_page(request, status_code=410, invite=None, error=None)
+    return _token_page(request, invite=invite, error=None, purpose=INVITE_PURPOSES[invite.purpose])
 
 
 @public_router.post("/set-password/{token}")
@@ -82,7 +90,7 @@ def set_password(request: Request, token: str, db: Session = Depends(get_db),
                  password: str = Form(""), password2: str = Form("")):
     invite = accounts.find_invite(db, token)
     if invite is None:
-        return render(request, "set_password.html", status_code=410, invite=None, error=None)
+        return _token_page(request, status_code=410, invite=None, error=None)
     error = None
     if password != password2:
         error = "Hasła nie są takie same."
@@ -92,6 +100,6 @@ def set_password(request: Request, token: str, db: Session = Depends(get_db),
         except accounts.AccountError as exc:
             error = str(exc)
     if error:
-        return render(request, "set_password.html", status_code=422, invite=invite, error=error,
-                      purpose=INVITE_PURPOSES[invite.purpose])
+        return _token_page(request, status_code=422, invite=invite, error=error,
+                           purpose=INVITE_PURPOSES[invite.purpose])
     return RedirectResponse("/login?ok=1", status_code=303)

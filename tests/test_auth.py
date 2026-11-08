@@ -212,7 +212,7 @@ def test_pages_redirect_to_login_and_api_returns_401(anon_client):
     assert r.status_code == 401 and r.headers["hx-redirect"] == "/login"
 
 
-PUBLIC_PATHS = {"/login", "/set-password/{token}"}
+PUBLIC_PATHS = {"/login", "/set-password/{token}", "/health"}
 
 
 def test_every_route_requires_login_except_public_ones(anon_client):

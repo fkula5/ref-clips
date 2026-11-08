@@ -73,6 +73,16 @@ except ValueError:
     pass
 TRANSCODE_MAX_FPS = 30
 
+# --- monitoring (/health) -------------------------------------------------------------
+WORKER_HEARTBEAT_SECONDS = 30                                  # co ile worker odnawia znacznik życia
+try:
+    HEALTH_WORKER_STALE_SECONDS = int(os.environ.get("REFCLIPS_HEALTH_WORKER_STALE_SECONDS", "180"))
+except ValueError:
+    HEALTH_WORKER_STALE_SECONDS = 180                          # starszy znacznik = worker nie działa
+# Poniżej tej ilości wolnego miejsca /health zgłasza błąd; domyślnie zapas wgrywania (DISK_SAFETY),
+# bo poniżej niego aplikacja i tak odrzuca każdy nowy upload.
+HEALTH_DISK_MIN_BYTES = _gb("REFCLIPS_HEALTH_DISK_MIN_GB", DISK_SAFETY_BYTES / GB)
+
 # --- retencja i sprzątanie (segment 7) ------------------------------------------------
 RETENTION_DAYS_MIN, RETENTION_DAYS_MAX = 1, 365   # zakres ustawienia `retention_days`
 EXPIRY_WARN_DAYS = 7                    # tyle dni przed terminem mecz pokazuje „dostępne jeszcze X dni”
