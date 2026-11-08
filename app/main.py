@@ -11,7 +11,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 from starlette.exceptions import HTTPException
 
-from app import config, permissions
+from app import config, health, permissions
 from app import video as vid
 from app.auth import PROTECTED, PUBLIC, SessionRefreshMiddleware, require
 from app.db import get_db
@@ -94,6 +94,16 @@ async def http_error(request: Request, exc: HTTPException):
         return error_page(request, exc.status_code, str(exc.detail))
     return JSONResponse({"detail": exc.detail}, status_code=exc.status_code,
                         headers=getattr(exc, "headers", None))
+
+
+@app.api_route("/health", methods=["GET", "HEAD"], include_in_schema=False)
+def health_check():
+    """Monitoring (np. zewnętrzny ping): bez logowania i CSRF, poza nawigacją. 200 {"status":"ok"} albo
+    503 z samymi nazwami i stanami sprawdzeń (baza, worker, dysk); nigdy ścieżek, liczb ani wyjątków."""
+    checks = health.run_checks()
+    ok = health.is_healthy(checks)
+    body = {"status": "ok"} if ok else {"status": "error", "checks": checks}
+    return JSONResponse(body, status_code=200 if ok else 503, headers={"Cache-Control": "no-store"})
 
 
 @app.get("/api/status", dependencies=PROTECTED)

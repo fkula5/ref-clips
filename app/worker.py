@@ -2,12 +2,13 @@
 from __future__ import annotations
 
 import logging
+import threading
 import time
 
 from sqlalchemy import and_, case, exists, or_, select, update
 from sqlalchemy.orm import Session
 
-from app import config, retention, services, uploads, video as vid
+from app import config, health, retention, services, uploads, video as vid
 from app.db import SessionLocal
 from app.models import Clip, Job, Video
 from app.storage import storage
@@ -157,11 +158,32 @@ def run_maintenance() -> None:
             log.exception("Sprzątanie: krok %s nie powiódł się", step.__name__)
 
 
+def heartbeat_loop(stop: threading.Event, interval: float = config.WORKER_HEARTBEAT_SECONDS) -> None:
+    """Odnawia znacznik życia (`/health`) co `interval` s do zatrzymania. Działa w osobnym wątku,
+    bo konwersja ffmpeg blokuje pętlę główną nawet na godzinę. Błąd zapisu (np. zablokowana baza)
+    nie zabija wątku; do logu trafia tylko pierwszy z serii błędów, żeby nie zasypywać dziennika."""
+    failing = False
+    while True:
+        try:
+            with SessionLocal() as db:
+                health.record_heartbeat(db)
+            if failing:
+                log.info("Znacznik życia workera znów się zapisuje")
+            failing = False
+        except Exception:  # noqa: BLE001
+            if not failing:
+                log.warning("Nie udało się zapisać znacznika życia workera", exc_info=True)
+            failing = True
+        if stop.wait(interval):
+            return
+
+
 def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(message)s")
     from app.initdb import init_db
     init_db()
     recover_interrupted()
+    threading.Thread(target=heartbeat_loop, args=(threading.Event(),), name="heartbeat", daemon=True).start()
     warned_at = 0.0
     maintained_at = float("-inf")
     log.info("Worker uruchomiony")
