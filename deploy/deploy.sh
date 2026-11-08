@@ -17,6 +17,7 @@
 #           REFCLIPS_DEPLOY_DIR   (domyślnie /opt/ref-clips)
 #           REFCLIPS_DEPLOY_URL   (adres do końcowego sprawdzenia; domyślnie https://57-131-162-204.sslip.io,
 #                                  puste = pomiń)
+#           REFCLIPS_DEPLOY_CURL_OPTS          dodatkowe opcje curl do końcowego sprawdzenia (np. -k dla testu z certyfikatem lokalnym)
 #           REFCLIPS_DEPLOY_FORCE=1            to samo co --force
 #           REFCLIPS_DEPLOY_WAIT_MINUTES       limit czekania przy --wait (domyślnie 120)
 #           REFCLIPS_DEPLOY_WAIT_INTERVAL      odstęp między sprawdzeniami przy --wait, w sekundach (domyślnie 60)
@@ -28,6 +29,7 @@ DIR="${REFCLIPS_DEPLOY_DIR:-/opt/ref-clips}"
 URL="${REFCLIPS_DEPLOY_URL-https://57-131-162-204.sslip.io}"
 FORCE=0; [ "${REFCLIPS_DEPLOY_FORCE:-}" = 1 ] && FORCE=1
 WAIT=0
+CURL_OPTS=(); [ -z "${REFCLIPS_DEPLOY_CURL_OPTS:-}" ] || read -r -a CURL_OPTS <<<"$REFCLIPS_DEPLOY_CURL_OPTS"
 WAIT_MINUTES="${REFCLIPS_DEPLOY_WAIT_MINUTES:-120}"
 WAIT_INTERVAL="${REFCLIPS_DEPLOY_WAIT_INTERVAL:-60}"
 
@@ -189,7 +191,7 @@ if [ -n "$URL" ]; then
   echo "==> Sprawdzanie $URL/login"
   code=000
   for _ in $(seq 1 20); do
-    code="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 10 "$URL/login" 2>/dev/null || true)"
+    code="$(curl -sS ${CURL_OPTS[@]+"${CURL_OPTS[@]}"} -o /dev/null -w '%{http_code}' --max-time 10 "$URL/login" 2>/dev/null || true)"
     [ "$code" = 200 ] && break
     sleep 3   # pierwszy start: Caddy dopiero wystawia certyfikat
   done
@@ -198,7 +200,7 @@ if [ -n "$URL" ]; then
   echo "==> Sprawdzanie $URL/health"
   code=000
   for _ in $(seq 1 15); do
-    code="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 10 "$URL/health" 2>/dev/null || true)"
+    code="$(curl -sS ${CURL_OPTS[@]+"${CURL_OPTS[@]}"} -o /dev/null -w '%{http_code}' --max-time 10 "$URL/health" 2>/dev/null || true)"
     [ "$code" = 200 ] && break
     sleep 4
   done
