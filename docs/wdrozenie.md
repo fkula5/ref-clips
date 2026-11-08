@@ -1,6 +1,6 @@
 # Wdrożenie na serwer (produkcja)
 
-> Segment 8. Stan: konfiguracja gotowa i przetestowana lokalnie; przygotowanie serwera i pierwsze
+> Segmenty 8–9. Stan: konfiguracja gotowa i przetestowana lokalnie; przygotowanie serwera i pierwsze
 > wdrożenie wykonuje osoba z dostępem do VPS.
 
 Docelowo: OVH VPS (Ubuntu 24.04, 2 vCPU, ok. 3,7 GB RAM, 38 GB dysku), Docker Engine z wtyczką Compose,
@@ -20,7 +20,7 @@ przeglądarka ──HTTPS──► Caddy (80, 443, 443/udp) ──sieć compose�
 | `compose.prod.yaml` | **nakładka** na `compose.yaml`: usuwa port aplikacji z hosta, dodaje `caddy`, rotację logów |
 | `deploy/Caddyfile` | HTTPS, nagłówki bezpieczeństwa, kompresja, `reverse_proxy` do aplikacji |
 | `deploy/env.prod.example` | wzór pliku `.env` na serwerze (bez sekretów) |
-| `deploy/deploy.sh` | wdrożenie z komputera lokalnego przez ssh |
+| `deploy/deploy.sh` | wdrożenie z komputera lokalnego przez ssh (z blokadą, gdy coś trwa: `app/busy.py`) |
 | `deploy/backup.sh`, `backup_snapshot.py`, `ref-clips-backup.service/.timer` | nocna kopia zapasowa |
 | `deploy/restore.md` | odtwarzanie z kopii |
 
@@ -100,10 +100,37 @@ git commit ...              # deploy.sh wdraża commit (HEAD), nie katalog roboc
 deploy/deploy.sh
 ```
 
-Skrypt: wysyła `git archive HEAD` do `/opt/ref-clips` (usuwa pliki skasowane w repozytorium, **zostawia `.env`**;
-dane są w wolumenach, więc nie są ruszane), uruchamia `docker compose up -d --build --wait`, pokazuje status
-i usuwa nieużywane obrazy (`docker image prune -f`). Migracje bazy wykonuje usługa `init` przy starcie.
-Podczas przebudowy aplikacja jest niedostępna przez kilkanaście sekund; trwające wgrywanie tus wznowi się samo.
+Skrypt: **najpierw sprawdza, czy coś trwa** (patrz niżej), potem wysyła `git archive HEAD` do `/opt/ref-clips`
+(usuwa pliki skasowane w repozytorium, **zostawia `.env`**; dane są w wolumenach, więc nie są ruszane), buduje obrazy,
+uruchamia `docker compose up -d --wait`, pokazuje status i usuwa nieużywane obrazy (`docker image prune -f`),
+a na końcu sprawdza `/login` i `/health`. Migracje bazy wykonuje usługa `init` przy starcie (nowe tabele i kolumny
+dochodzą same; wdrożenie bez migracji nie wymaga żadnych dodatkowych kroków).
+Podczas przebudowy aplikacja jest niedostępna przez kilkanaście sekund; trwające wgrywanie tus wznowi się samo, ale
+konwersja w toku zaczyna od początku (dla 2-godzinnego nagrania to ponad godzina straty), dlatego:
+
+**Blokada „coś trwa”.** Przed jakąkolwiek zmianą na serwerze skrypt uruchamia w działającym kontenerze `app`
+sprawdzenie `app/busy.py` (jego treść wysyła na wejście `python -`, więc działa też na obrazie sprzed dodania tego
+modułu). Za „trwające” uznaje: upload tus z aktywnością w ostatnich 10 minutach, zadanie w stanie `running`
+(konwersja, wycinanie klipu) oraz zadania czekające w kolejce. Jeśli coś trwa, wypisuje co (np. `konwersja nagrania #1
+(mecz.mp4) — 43%`, `upload IMG_2056.MOV — 1,6 GB/2,7 GB, ostatnia aktywność 2 min temu`) i kończy z kodem 3
+**bez podmiany plików i bez restartu** — stan katalogu na serwerze zgadza się wtedy z działającą wersją. Niedokończone
+uploady bez aktywności od ponad 10 minut nie blokują (wznowią się po wdrożeniu). Gdy stos nie działa (pierwsze
+wdrożenie, brak `.env`, kontener `app` zatrzymany), nic nie blokuje. Jeśli samo sprawdzenie się nie uda (np. błąd
+dockera), skrypt też się zatrzymuje, żeby nie wdrażać „na ślepo”.
+
+| Opcja | Działanie |
+|---|---|
+| (brak) | zajęte → komunikat i koniec, nic nie zmienione; ponów później |
+| `--wait` | czeka na koniec zajętości (sprawdza co 60 s, maks. 120 min: `REFCLIPS_DEPLOY_WAIT_INTERVAL`, `REFCLIPS_DEPLOY_WAIT_MINUTES`), potem wdraża |
+| `--force` lub `REFCLIPS_DEPLOY_FORCE=1` | wdraża mimo to, z ostrzeżeniem (przerwie konwersję i wgrywanie) |
+
+Budowanie obrazu trwa minuty, więc tuż przed `up` sprawdzenie jest powtarzane na serwerze. Jeśli w międzyczasie ktoś
+zaczął wgrywać plik, skrypt kończy się (kod 3) z komunikatem, że pliki są już wysłane i obrazy zbudowane, ale stos
+działa dalej na poprzedniej wersji — wystarczy uruchomić `deploy/deploy.sh` ponownie, gdy będzie wolne (szybko, bo
+obrazy są w pamięci podręcznej). Ręczne sprawdzenie bez wdrażania:
+`ssh ... 'cd /opt/ref-clips && COMPOSE_FILE=compose.yaml:compose.prod.yaml docker compose exec -T app python -m app.busy'`
+(kod wyjścia 0 = wolne, 1 = zajęte, 2 = błąd sprawdzania).
+
 Przed ryzykowną zmianą bazy: `sudo /opt/ref-clips/deploy/backup.sh`.
 
 Inny serwer lub klucz: `deploy/deploy.sh -H user@host -i ~/.ssh/klucz -d /opt/ref-clips` albo zmienne
@@ -125,8 +152,37 @@ Na serwerze, w `/opt/ref-clips` (jednorazowo `export COMPOSE_FILE=compose.yaml:c
 | Zatrzymanie (dane zostają) | `docker compose stop` |
 
 Logi kontenerów rotują się same (5 plików po 20 MB na usługę). Dziennik dostępu Caddy (`docker compose logs caddy`)
-zawiera adresy żądań, w tym linki zaproszeń; ciasteczek i nagłówka Authorization Caddy nie zapisuje.
+zawiera adresy żądań, ale token z linku zaproszenia jest w nim zastąpiony napisem `[ukryty]`
+(`/set-password/[ukryty]`; filtr w `deploy/Caddyfile` obejmuje adres żądania i nagłówek Referer), tak samo w dzienniku
+dostępu aplikacji (`app/logfilter.py`); ciasteczek i nagłówka Authorization Caddy nie zapisuje. Strona ustawiania
+hasła odpowiada z `Referrer-Policy: no-referrer` i `Cache-Control: no-store`.
 **Nie wykonuj `docker compose down -v`** — usuwa wolumin z danymi i certyfikatami.
+
+## Monitoring (`/health`)
+
+`GET /health` (także `HEAD`) jest publiczny: bez logowania, bez ciasteczek, bez cache (`Cache-Control: no-store`),
+odpowiada w kilka milisekund i sprawdza trzy rzeczy:
+
+| Sprawdzenie | Zdrowe, gdy | Stany w odpowiedzi |
+|---|---|---|
+| `db` | proste zapytanie do bazy się udaje | `ok`, `error` |
+| `worker` | worker odnowił znacznik życia w ciągu ostatnich 3 minut (`settings.worker_heartbeat`, zapis co 30 s w osobnym wątku, więc bije także podczas godzinnej konwersji) | `ok`, `stale` (za stary), `missing` (nigdy nie zapisany), `unknown` (baza niedostępna) |
+| `disk` | wolne miejsce na dysku danych (`statvfs`, bez przeglądania katalogów) jest co najmniej równe `REFCLIPS_DISK_SAFETY_GB` — poniżej tego aplikacja i tak odrzuca każdy upload | `ok`, `low`, `error` |
+
+Odpowiedź: `200 {"status":"ok"}` albo `503 {"status":"error","checks":{"db":"ok","worker":"stale","disk":"ok"}}` — wyłącznie
+nazwy i stany, bez ścieżek, rozmiarów, wersji ani treści wyjątków (szczegóły są w logach: `docker compose logs app worker`).
+Próby można zmienić w `.env`: `REFCLIPS_HEALTH_WORKER_STALE_SECONDS` (domyślnie 180), `REFCLIPS_HEALTH_DISK_MIN_GB`.
+
+**Zewnętrzny ping** (np. UptimeRobot, plan darmowy): monitor HTTP(s) na `https://57-131-162-204.sslip.io/health`, interwał
+5 min, alert e-mail przy kodzie innym niż 200 (sprawdzanie słowa kluczowego `"ok"` nie jest potrzebne). Przy 503 odczytaj
+które sprawdzenie nie przechodzi: `curl -s https://57-131-162-204.sslip.io/health`.
+
+**Healthchecki Dockera.** `app` zostaje na `/login` — tylko „czy serwer odpowiada”. Celowo nie `/health`: 503 z powodu
+workera albo pełnego dysku nie jest awarią serwera WWW i restart aplikacji niczego by nie naprawił, a zablokowałby
+`up --wait` (wdrożenie) i start Caddy (`depends_on`). `worker` ma własny healthcheck (`python -m app.health worker`:
+znacznik życia młodszy niż 3 minuty); `docker compose ps` pokaże `unhealthy`, ale Docker sam go nie zrestartuje —
+`docker compose restart worker`. Znacznik bije wątek, nie pętla zadań, więc wiszący (zablokowany) ffmpeg go nie
+przeterminuje; takie zadanie widać w panelu jako konwersję bez postępu.
 
 ## Kopie zapasowe
 
@@ -184,5 +240,10 @@ Jeśli klucz miał wpis w `sudoers` lub inny sposób dostępu, usuń go także (
 - **`deploy.sh`: „brak pliku .env”:** patrz „Pierwsze wdrożenie”. **„permission denied” przy docker:** dodaj użytkownika do grupy `docker` albo skonfiguruj `sudo` bez hasła.
 - **Wgrywanie dużych plików się zrywa:** Caddy nie ma limitu czasu ciała żądania, a kawałek tus ma 50 MB (limit w Caddy to 64 MB); sprawdź
   `docker compose logs app caddy` i wolne miejsce na dysku.
+- **`deploy.sh` kończy z kodem 3 („na serwerze coś trwa”):** to blokada ochronna, nic nie zostało zmienione. Poczekaj,
+  użyj `--wait` albo `--force` (patrz „Kolejne wdrożenia”). Jeśli blokuje „konwersja nagrania #N — 0%” od wielu godzin,
+  a `docker compose ps` pokazuje worker `unhealthy`: `docker compose restart worker` (zadania wracają do kolejki).
+- **`/health` zwraca 503:** `curl -s .../health` pokazuje, które sprawdzenie. `worker: stale/missing` — `docker compose
+  logs --tail 50 worker`, `docker compose restart worker`; `disk: low` — `df -h /`, panel admina → „Retencja i dysk”.
 - **Zaproszenie ma adres `http://...`:** brak `REFCLIPS_PUBLIC_URL` w `.env`.
 - **Limit prób logowania blokuje wszystkich naraz:** `REFCLIPS_TRUST_PROXY=1` musi być ustawione, inaczej każdy użytkownik ma adres kontenera Caddy.
