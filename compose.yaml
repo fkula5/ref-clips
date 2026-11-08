@@ -36,6 +36,9 @@ services:
     depends_on:
       init:
         condition: service_completed_successfully
+    # Celowo /login, a nie /health: /health zgłasza 503 także przy braku workera lub miejsca na dysku,
+    # a tego restart ani „unhealthy” aplikacji nie naprawi — blokowałoby to tylko wdrożenie (`up --wait`)
+    # i start Caddy (depends_on). /health służy zewnętrznemu monitoringowi i sprawdzeniu po wdrożeniu.
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/login', timeout=4).status == 200 else 1)"]
       interval: 15s
@@ -47,8 +50,15 @@ services:
     <<: *aplikacja
     command: ["python", "-m", "app.worker"]
     restart: unless-stopped
+    # Worker nie ma portu: zdrowy, jeśli w ostatnich minutach odnowił znacznik życia w bazie (wątek
+    # co 30 s, także podczas długiej konwersji) — to samo sprawdza /health. Kontener nie restartuje
+    # się sam po „unhealthy” (restart dotyczy tylko zakończenia procesu); stan widać w `docker compose ps`.
     healthcheck:
-      disable: true        # HEALTHCHECK z obrazu dotyczy serwera WWW; worker nie ma portu
+      test: ["CMD", "python", "-m", "app.health", "worker"]
+      interval: 30s
+      timeout: 10s
+      start_period: 30s
+      retries: 3
     depends_on:
       init:
         condition: service_completed_successfully
