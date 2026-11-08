@@ -11,7 +11,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 from starlette.exceptions import HTTPException
 
-from app import config, health, permissions
+from app import config, health, logfilter, permissions
 from app import video as vid
 from app.auth import PROTECTED, PUBLIC, SessionRefreshMiddleware, require
 from app.db import get_db
@@ -19,6 +19,9 @@ from app.initdb import init_db
 from app.models import Job, User
 from app.routers import admin, auth, clips, clips_v2, describe, feedback, matches, uploads, videos
 from app.web import BASE, back_url, render
+
+
+logfilter.install()   # adresy z tokenami zaproszeń nie mogą zostawać w dzienniku dostępu
 
 
 @asynccontextmanager
@@ -96,7 +99,7 @@ async def http_error(request: Request, exc: HTTPException):
                         headers=getattr(exc, "headers", None))
 
 
-@app.api_route("/health", methods=["GET", "HEAD"], include_in_schema=False)
+@app.api_route("/health", methods=["GET", "HEAD"])
 def health_check():
     """Monitoring (np. zewnętrzny ping): bez logowania i CSRF, poza nawigacją. 200 {"status":"ok"} albo
     503 z samymi nazwami i stanami sprawdzeń (baza, worker, dysk); nigdy ścieżek, liczb ani wyjątków."""
