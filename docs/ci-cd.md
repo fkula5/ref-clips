@@ -208,7 +208,7 @@ Settings → Rules → Rulesets → New branch ruleset (albo klasyczna ochrona g
 Pakiety GHCR tworzone przez workflow dziedziczą uprawnienia repozytorium, ale **nie jego widoczność** — nowy pakiet jest
 prywatny i serwer (bez logowania do GHCR) nie pobierze obrazu. Po merge'u tej gałęzi release-please otworzy PR
 „chore: wydanie v1.2.0” (od `v1.1.0` jest `feat(app)`) — **jeszcze go nie scalaj**. Najpierw „próba generalna” na wersji,
-która już działa: Actions → **Wydanie** → Run workflow → tag `v1.1.0` (to samo: `gh workflow run release.yml -f tag=v1.1.0`).
+która już działa: Actions → **Release** → Run workflow → tag `v1.1.0` (to samo: `gh workflow run release.yml -f tag=v1.1.0`).
 Job `build` zbuduje obraz tej wersji i utworzy pakiet, a `deploy` zakończy się błędem „nie udało się pobrać obrazu”
 (kod 1, nic na serwerze nie zmienione). Wtedy:
 
@@ -225,7 +225,7 @@ Jeśli wolisz zostawić pakiet prywatny: na serwerze wykonaj `docker login ghcr.
 
 ## Ponowienie wdrożenia i powrót do starszej wersji
 
-Actions → **Wydanie** → **Run workflow** (gałąź `main`) → pole `tag`, np. `v1.1.0`; z wiersza poleceń:
+Actions → **Release** → **Run workflow** (gałąź `main`) → pole `tag`, np. `v1.1.0`; z wiersza poleceń:
 
 ```bash
 gh workflow run release.yml -f tag=v1.1.0
