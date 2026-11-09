@@ -175,7 +175,8 @@ def confirm_delete_match(request: Request, match: Match = Depends(get_match),
     """Potwierdzenie usunięcia: ile nagrań i klipów zniknie razem z meczem."""
     clips = len(match.clips)
     return render(request, "match_delete.html", match=match, videos=len(match.videos), clips=clips,
-                  sheets=len(match.sheets),
+                  # others' drafts must stay hidden, so a non-admin only counts the sheets they can see
+                  sheets=len(match.sheets if permissions.can_manage_users(user) else sheets.visible_to(user, match)),
                   undescribed=sum(1 for c in match.clips if not c.is_described))
 
 

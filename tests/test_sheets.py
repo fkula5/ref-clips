@@ -313,3 +313,16 @@ def test_used_element_can_only_be_deactivated(client, world, db):
     assert "Mechanika" in names(db)
     client.post(f"/admin/sheet-elements/{element.id}/active", data={"active": "0"})
     assert db.query(SheetRow).filter(SheetRow.name == "Mechanika").count() == 1   # the sheet still has it
+
+
+def test_published_sheet_protects_the_match_from_its_creator_but_not_from_an_admin(world, db, make_client):
+    creator_client, creator = make_client("referee", name="Sędzia Twórca")
+    world["match"].created_by = creator.id
+    db.commit()
+    match_id = world["match"].id
+    other_draft = open_sheet(world, "other")
+    assert "arkusze oceny" not in creator_client.get(f"/matches/{match_id}/delete").text    # a draft stays hidden
+    assert publish(world, db, open_sheet(world)).status_code == 303
+    assert creator_client.get(f"/matches/{match_id}/delete").status_code == 403
+    assert world["admin"].get(f"/matches/{match_id}/delete").status_code == 200
+    assert load(db, other_draft) is not None

@@ -99,7 +99,11 @@ def can_edit_match(user, match) -> bool:
 
 
 def can_delete_match(user, match) -> bool:
-    return can_edit_match(user, match)
+    """Like editing, but a published assessment sheet goes with the match, so only an admin may remove such a match:
+    otherwise a referee who created the match could erase the assessment of their own work."""
+    if _has(user, ADMIN):
+        return True
+    return can_edit_match(user, match) and not any(sheet.is_published for sheet in match.sheets)
 
 
 def can_delete_video(user, video) -> bool:
