@@ -33,14 +33,14 @@
 </form>
 
 <h2>Konta ({{ users|length }})</h2>
-<table>
+<table class="responsive users-table">
   <thead><tr><th>Imię i nazwisko</th><th>E-mail</th><th>Role</th><th>Stan</th><th></th></tr></thead>
   <tbody>
   {% for u in users %}
     <tr class="{{ 'inactive' if not u.is_active }}">
-      <td>{{ u.name }}</td>
-      <td>{{ u.email }}</td>
-      <td>
+      <td data-label="Imię i nazwisko" class="main-cell">{{ u.name }}</td>
+      <td data-label="E-mail">{{ u.email }}</td>
+      <td data-label="Role" class="roles-cell">
         <form method="post" action="/admin/users/{{ u.id }}/roles" class="row">
           {{ csrf_input() }}
           {% set shown = roles_edit.get(u.id, u.roles) %}
@@ -50,7 +50,7 @@
           <button class="btn small">Zapisz role</button>
         </form>
       </td>
-      <td>
+      <td data-label="Stan">
         {% if not u.is_active %}<span class="badge error">nieaktywne</span>
         {% elif not u.password_hash %}<span class="badge queued">czeka na ustawienie hasła</span>
         {% else %}<span class="badge ready">aktywne</span>{% endif %}

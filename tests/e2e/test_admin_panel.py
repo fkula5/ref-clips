@@ -4,7 +4,7 @@ from datetime import timedelta
 
 from playwright.sync_api import expect
 
-from app.models import UploadRejection, Video
+from app.models import UploadRejection, User, Video
 from app.timeutil import utcnow
 from tests.e2e.support import wait_until
 
@@ -225,3 +225,46 @@ def test_komorki_wierszy_tabel_admina_maja_jedna_wysokosc(ui):
                 || Math.max(...rects.map(r => r.bottom)) - Math.min(...rects.map(r => r.bottom)) > 0.5;
         }).length""")
         assert bad == 0, f"{path}: {bad} wierszy z nierównymi komórkami"
+
+
+def test_tabela_uzytkownikow_na_telefonie_to_karty_bez_przewijania_w_bok(ui):
+    """Lista kont jako karty (table.responsive) przy 390 px; role z pól wyboru da się zmienić palcem."""
+    with ui.server.db() as db:
+        user = User(email="ktos.z.bardzo.dlugim.adresem.pocztowym@subdomena-firmowa.example.com",
+                    name="Aleksandra Wiśniewska-Kowalczyk", is_active=True)
+        user.set_roles(["referee"])
+        db.add(user)
+        db.commit()
+        user_id = user.id
+
+    scrolls = "document.documentElement.scrollWidth <= window.innerWidth"
+    phone = ui.page("admin", mobile=True)
+    phone.goto("/admin/users")
+    expect(phone.locator("table.users-table.responsive")).to_have_count(1)
+    assert phone.evaluate(scrolls), "strona kont przewija się w bok na telefonie"
+    # karta konta: etykiety pól z data-label, tabela nie jest już tabelą
+    card = phone.locator("tr").filter(has_text="Aleksandra Wiśniewska-Kowalczyk")
+    expect(card).to_have_count(1)
+    assert phone.evaluate("() => getComputedStyle(document.querySelector('table.users-table tbody tr')).display") == "block"
+    labels = card.locator("td").evaluate_all("cells => cells.map(c => c.dataset.label || '')")
+    assert labels[:4] == ["Imię i nazwisko", "E-mail", "Role", "Stan"]
+    # karta mieści się w ekranie (e-mail zawija się zamiast ją poszerzać)
+    box = card.bounding_box()
+    assert box["x"] >= 0 and box["x"] + box["width"] <= 390
+    # role: pola wyboru są klikalne i zapis działa na telefonie
+    card.get_by_label("szkoleniowiec").check()
+    card.get_by_role("button", name="Zapisz role").click()
+    expect(phone.locator("#admin-notice")).to_contain_text("Zapisano role: Aleksandra Wiśniewska-Kowalczyk")
+    with ui.server.db() as db:
+        assert db.get(User, user_id).roles == {"referee", "coach"}
+    assert phone.evaluate(scrolls)
+    for path in ("/admin/categories", "/admin/retention"):
+        phone.goto(path)
+        assert phone.evaluate(scrolls), f"{path}: przewijanie w bok na telefonie"
+
+    # komputer: zwykła tabela z nagłówkiem, bez zmian układu i bez przewijania
+    desktop = ui.page("admin")
+    desktop.goto("/admin/users")
+    assert desktop.evaluate("() => getComputedStyle(document.querySelector('table.users-table')).display") == "table"
+    expect(desktop.locator("table.users-table thead")).to_be_visible()
+    assert desktop.evaluate(scrolls)
