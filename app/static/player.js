@@ -310,11 +310,8 @@
       return;
     }
     if (e.ctrlKey || e.metaKey || e.altKey) return;
-    const big = e.shiftKey ? 5 : 1;
     switch (e.key) {
       case " ": e.preventDefault(); video.paused ? video.play() : video.pause(); break;
-      case "ArrowLeft": e.preventDefault(); seek(video.currentTime - big); break;
-      case "ArrowRight": e.preventDefault(); seek(video.currentTime + big); break;
       case ",": case "<": e.preventDefault(); stepFrame(-1); break;
       case ".": case ">": e.preventDefault(); stepFrame(1); break;
       case "[": setSpeed(SPEEDS[Math.max(0, SPEEDS.indexOf(video.playbackRate) - 1)] ?? 1); break;

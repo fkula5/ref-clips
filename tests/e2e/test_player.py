@@ -333,3 +333,22 @@ def test_odtwarzacz_na_telefonie_miesci_sie_w_ekranie(ui):
     assert box["width"] <= 390
     page.locator("#btn-z").tap()
     expect(page.locator(ROWS)).to_have_count(1)
+
+
+def test_strzalki_po_kliknieciu_w_pasek_odtwarzacza(ui):
+    """Kliknięty pasek przeglądarki przejmował strzałki (1% długości filmu); mają zostać 1 s i 5 s z Shift."""
+    page, _, _ = open_player(ui)
+    page.evaluate(f"{VIDEO}.pause()")
+    box = page.locator("#player").bounding_box()
+    y = box["y"] + box["height"] - 20
+    page.mouse.move(box["x"] + box["width"] * 0.3, y)
+    page.mouse.down()                                       # przeciąganie po pasku dalej działa
+    page.mouse.move(box["x"] + box["width"] * 0.7, y, steps=5)
+    page.mouse.up()
+    page.wait_for_function(f"{VIDEO}.currentTime > 30")
+    page.evaluate(f"{VIDEO}.pause()")
+    seek_to(page, 20)
+    page.keyboard.press("ArrowRight")
+    wait_time(page, 21)
+    page.keyboard.press("Shift+ArrowRight")
+    wait_time(page, 26)
