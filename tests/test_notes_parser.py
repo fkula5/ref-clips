@@ -33,7 +33,10 @@ def test_basic_lines():
     assert [r.time_sec for r in rows] == [174, 197, 3735]
     assert [r.referee_id for r in rows] == [1, 1, 2]
     assert [r.category for r in rows] == ["kroki", "blok / szarża", "24 s"]
-    assert rows[0].description == "2:54 Filip kroki"
+    # opis = tylko to, czego nie rozpoznano (czas, sędzia i kategoria są w osobnych polach)
+    assert rows[0].description == ""
+    assert rows[1].description == "Dlaczego nie blok?"       # alias w środku zdania: zdanie zostaje w całości
+    assert rows[2].description == "błąd"                      # „24 s” (alias z dwóch słów) odcięte, reszta zostaje
     assert all(not r.warnings for r in rows)
 
 
@@ -151,7 +154,7 @@ def test_longest_alias_wins_and_multiple_categories_warn():
 
 def test_unknown_category_ignored_description_kept():
     r = parse("1:00 Filip dziwna sytuacja")[0]
-    assert r.category is None and r.description == "1:00 Filip dziwna sytuacja"
+    assert r.category is None and r.description == "dziwna sytuacja"  # sędzia odcięty
 
 
 def test_inactive_category_not_offered():
@@ -174,7 +177,7 @@ def test_upload_notes_examples_from_the_spec():
     assert [r.time_sec for r in rows] == [174, 197, 3735]
     assert [r.referee_id for r in rows] == [1, 2, 1]
     # „PTS” to nie kategoria ze słownika: zostaje w opisie, bez ostrzeżenia
-    assert rows[0].category is None and rows[0].warnings == [] and rows[0].description == "2:54 Filip PTS"
+    assert rows[0].category is None and rows[0].warnings == [] and rows[0].description == "PTS"
     assert rows[1].category == "blok / szarża"
     assert rows[2].category == "techniczny"
 
@@ -197,3 +200,64 @@ def test_referee_and_category_recognised_without_function_prefix_variants():
     rows = parse("0:30 Łukasz 3 s\n0:45 u2 24 sek\n1:10 Kasi bez gwizdka")
     assert [r.referee_id for r in rows] == [3, 3, 2]
     assert [r.category for r in rows] == ["3 s", "24 s", "brak gwizdka (powinien być)"]
+
+
+# --- opis = reszta po odcięciu czasu, sędziego i kategorii ----------------------------------------
+@pytest.mark.parametrize("line,description,category,referee_id", [
+    ("2:54 CC kroki za późno", "za późno", "kroki", 1),            # przykład z zadania
+    ("2:54 CC kroki", "", "kroki", 1),                             # nic nie zostaje -> pusty opis
+    ("2:54 Filip PTS", "PTS", None, 1),                           # nierozpoznane zostaje
+    ("1:02:15 CC faul techniczny na ławce", "na ławce", "techniczny", 1),
+    ("2:54 U1 24 sek spóźnione", "spóźnione", "24 s", 2),         # alias wielowyrazowy
+    ("2:54 Kasi Brak gwizdka, widoczny kontakt", "widoczny kontakt", "brak gwizdka (powinien być)", 2),
+    ("2:54 Filip KROKI!", "", "kroki", 1),                        # wielkość liter i interpunkcja
+    ("2:54 - CC: kroki - za późno", "za późno", "kroki", 1),      # separatory
+    ("2:54 Filip T", "", "techniczny", 1),                        # krótki alias wielką literą
+    ("2:54 Filip T za mocno", "za mocno", "techniczny", 1),
+])
+def test_description_keeps_only_unrecognised_remainder(line, description, category, referee_id):
+    r = parse(line)[0]
+    assert (r.description, r.category, r.referee_id) == (description, category, referee_id)
+
+
+def test_category_alias_inside_a_sentence_keeps_the_whole_sentence():
+    """Alias w środku albo na końcu swobodnego zdania nie jest wycinany (zostałby ułamek zdania)."""
+    for line, text, cat in [
+        ("3:17 Filip Dlaczego nie blok?", "Dlaczego nie blok?", "blok / szarża"),
+        ("3:17 U1 dlaczego nie blok? bo sam faul osobisty", "dlaczego nie blok? bo sam faul osobisty", "osobisty"),
+        ("3:17 Filip piłka była na aut moim zdaniem", "piłka była na aut moim zdaniem", "aut"),
+        ("3:17 Filip za późno kroki", "za późno kroki", "kroki"),
+    ]:
+        r = parse(line)[0]
+        assert (r.description, r.category) == (text, cat), line
+        assert r.referee_id is not None
+
+
+def test_unrecognised_first_word_stays_in_description():
+    r = parse("2:54 Marek kroki za późno")[0]            # nieznany sędzia: „Marek” zostaje, kategoria odcięta
+    assert r.referee_id is None and r.category == "kroki" and r.description == "Marek za późno"
+    assert any("Nieznany sędzia" in w for w in r.warnings)
+    r = parse("2:54 kroki za późno")[0]                   # brak sędziego: kategoria jest pierwszym słowem
+    assert r.referee_id is None and r.description == "za późno"
+    refs = [RefereeDef(1, "Jan Kowal", "CC"), RefereeDef(2, "Jan Nowak", "U1")]
+    r = parse("1:00 Jan kroki spóźnione", refs)[0]       # niejednoznaczny sędzia
+    assert r.referee_id is None and r.description == "Jan spóźnione"
+
+
+def test_only_the_chosen_category_is_removed_when_several_match():
+    r = parse("1:00 Filip kroki i aut")[0]
+    assert r.category == "kroki" and r.description == "i aut" and r.warnings
+    r = parse("1:00 Filip aut kroki")[0]                  # wybrano „kroki” (kolejność słownika), ale tekst zaczyna się od „aut”
+    assert r.category == "kroki" and r.description == "aut kroki"
+
+
+def test_time_only_and_broken_lines_descriptions():
+    assert parse("2:54")[0].description == ""
+    assert parse("bez czasu Filip kroki")[0].description == "bez czasu Filip kroki"
+
+
+def test_description_does_not_change_recognition():
+    """Odcinanie opisu nie wpływa na rozpoznanie sędziego i kategorii (to samo co przed zmianą)."""
+    rows = parse("2:54 Filip kroki\n3:17 Filip Dlaczego nie blok?\n1:02:15 Kasia 24 s błąd")
+    assert [r.referee_id for r in rows] == [1, 1, 2]
+    assert [r.category for r in rows] == ["kroki", "blok / szarża", "24 s"]

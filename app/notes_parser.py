@@ -144,6 +144,42 @@ def find_categories(text: str, categories: list[CategoryDef]) -> list[str]:
     return sorted(found, key=lambda n: order.get(n, 999))
 
 
+def _strip_leading_category(words: list[str], category: CategoryDef) -> list[str] | None:
+    """Słowa po odcięciu nazwy/aliasu kategorii stojącego na samym początku; None, gdy tekst nie
+    zaczyna się od żadnego z nich. Dopasowanie tak jak w `find_categories` (bez polskich znaków i wielkości
+    liter, krótkie aliasy typu T/U/D tylko wielką literą), z pominięciem interpunkcji przy słowach."""
+    entries = sorted((a for a in (category.name, *category.aliases) if normalize(a)),
+                     key=lambda a: -len(normalize(a)))
+    for alias in entries:
+        if len(alias) <= 2 and alias.isalpha():
+            if words and _clean_token(words[0]) == alias:
+                return words[1:]
+            continue
+        parts = normalize(alias).split()
+        if len(words) >= len(parts) and all(
+                normalize(_clean_token(w)) == part for w, part in zip(words, parts)):
+            return words[len(parts):]
+    return None
+
+
+def _leftover_description(words: list[str], category: CategoryDef | None, referee_found: bool) -> str:
+    """Opis klipu z notatki: to, co zostaje po odcięciu sędziego (już w `words`), czasu i kategorii.
+
+    Kategorię odcinamy tylko wtedy, gdy stoi na początku reszty (konwencja „czas sędzia kategoria uwagi”,
+    np. „CC kroki za późno” -> „za późno”). Gdy alias trafia się w środku albo na końcu swobodnego
+    zdania („Dlaczego nie blok?”), zdanie zostaje w całości — wycięcie słowa zrobiłoby z niego
+    bezsensowny ułamek. Nierozpoznane pierwsze słowo (nieznany albo niejednoznaczny sędzia) zostaje
+    w opisie, a kategorię szukamy zaraz za nim."""
+    if category is not None:
+        starts = [0] if referee_found else [0, 1]
+        for start in starts:
+            left = _strip_leading_category(words[start:], category)
+            if left is not None:
+                words = words[:start] + left
+                break
+    return " ".join(words).strip(" \t,;:-–—")
+
+
 def parse_line(line_no: int, raw: str, referees: list[RefereeDef],
                categories: list[CategoryDef]) -> ParsedLine:
     line = raw.strip()
@@ -161,6 +197,7 @@ def parse_line(line_no: int, raw: str, referees: list[RefereeDef],
     rest = line[m.end():].lstrip(" \t-–—:)").strip()
     if not rest:
         result.warnings.append("Brak opisu po czasie")
+        result.description = ""
         return result
 
     words = rest.split()
@@ -168,6 +205,7 @@ def parse_line(line_no: int, raw: str, referees: list[RefereeDef],
     if referee:
         result.referee_id, result.referee_name = referee.id, referee.name
         rest = " ".join(words[used:])
+        words = words[used:]
     elif ambiguous:
         result.warnings.append(f"Niejednoznaczny sędzia: „{_clean_token(words[0])}”")
     else:
@@ -182,6 +220,9 @@ def parse_line(line_no: int, raw: str, referees: list[RefereeDef],
         result.category = found[0]
     if len(found) > 1:
         result.warnings.append(f"Kilka kategorii ({', '.join(found)}) — wybrano pierwszą")
+    # Opis = reszta linii bez czasu, rozpoznanego sędziego i kategorii (te są w osobnych polach).
+    chosen = next((c for c in categories if c.name == result.category), None)
+    result.description = _leftover_description(words, chosen, referee is not None)
     return result
 
 

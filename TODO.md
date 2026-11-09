@@ -57,7 +57,7 @@
 - [x] Po usunięciu pełnego nagrania (retencja, segment 7) klipu z nieustaloną kwartą nie da się już opisać (nie ma gdzie ustawić kwart) — rozważyć, czy panel admina ma dawać wyjście. *(segment 7: po usunięciu pełnego nagrania blokada opisu znika — klip opisuje się z kwartą „nieustaloną”; ręczne wpisywanie kwart bez nagrania odłożone, patrz niżej)*
 - [ ] Podgląd klipu w kolejce używa wersji roboczej (zakres klipu, zatrzymanie na końcu robi `describe.js`); strona ekranu nie przełącza się sama na plik klipu po wycięciu — wystarczy odświeżyć.
 - [ ] `Enter` na liście kategorii zapisuje formularz tylko przy zamkniętej liście (otwarta lista zużywa Enter na wybór opcji).
-- [ ] Opis (`description`) klipów ze znacznika `M` zawiera całą linię notatki (np. „2:54 CC kroki”), więc propozycja opisu bywa powtórzeniem sędziego i kategorii — warto zapisywać tylko resztę linii po rozpoznaniu.
+- [x] Opis (`description`) klipów ze znacznika `M` zawiera całą linię notatki (np. „2:54 CC kroki”), więc propozycja opisu bywa powtórzeniem sędziego i kategorii — warto zapisywać tylko resztę linii po rozpoznaniu. *(v1.0.1: `ParsedLine.description` to reszta po odcięciu czasu, sędziego i kategorii — dla klawisza `M`, notatek przy wgrywaniu i strony notatek; kategorię odcinamy tylko z początku reszty, alias w środku zdania zostawia zdanie w całości, np. „Dlaczego nie blok?”; istniejące klipy bez zmian)*
 
 ## Uwagi z segmentu 6 (drobne, odłożone)
 
