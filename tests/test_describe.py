@@ -306,11 +306,11 @@ def test_edit_keeps_first_described_at_and_changes_download_name(setup, db):
     db.refresh(d)
     assert d.described_at == first
     cd = s["coach"].get(f"/clips/{d.id}/download").headers["content-disposition"]
-    assert 'filename="2026-10-28_Q2_03m20s_CC_blok-szarza.mp4"' in cd
+    assert 'filename="II-liga_Sedzia_blok-szarza.mp4"' in cd
     s["coach"].post(f"/clips/{d.id}/update", data={"official": "team", "category_id": str(category_named(db, "własna")),
                                                    "custom_category": "Zażalenie / trener!"})
     cd = s["coach"].get(f"/clips/{d.id}/download").headers["content-disposition"]
-    assert 'filename="2026-10-28_Q2_03m20s_zespol_Zazalenie-trener.mp4"' in cd
+    assert 'filename="II-liga_zespol_Zazalenie-trener.mp4"' in cd
 
 
 def test_edit_from_clip_page_shows_error_in_place(setup, db):

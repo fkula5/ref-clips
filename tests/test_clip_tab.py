@@ -267,19 +267,17 @@ def test_error_state_buttons_hidden_from_viewers_without_rights(make_client, tab
 
 
 # --- nazwa pliku -----------------------------------------------------------------------------
-def test_download_name_pattern_is_date_quarter_time_referee_category(tab, db):
+def test_download_name_pattern_is_level_surname_category(tab, db):
     from app import services
     c = tab["clips"]
-    assert services.clip_filename(c["q1_cc"]) == "2026-10-28_Q1_00m30s_CC_kroki.mp4"
-    assert services.clip_filename(c["q2_u1"]) == "2026-10-28_Q2_02m30s_U1_aut.mp4"
-    assert services.clip_filename(c["q2_team"]) == "2026-10-28_Q2_03m00s_zespol_Kontakt-z-lawka.mp4"
-    assert services.clip_filename(c["q1_none"]) == "2026-10-28_Q1_01m00s.mp4"                    # bez opisu
+    assert services.clip_filename(c["q1_cc"]) == "II-liga_Sedzia_kroki.mp4"
+    assert services.clip_filename(c["q2_u1"]) == "II-liga_Druga_aut.mp4"
+    assert services.clip_filename(c["q2_team"]) == "II-liga_zespol_Kontakt-z-lawka.mp4"
+    assert services.clip_filename(c["q1_none"]) == "II-liga.mp4"                                   # bez opisu
     c["q4_cc"].category_id = None
     c["q4_cc"].custom_category = "Zażółć gęślą jaźń / <script>" + "x" * 90
     name = services.clip_filename(c["q4_cc"])
-    assert re.fullmatch(r"2026-10-28_Q4_05m50s_CC_[A-Za-z0-9-]{1,40}\.mp4", name), name
-    c["q4_cc"].time_sec = 7503.7                                                                   # powyżej 99 minut
-    assert "_125m03s_" in services.clip_filename(c["q4_cc"])
+    assert re.fullmatch(r"II-liga_Sedzia_[A-Za-z0-9-]{1,40}\.mp4", name), name
 
 
 def test_download_name_follows_description_changes(client, tab, db):
@@ -290,12 +288,12 @@ def test_download_name_follows_description_changes(client, tab, db):
         fh.write(b"mp4")
     db.commit()
     cd = client.get(f"/clips/{clip.id}/download").headers["content-disposition"]
-    assert 'filename="2026-10-28_Q2_02m30s_U1_aut.mp4"' in cd
+    assert 'filename="II-liga_Druga_aut.mp4"' in cd
     client.post(f"/clips/{clip.id}/update", data={"official": str(tab["cc"].id),
                                                   "category_id": str(category_named(db, "techniczny"))})
     cd = client.get(f"/clips/{clip.id}/download").headers["content-disposition"]
-    assert 'filename="2026-10-28_Q2_02m30s_CC_techniczny.mp4"' in cd
-    assert page_has_name(client, clip, "2026-10-28_Q2_02m30s_CC_techniczny.mp4")
+    assert 'filename="II-liga_Sedzia_techniczny.mp4"' in cd
+    assert page_has_name(client, clip, "II-liga_Sedzia_techniczny.mp4")
 
 
 def page_has_name(client, clip, name):

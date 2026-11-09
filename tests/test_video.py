@@ -37,19 +37,18 @@ def test_commands_have_expected_flags():
 
 def test_clip_filename(db):
     from app.models import Category
-    match = Match(date=date(2026, 10, 28), team_a_name="A", team_b_name="B")
+    match = Match(date=date(2026, 10, 28), team_a_name="A", team_b_name="B", level="III liga")
     video = Video(match=match, status="ready", duration=900)
-    video.marks = [PeriodMark(period="Q1", time_sec=0), PeriodMark(period="Q2", time_sec=100)]
     clip = Clip(match=match, video=video, time_sec=174)
     clip.official = MatchOfficial(function="CC", name="Filip Kowalski")
     clip.category = Category(group_name="Bez gwizdka", name="brak gwizdka (powinien być)")
-    assert services.clip_filename(clip) == "2026-10-28_Q2_02m54s_CC_brak-gwizdka-powinien-byc.mp4"
+    assert services.clip_filename(clip) == "III-liga_Kowalski_brak-gwizdka-powinien-byc.mp4"
     clip.whole_team, clip.category = True, None
-    assert services.clip_filename(clip) == "2026-10-28_Q2_02m54s_zespol.mp4"
-    clip.official, clip.whole_team, clip.time_sec = None, False, 3735
-    assert services.clip_filename(clip) == "2026-10-28_Q2_62m15s.mp4"
-    video.marks = []
-    assert "_Qx_" in services.clip_filename(clip)
+    assert services.clip_filename(clip) == "III-liga_zespol.mp4"
+    clip.official, clip.whole_team = None, False
+    assert services.clip_filename(clip) == "III-liga.mp4"
+    match.level = ""
+    assert services.clip_filename(clip) == "klip.mp4"
 
 
 def test_worker_waits_when_ffmpeg_missing(db, monkeypatch):
@@ -251,7 +250,7 @@ def test_end_to_end_upload_transcode_cut(client, db, source):
     assert worker.run_once() is True
     clip = client.get(f"/clips/{c['id']}/download")
     assert clip.status_code == 200 and clip.content[4:8] == b"ftyp"
-    assert "2026-10-28_Q1_00m09s_CC_kroki.mp4" in clip.headers["content-disposition"]
+    assert "II-liga_Kowalski_kroki.mp4" in clip.headers["content-disposition"]
     # klip 0..24 s (9 +/- 15, obcięty do początku i do końca nagrania 20 s)
     out = db.get(Clip, c["id"])
     db.refresh(out)

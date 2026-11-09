@@ -434,7 +434,7 @@ nie wstrzymuje pozostałych):
    Globalna lista `/clips` ma te same filtry (plus mecz).
 7. **Klip** — odtwarzacz klipu, opis (sędzia, kategoria, „Q2 · 4:12 od początku kwarty (czas nagrania)” z dopiskiem
    „czas nagrania – nie zegar meczowy”, opis, kto dodał znacznik i kiedy, kiedy opisano), pobranie MP4 (nazwa
-   pliku `data_kwarta_czas_sędzia_kategoria.mp4`, np. `2026-10-28_Q2_02m54s_CC_blok-szarza.mp4`; liczona na bieżąco,
+   pliku `kategoria-rozgrywek_nazwisko_decyzja.mp4`, np. `III-liga_Kowalski_blok-szarza.mp4`; liczona na bieżąco,
    więc po zmianie opisu pobrany plik ma nową nazwę; tylko znaki ASCII, nazwa własnej kategorii skrócona do 40 znaków),
    oceny szkoleniowców, komentarze, link do tego momentu w pełnym nagraniu (tylko gdy pełne nagranie nie zostało usunięte), formularz
    edycji opisu (te same pola i walidacja co na ekranie opisywania) i **poprzedni / następny klip meczu**
