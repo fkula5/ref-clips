@@ -8,6 +8,7 @@
   <ul>
     <li>nagrania: <strong>{{ videos }}</strong> (pliki z dysku także),</li>
     <li>klipy: <strong>{{ clips }}</strong>{% if undescribed %} (w tym nieopisane: {{ undescribed }}){% endif %}, razem z opisami, ocenami i komentarzami,</li>
+    {% if sheets %}<li>arkusze oceny: <strong>{{ sheets }}</strong> (także opublikowane),</li>{% endif %}
     <li>obsada i komentarze do meczu.</li>
   </ul>
   <form method="post" action="/matches/{{ match.id }}/delete" class="row">

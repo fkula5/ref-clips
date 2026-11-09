@@ -27,6 +27,9 @@ FLASH_PATH = "/admin"
 FLASH_MAX_AGE = 60
 FLASH_MAX_CHARS = 600
 
+# Notice for pages outside /admin (sheets): same idea as FLASH_COOKIE, but valid for the whole site.
+PAGE_COOKIE = "refclips_notice"
+
 INVITE_COOKIE = "refclips_invite"
 INVITE_PATH = "/admin/users"
 INVITE_MAX_AGE = 60
@@ -45,6 +48,25 @@ def redirect_with_notice(url: str, notice: str | None = None) -> RedirectRespons
         response.set_cookie(FLASH_COOKIE, quote(notice[:FLASH_MAX_CHARS], safe=""), max_age=FLASH_MAX_AGE,
                             path=FLASH_PATH, httponly=True, secure=config.COOKIE_SECURE, samesite="lax")
     return response
+
+
+def redirect_with_page_notice(url: str, notice: str) -> RedirectResponse:
+    """303 to a page outside the admin panel (e.g. a sheet); `web.render` shows the notice once, in any page."""
+    response = RedirectResponse(url, status_code=303)
+    response.set_cookie(PAGE_COOKIE, quote(notice[:FLASH_MAX_CHARS], safe=""), max_age=FLASH_MAX_AGE,
+                        path="/", httponly=True, secure=config.COOKIE_SECURE, samesite="lax")
+    return response
+
+
+def read_page_notice(request: Request) -> str | None:
+    raw = request.cookies.get(PAGE_COOKIE)
+    text = unquote(raw)[:FLASH_MAX_CHARS].strip() if raw else ""
+    return text or None
+
+
+def clear_page_notice(request: Request, response: Response) -> None:
+    if PAGE_COOKIE in request.cookies:
+        response.delete_cookie(PAGE_COOKIE, path="/", httponly=True, secure=config.COOKIE_SECURE, samesite="lax")
 
 
 def redirect_with_invite(url: str, user_id: int, token: str) -> RedirectResponse:

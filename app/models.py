@@ -464,6 +464,9 @@ class SheetRow(Base):
 class SheetCell(Base):
     """Comment on one element for one official (a sheet cell)."""
     __tablename__ = "sheet_cells"
+    # Deleting a sheet removes its columns (and, through ON DELETE CASCADE, their cells) before the ORM deletes the
+    # cells itself; a DELETE that finds the row already gone is expected.
+    __mapper_args__ = {"confirm_deleted_rows": False}
 
     row_id: Mapped[int] = mapped_column(ForeignKey("sheet_rows.id", ondelete="CASCADE"), primary_key=True)
     column_id: Mapped[int] = mapped_column(

@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% from "_sheet_macros.html" import head %}
+{% block title %}Arkusz oceny: {{ match.title }}{% endblock %}
+{% block content %}
+<article class="sheet-doc">
+<div class="row between no-print">
+  <p class="muted"><a href="/matches/{{ match.id }}#arkusz">&larr; {{ match.title }}</a></p>
+  <div class="row">
+    <button type="button" class="btn primary" id="sheet-print" onclick="window.print()">Drukuj / zapisz jako PDF</button>
+    {% if perm.can_edit_sheet(user, sheet) %}<a class="btn" href="/sheets/{{ sheet.id }}/edit">Edytuj</a>{% endif %}
+    {% if perm.can_delete_sheet(user, sheet) %}<a class="btn danger" href="/sheets/{{ sheet.id }}/delete">Usuń</a>{% endif %}
+  </div>
+</div>
+
+<h1>Arkusz oceny sędziów</h1>
+<p class="sheet-status muted">
+  {% if sheet.is_published %}Opublikowany {{ sheet.published_at|local("%d.%m.%Y %H:%M") }}{% if sheet.edited_after_publishing %} · zmieniono {{ sheet.updated_at|local("%d.%m.%Y %H:%M") }}{% endif %}
+  {% else %}<span class="badge state-uploading">szkic</span> widoczny tylko dla Ciebie{% endif %}
+</p>
+{{ head(sheet, match) }}
+
+<h2>Ocena elementów</h2>
+{% if not sheet.rows %}<p class="muted">Arkusz nie ma elementów oceny.</p>{% else %}
+<table class="sheet-table" id="sheet-elements">
+  <thead><tr><th scope="col">Element</th>{% for c in sheet.columns %}<th scope="col">{{ c.label }}</th>{% endfor %}</tr></thead>
+  <tbody>
+  {% for row, cells in grid %}
+    <tr><th scope="row">{{ row.name }}</th>
+      {% for cell in cells %}<td data-label="{{ sheet.columns[loop.index0].label }}" class="sheet-text">{{ cell.text or '—' }}</td>{% endfor %}</tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+
+<h2>Ocena ogólna</h2>
+<table class="sheet-table" id="sheet-overall">
+  <thead><tr><th scope="col"></th>{% for c in sheet.columns %}<th scope="col">{{ c.label }}</th>{% endfor %}</tr></thead>
+  <tbody>
+    <tr><th scope="row">Ocena ogólna</th>{% for c in sheet.columns %}<td data-label="{{ c.label }}" class="sheet-text">{{ c.overall or '—' }}</td>{% endfor %}</tr>
+    <tr><th scope="row">Rekomendacja obsadowa</th>{% for c in sheet.columns %}<td data-label="{{ c.label }}" class="sheet-text">{{ c.recommendation or '—' }}</td>{% endfor %}</tr>
+  </tbody>
+</table>
+
+<h2>Uwaga o parze sędziowskiej</h2>
+<div class="sheet-note sheet-text" id="sheet-crew-note">{{ sheet.crew_note or '—' }}</div>
+</article>
+{% endblock %}

@@ -292,7 +292,10 @@ def forbidden_requests(w):
         ("sędzia: zmiana retencji", "member", "post", "/admin/retention", {"data": {"days": "1", "recalculate": "1"}}),
         ("szkoleniowiec: ręczne usunięcie pełnego nagrania", "coach", "post", f"/admin/videos/{v.id}/purge", {}),
         ("sędzia z obsady: ręczne usunięcie pełnego nagrania", "member", "post", f"/admin/videos/{v.id}/purge", {}),
-        # arkusz oceny: słownik elementów tylko admin
+        # arkusz oceny: zakładać może tylko szkoleniowiec; słownik elementów tylko admin
+        ("sędzia z obsady: nowy arkusz", "member", "post", f"/matches/{m.id}/sheets", {}),
+        ("sędzia spoza obsady: nowy arkusz", "outsider", "post", f"/matches/{m.id}/sheets", {}),
+        ("sam admin: nowy arkusz", "admin", "post", f"/matches/{m.id}/sheets", {}),
         ("szkoleniowiec: lista elementów arkusza", "coach", "get", "/admin/sheet-elements", {}),
         ("sędzia: nowy element arkusza", "member", "post", "/admin/sheet-elements", {"data": {"name": "X"}}),
         ("szkoleniowiec: zmiana elementu arkusza", "coach", "post", "/admin/sheet-elements/1/update", {"data": {"name": "X"}}),

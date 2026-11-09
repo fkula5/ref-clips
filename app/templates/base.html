@@ -28,7 +28,9 @@
   {% if user and not ffmpeg_ok() %}
   <div class="banner error" id="ffmpeg-banner">{{ ffmpeg_message }}. Do czasu instalacji konwersja i wycinanie czekają w kolejce.</div>
   {% endif %}
-  <main>{% block content %}{% endblock %}</main>
+  <main>
+  {% if page_notice %}<div class="banner ok" role="status" id="page-notice">{{ page_notice }}</div>{% endif %}
+  {% block content %}{% endblock %}</main>
   {% if user %}<footer class="app-version">ref-clips {{ app_version }}</footer>{% endif %}
   {% block scripts %}{% endblock %}
 </body>
