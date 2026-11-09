@@ -7,6 +7,9 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 DATA_DIR = Path(os.environ.get("REFCLIPS_DATA_DIR", BASE_DIR / "data")).resolve()
 DATABASE_URL = os.environ.get("DATABASE_URL", f"sqlite:///{DATA_DIR / 'ref-clips.db'}")
 
+# Numer wersji aplikacji (np. v1.2.0); ustawia go obraz Dockera (build-arg REFCLIPS_VERSION), lokalnie „dev”.
+VERSION = os.environ.get("REFCLIPS_VERSION", "").strip() or "dev"
+
 # Strefa, w której pokazujemy daty i godziny (baza zawsze trzyma UTC). Nazwa IANA, np. Europe/Warsaw.
 TIMEZONE = os.environ.get("REFCLIPS_TIMEZONE", "").strip() or "Europe/Warsaw"
 

@@ -1,0 +1,112 @@
+# Testy ref-clips: uruchamiane na każdym PR do main oraz ręcznie (workflow_dispatch).
+# Nazwy jobów (`unit`, `e2e`) są stabilne, bo ustawia się je jako wymagane sprawdzenia ochrony main
+# (docs/ci-cd.md). Nie używamy `paths:` ani innych filtrów, które pomijałyby workflow — pominięty
+# wymagany check wisiałby w stanie „oczekuje” i blokował merge.
+#
+# workflow_dispatch używa też release.yml dla PR-a wydania: PR utworzony przez GITHUB_TOKEN nie uruchamia
+# zdarzenia `pull_request`, więc testy odpalamy ręcznie na jego gałęzi, a wynik zgłaszamy dodatkowo jako
+# status commita (ostatni krok każdego joba). Szczegóły i ograniczenia: docs/ci-cd.md.
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+# Domyślnie tylko odczyt; `statuses: write` dopiero w jobach (potrzebne do zgłoszenia wyniku PR-a wydania).
+permissions:
+  contents: read
+
+# Nowy przebieg tego samego PR-a (lub tej samej gałęzi) anuluje starszy.
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  unit:
+    name: unit
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      statuses: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-dev.txt
+      - name: Zainstaluj ffmpeg
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ffmpeg
+      - name: Zainstaluj zależności
+        run: |
+          python -m venv .venv
+          .venv/bin/pip install -r requirements-dev.txt
+      - name: Testy jednostkowe i API
+        run: .venv/bin/python -m pytest -q
+      - name: Zgłoś wynik jako status commita (tylko PR wydania)
+        if: ${{ always() && github.event_name == 'workflow_dispatch' && startsWith(github.ref_name, 'release-please--') }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          STATE: ${{ job.status == 'success' && 'success' || 'failure' }}
+        run: |
+          gh api "repos/${GITHUB_REPOSITORY}/statuses/${GITHUB_SHA}" \
+            -f state="$STATE" -f context="unit" \
+            -f description="Testy na gałęzi PR-a wydania (uruchomione ręcznie)" \
+            -f target_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" >/dev/null
+
+  e2e:
+    name: e2e
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      statuses: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-dev.txt
+      - name: Zainstaluj ffmpeg
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ffmpeg
+      - name: Zainstaluj zależności
+        run: |
+          python -m venv .venv
+          .venv/bin/pip install -r requirements-dev.txt
+      - name: Zainstaluj Chromium (Playwright)
+        run: .venv/bin/playwright install --with-deps chromium
+      - name: Testy interfejsu w przeglądarce
+        run: scripts/e2e.sh -q -rf
+      - name: Zrzuty ekranu i logi (przy porażce)
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: e2e-artefakty
+          path: /tmp/refclips-e2e-artifacts/
+          if-no-files-found: ignore
+          retention-days: 7
+      - name: Zgłoś wynik jako status commita (tylko PR wydania)
+        if: ${{ always() && github.event_name == 'workflow_dispatch' && startsWith(github.ref_name, 'release-please--') }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          STATE: ${{ job.status == 'success' && 'success' || 'failure' }}
+        run: |
+          gh api "repos/${GITHUB_REPOSITORY}/statuses/${GITHUB_SHA}" \
+            -f state="$STATE" -f context="e2e" \
+            -f description="Testy interfejsu na gałęzi PR-a wydania (uruchomione ręcznie)" \
+            -f target_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" >/dev/null

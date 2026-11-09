@@ -9,6 +9,11 @@
 # konwersja/cięcie ani zadania w kolejce (python -m app.busy w działającym kontenerze). Jeśli coś trwa,
 # kończy BEZ podmiany plików i restartu (kod wyjścia 3); --force pomija blokadę, --wait czeka.
 #
+# To wyjście awaryjne (obraz budowany na serwerze). Zwykłe wdrożenia robi GitHub Actions z gotowego obrazu z GHCR
+# (deploy/ci-entry.sh, docs/ci-cd.md); jeśli ostatnie z nich zapisało w .env tag GHCR (REFCLIPS_IMAGE), ten skrypt na
+# czas wdrożenia wymusza REFCLIPS_IMAGE=ref-clips:local i zapisuje to w .env (tuż przed restartem), więc zbudowany
+# lokalnie obraz nie podszywa się pod tag z GHCR, a deploy/backup.sh używa tego samego obrazu co działający stos.
+#
 # Użycie:   deploy/deploy.sh [-H użytkownik@host] [-i klucz_ssh] [-d katalog_na_serwerze] [--force] [--wait]
 #           --force   wdróż mimo trwającego uploadu/konwersji (przerwie je; konwersja zacznie od zera)
 #           --wait    poczekaj, aż będzie wolne (sprawdzanie co minutę), potem wdróż
@@ -162,8 +167,10 @@ for key in REFCLIPS_SITE REFCLIPS_COOKIE_SECURE REFCLIPS_TRUST_PROXY REFCLIPS_PU
   grep -Eq "^${key}=." .env || { echo "BŁĄD: w .env brakuje ustawienia $key" >&2; exit 1; }
 done
 
-DOCKER=(docker)
-docker info >/dev/null 2>&1 || DOCKER=(sudo -n docker)
+# Obraz budowany tu nazywa się ref-clips:local — niezależnie od REFCLIPS_IMAGE w .env (może wskazywać na GHCR).
+# Zmienna idzie przez `env`, bo sudo czyści środowisko.
+DOCKER=(env REFCLIPS_IMAGE=ref-clips:local docker)
+docker info >/dev/null 2>&1 || DOCKER=(sudo -n env REFCLIPS_IMAGE=ref-clips:local docker)
 export COMPOSE_FILE=compose.yaml:compose.prod.yaml
 
 "${DOCKER[@]}" compose build
@@ -178,6 +185,13 @@ if [ "$2" != 1 ] && "${DOCKER[@]}" compose ps --status running --services | grep
     exit 3
   fi
 fi
+
+# Dopiero teraz (po ostatnim sprawdzeniu zajętości) zapisujemy obraz lokalny w .env: nowy plik obok i rename,
+# reszta .env bez zmian. Dzięki temu backup.sh i kolejne `docker compose` używają tego, co właśnie działa.
+env_tmp="$(mktemp .env.XXXXXX)"
+chmod --reference=.env "$env_tmp"
+{ grep -v '^REFCLIPS_IMAGE=' .env || true; echo 'REFCLIPS_IMAGE=ref-clips:local'; } > "$env_tmp"
+mv -f "$env_tmp" .env
 
 "${DOCKER[@]}" compose up -d --remove-orphans --wait --wait-timeout 300
 # Caddyfile jest zamontowany jako pojedynczy plik, a wysyłka tworzy go na nowo: działający Caddy dalej

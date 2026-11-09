@@ -133,3 +133,12 @@ def test_petla_znacznika_zapisuje_i_przezywa_blad(db, monkeypatch):
     assert len(calls) >= 3
     with SessionLocal() as s:
         assert health.worker_state(s) == "ok"
+
+
+def test_wersja_w_stopce_tylko_dla_zalogowanych_i_nie_w_health(client, anon_client, beat, monkeypatch):
+    from app import web
+    monkeypatch.setitem(web.env.globals, "app_version", "v9.8.7")
+    assert 'class="app-version">ref-clips v9.8.7' in client.get("/").text
+    assert "v9.8.7" not in anon_client.get("/login").text
+    assert "v9.8.7" not in anon_client.get("/health").text
+    assert config.VERSION == "dev"     # bez REFCLIPS_VERSION w środowisku testów

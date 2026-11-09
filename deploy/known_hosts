@@ -1,0 +1,4 @@
+# Klucz hosta SSH serwera produkcyjnego (wartość publiczna; ssh-keygen -F 57.131.162.204 z maszyny, która łączyła się wcześniej).
+# Używany przez wdrożenie z GitHub Actions z StrictHostKeyChecking=yes. Odcisk: SHA256:F5ZditPwIvV4UeboQJ2pqHLWeSEd28qFjvaAzDjrikg
+# Sprawdzenie na serwerze: ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub
+57.131.162.204 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIGkBy45s4EWBs2bnIHrr/AIsZ7uHY4dSEInfFqLNeTtv

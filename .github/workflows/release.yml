@@ -1,0 +1,241 @@
+# Wydania i wdrożenie ref-clips (opis całości: docs/ci-cd.md).
+#
+#   push do main ──► release-please: PR „wydanie vX.Y.Z” (lista zmian z Conventional Commits)
+#                    └ po merge'u tego PR-a: tag + GitHub Release ──► build obrazu (GHCR) ──► wdrożenie (ssh)
+#   Run workflow  ──► (tag) pomija release-please, buduje obraz tylko jeśli go brak i wdraża podany tag
+#                     (ponowienie po błędzie albo powrót do starszej wersji).
+#
+# Tag utworzony przez GITHUB_TOKEN nie uruchamia innych workflow, dlatego build i wdrożenie są kolejnymi
+# jobami TEGO workflow, a nie osobnymi plikami reagującymi na tag.
+name: Wydanie
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag do wdrożenia, np. v1.2.3 (ponowienie po błędzie albo powrót do starszej wersji)"
+        required: true
+        type: string
+
+# Domyślnie tylko odczyt; mocniejsze uprawnienia dopiero w jobach, które ich potrzebują.
+permissions:
+  contents: read
+
+env:
+  IMAGE: ghcr.io/fkula5/ref-clips
+
+jobs:
+  # 1. release-please (push) albo sprawdzenie podanego tagu (ręczne uruchomienie). Wynik: tag do zbudowania i wdrożenia.
+  release:
+    name: Wydanie
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write        # tag i GitHub Release, gałąź PR-a wydania
+      pull-requests: write   # PR wydania i jego etykiety
+      issues: write          # etykiety („autorelease: pending/tagged”) są przez API zgłoszeń
+      actions: write         # uruchomienie ci.yml na gałęzi PR-a wydania (workflow_dispatch)
+    concurrency:
+      group: release-please
+      cancel-in-progress: false
+    outputs:
+      tag: ${{ steps.rp.outputs.release_created == 'true' && steps.rp.outputs.tag_name || steps.reczny.outputs.tag }}
+    steps:
+      - name: Sprawdź tag (ręczne uruchomienie)
+        id: reczny
+        if: ${{ github.event_name == 'workflow_dispatch' }}
+        env:
+          TAG: ${{ inputs.tag }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if [ "$GITHUB_REF" != "refs/heads/main" ]; then
+            echo "::error::Uruchom ten workflow z gałęzi main (wybrano: $GITHUB_REF)."
+            exit 1
+          fi
+          if ! [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Tag musi mieć postać vX.Y.Z (np. v1.2.3), podano: ${TAG:0:40}"
+            exit 1
+          fi
+          if ! gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${TAG}" --silent 2>/dev/null; then
+            echo "::error::Tag $TAG nie istnieje w repozytorium."
+            exit 1
+          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+      - name: release-please
+        id: rp
+        if: ${{ github.event_name == 'push' }}
+        uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
+        with:
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+
+      # PR utworzony lub zaktualizowany przez GITHUB_TOKEN nie uruchamia zdarzenia pull_request, więc testy
+      # odpalamy sami (workflow_dispatch tworzy przebieg także dla GITHUB_TOKEN). Wynik trafia na ten sam commit.
+      - name: Uruchom testy na gałęzi PR-a wydania
+        if: ${{ github.event_name == 'push' && steps.rp.outputs.prs_created == 'true' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}   # ten job nie robi checkoutu, więc gh nie zna repozytorium
+        run: |
+          set -euo pipefail
+          gh pr list --state open --label "autorelease: pending" --base main \
+            --json headRefName --jq '.[].headRefName' | while read -r branch; do
+            case "$branch" in
+              release-please--*) echo "Testy na gałęzi: $branch"; gh workflow run ci.yml --ref "$branch" ;;
+              *) echo "Pomijam nieoczekiwaną gałąź: $branch" ;;
+            esac
+          done
+
+      - name: Podsumowanie
+        env:
+          TAG: ${{ steps.rp.outputs.release_created == 'true' && steps.rp.outputs.tag_name || steps.reczny.outputs.tag }}
+        run: |
+          if [ -n "$TAG" ]; then
+            echo "Do zbudowania i wdrożenia: \`$TAG\`" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "Brak nowego wydania w tym przebiegu (PR wydania został utworzony/zaktualizowany albo nie ma zmian do wydania)." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+  # 2. Obraz Dockera w GHCR: ghcr.io/fkula5/ref-clips:vX.Y.Z oraz :sha-xxxxxxx. Istniejącego obrazu nie nadpisujemy.
+  build:
+    name: Obraz Dockera
+    needs: release
+    if: ${{ needs.release.outputs.tag != '' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      packages: write        # tylko ten job publikuje w GHCR
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: refs/tags/${{ needs.release.outputs.tag }}
+          persist-credentials: false
+
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      - uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Czy obraz tej wersji już istnieje
+        id: exists
+        env:
+          TAG: ${{ needs.release.outputs.tag }}
+        run: |
+          set -euo pipefail
+          short="$(git rev-parse --short=7 HEAD)"
+          echo "sha_tag=sha-${short}" >> "$GITHUB_OUTPUT"
+          echo "revision=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          if docker buildx imagetools inspect "${IMAGE}:${TAG}" >/dev/null 2>&1; then
+            echo "Obraz ${IMAGE}:${TAG} już istnieje — pomijam budowanie." | tee -a "$GITHUB_STEP_SUMMARY"
+            echo "found=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "found=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Zbuduj i opublikuj obraz
+        if: ${{ steps.exists.outputs.found != 'true' }}
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          push: true
+          platforms: linux/amd64
+          provenance: false   # jeden zwykły manifest (bez dodatkowych wpisów atestacji w pakiecie)
+          tags: |
+            ${{ env.IMAGE }}:${{ needs.release.outputs.tag }}
+            ${{ env.IMAGE }}:${{ steps.exists.outputs.sha_tag }}
+          build-args: |
+            REFCLIPS_VERSION=${{ needs.release.outputs.tag }}
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.version=${{ needs.release.outputs.tag }}
+            org.opencontainers.image.revision=${{ steps.exists.outputs.revision }}
+            org.opencontainers.image.title=ref-clips
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # 3. Wdrożenie: jedno polecenie ssh, które na serwerze trafia do wymuszonego skryptu deploy/ci-entry.sh.
+  deploy:
+    name: Wdrożenie
+    needs: [release, build]
+    if: ${{ needs.release.outputs.tag != '' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 150     # do 2 h czekania, aż nic nie trwa na serwerze, plus pobranie i start
+    environment: production
+    concurrency:
+      group: deploy-production
+      cancel-in-progress: false
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          sparse-checkout: deploy/known_hosts
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+
+      - name: Przygotuj klucz SSH
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_HOST: ${{ vars.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ vars.DEPLOY_USER }}
+        run: |
+          set -euo pipefail
+          for name in DEPLOY_SSH_KEY DEPLOY_HOST DEPLOY_USER; do
+            if [ -z "${!name}" ]; then
+              echo "::error::Brak ustawienia $name w środowisku production (docs/ci-cd.md, krok 3)."
+              exit 1
+            fi
+          done
+          umask 077
+          install -d -m 700 "$HOME/.ssh"
+          printf '%s\n' "$DEPLOY_SSH_KEY" > "$HOME/.ssh/ci_deploy"
+          if ! ssh-keygen -y -f "$HOME/.ssh/ci_deploy" >/dev/null 2>&1; then
+            echo "::error::DEPLOY_SSH_KEY nie jest poprawnym kluczem prywatnym (cały plik, razem z liniami BEGIN/END)."
+            exit 1
+          fi
+          # Host key serwera przypięty w repozytorium; StrictHostKeyChecking=yes, bez zgadywania przy pierwszym połączeniu.
+          cp deploy/known_hosts "$HOME/.ssh/ref_clips_known_hosts"
+
+      - name: Wdróż na serwer
+        env:
+          TAG: ${{ needs.release.outputs.tag }}
+          DEPLOY_HOST: ${{ vars.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ vars.DEPLOY_USER }}
+        run: |
+          set -uo pipefail
+          if ! [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Nieprawidłowy tag: ${TAG:0:40}"
+            exit 1
+          fi
+          echo "Wdrażam $TAG na serwer (jeśli coś trwa, czekam do 2 godzin)..."
+          rc=0
+          ssh -F /dev/null \
+            -i "$HOME/.ssh/ci_deploy" -o IdentitiesOnly=yes -o BatchMode=yes \
+            -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$HOME/.ssh/ref_clips_known_hosts" \
+            -o GlobalKnownHostsFile=/dev/null -o HostKeyAlgorithms=ssh-ed25519 \
+            -o ConnectTimeout=20 -o ServerAliveInterval=30 -o ServerAliveCountMax=10 \
+            "${DEPLOY_USER}@${DEPLOY_HOST}" deploy "$TAG" || rc=$?
+          {
+            echo "### Wdrożenie $TAG"
+            case "$rc" in
+              0)   echo "Wdrożone." ;;
+              3)   echo "**Nie wdrożono:** na serwerze przez 2 godziny coś trwało (upload lub konwersja). Nic nie zostało zmienione. Ponów: Actions → Wydanie → Run workflow, tag \`$TAG\`." ;;
+              4)   echo "**Nowa wersja nie wystartowała — serwer wrócił do poprzedniej.** Szczegóły w logu kroku. Napraw i wydaj nową wersję." ;;
+              5)   echo "**Nowa wersja nie wystartowała, a powrót do poprzedniej też się nie udał.** Wymaga ręcznej interwencji na serwerze (docs/ci-cd.md, „Gdy coś pójdzie źle”)." ;;
+              255) echo "**Błąd połączenia ssh** (klucz, host, zapora albo klucz hosta serwera inny niż w \`deploy/known_hosts\`)." ;;
+              *)   echo "**Wdrożenie nieudane** (kod $rc). Szczegóły w logu kroku; ponowienie: Actions → Wydanie → Run workflow, tag \`$TAG\`." ;;
+            esac
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit "$rc"
+
+      - name: Usuń klucz z runnera
+        if: ${{ always() }}
+        run: rm -f "$HOME/.ssh/ci_deploy" "$HOME/.ssh/ref_clips_known_hosts"

@@ -29,6 +29,7 @@
   <div class="banner error" id="ffmpeg-banner">{{ ffmpeg_message }}. Do czasu instalacji konwersja i wycinanie czekają w kolejce.</div>
   {% endif %}
   <main>{% block content %}{% endblock %}</main>
+  {% if user %}<footer class="app-version">ref-clips {{ app_version }}</footer>{% endif %}
   {% block scripts %}{% endblock %}
 </body>
 </html>

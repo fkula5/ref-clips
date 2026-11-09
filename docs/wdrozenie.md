@@ -3,6 +3,10 @@
 > Segmenty 8–9. Stan: konfiguracja gotowa i przetestowana lokalnie; przygotowanie serwera i pierwsze
 > wdrożenie wykonuje osoba z dostępem do VPS.
 
+**Zwykłe wdrożenia robi GitHub Actions** po scaleniu PR-a wydania (obraz z GHCR, klucz CI z wymuszonym poleceniem,
+automatyczny powrót przy nieudanym starcie): [docs/ci-cd.md](ci-cd.md). Ten dokument opisuje serwer, pierwsze wdrożenie
+oraz ręczne wyjście awaryjne (`deploy/deploy.sh`).
+
 Docelowo: OVH VPS (Ubuntu 24.04, 2 vCPU, ok. 3,7 GB RAM, 38 GB dysku), Docker Engine z wtyczką Compose,
 `ufw` z otwartymi portami 22/80/443. Bez własnej domeny adres to `https://57-131-162-204.sslip.io`
 (sslip.io zamienia nazwę z IP na ten adres IP; Caddy dostaje certyfikat Let's Encrypt).
@@ -20,7 +24,8 @@ przeglądarka ──HTTPS──► Caddy (80, 443, 443/udp) ──sieć compose�
 | `compose.prod.yaml` | **nakładka** na `compose.yaml`: usuwa port aplikacji z hosta, dodaje `caddy`, rotację logów |
 | `deploy/Caddyfile` | HTTPS, nagłówki bezpieczeństwa, kompresja, `reverse_proxy` do aplikacji |
 | `deploy/env.prod.example` | wzór pliku `.env` na serwerze (bez sekretów) |
-| `deploy/deploy.sh` | wdrożenie z komputera lokalnego przez ssh (z blokadą, gdy coś trwa: `app/busy.py`) |
+| `deploy/deploy.sh` | wdrożenie awaryjne z komputera lokalnego przez ssh (build na serwerze; z blokadą, gdy coś trwa: `app/busy.py`) |
+| `deploy/ci-entry.sh`, `deploy/known_hosts` | wejście klucza CI na serwerze (`deploy vX.Y.Z`, `status`) i przypięty klucz hosta — [docs/ci-cd.md](ci-cd.md) |
 | `deploy/backup.sh`, `backup_snapshot.py`, `ref-clips-backup.service/.timer` | nocna kopia zapasowa |
 | `deploy/restore.md` | odtwarzanie z kopii |
 
@@ -95,6 +100,11 @@ Po zmianie plików `.service`/`.timer` w repozytorium skopiuj je ponownie i wyko
 
 ## Kolejne wdrożenia
 
+Normalnie: merge PR-a wydania na GitHubie ([docs/ci-cd.md](ci-cd.md)). Poniżej wdrożenie z komputera, gdy GitHub jest
+niedostępny albo trzeba wdrożyć kod spoza `main`. Jeśli w `.env` jest `REFCLIPS_IMAGE` z GHCR (zapisuje go wdrożenie
+z GitHuba), `deploy.sh` na czas wdrożenia wymusza `REFCLIPS_IMAGE=ref-clips:local` (obraz zbudowany na serwerze) i zapisuje
+to w `.env` tuż przed restartem, żeby `backup.sh` używał tego samego obrazu co działający stos.
+
 ```bash
 git commit ...              # deploy.sh wdraża commit (HEAD), nie katalog roboczy; odmawia przy niezacommitowanych zmianach
 deploy/deploy.sh
@@ -147,7 +157,7 @@ Na serwerze, w `/opt/ref-clips` (jednorazowo `export COMPOSE_FILE=compose.yaml:c
 | Status | `docker compose ps` |
 | Logi aplikacji / workera / Caddy | `docker compose logs -f --tail 100 app` (`worker`, `caddy`) |
 | Restart | `docker compose restart app worker` |
-| Wersja na serwerze | `cat .deploy-commit` |
+| Wersja na serwerze | `cat .deploy-commit` (numer `vX.Y.Z` po wdrożeniu z GitHuba, hash commita po `deploy.sh`) |
 | Miejsce na dysku | `df -h /`, `docker system df`, panel admina → „Retencja i dysk” |
 | Zatrzymanie (dane zostają) | `docker compose stop` |
 
