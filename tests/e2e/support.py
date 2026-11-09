@@ -246,6 +246,34 @@ class Server:
                 db.expunge(clip)
             return clip
 
+    def wait_marker_window_over(self, page, video_id: int, timeout: float = 10.0) -> None:
+        """Czeka, aż w obu miejscach minie okno ochrony przed podwójnym Z (`MARKER_DEBOUNCE_SECONDS`),
+        każde według WŁASNEGO zegara, bo na tej maszynie (WSL2) zegar ścienny skacze względem monotonicznego
+        o ok. 1 s co kilkadziesiąt sekund, więc stałe `sleep` ani porównanie zegarów nic nie gwarantują:
+        - strona: okno klienta liczy `performance.now()` (monotoniczny) od naciśnięcia klawisza; czekamy
+          na `performance.now()` strony, licząc od chwili tuż po zapisie znacznika (czyli od późniejszej niż
+          naciśnięcie, więc z zapasem);
+        - serwer: okno liczy `utcnow()` od `created_at` klipu (zegar ścienny); czekamy, aż ten sam zegar
+          pokaże ponad `MARKER_DEBOUNCE_SECONDS` od `created_at` ostatniego klipu nagrania."""
+        from app import config
+        from app.models import Clip
+        from app.timeutil import utcnow
+        window_ms = int((config.MARKER_DEBOUNCE_SECONDS + 0.05) * 1000)
+        started = page.evaluate("performance.now()")
+        page.wait_for_function("started => performance.now() - started >= %d" % window_ms, arg=started,
+                               timeout=timeout * 1000)
+        deadline = time.monotonic() + timeout
+        while True:
+            with self.db() as db:
+                created = db.scalar(select(Clip.created_at).where(Clip.video_id == video_id)
+                                    .order_by(Clip.created_at.desc()).limit(1))
+            left = 0.0 if created is None else config.MARKER_DEBOUNCE_SECONDS + 0.05 - (utcnow() - created).total_seconds()
+            if left <= 0:
+                return
+            if time.monotonic() > deadline:
+                raise TimeoutError("okno ochrony przed podwójnym Z nie minęło w oczekiwanym czasie")
+            time.sleep(min(left, 0.25))
+
     def clips_of(self, video_id: int):
         from app.models import Clip
         with self.db() as db:
@@ -259,6 +287,18 @@ class Server:
     def user_by_email(self, email: str) -> User | None:
         with self.db() as db:
             return db.scalar(select(User).where(User.email == email))
+
+
+def press_together(page, key: str, times: int = 2) -> None:
+    """Kilka naciśnięć klawisza w jednym zadaniu przeglądarki (odstęp rzędu mikrosekund). Dwa osobne
+    `keyboard.press` to dwa kursy do przeglądarki — przy obciążonej maszynie dzieli je czasem ponad
+    sekundę, czyli więcej niż okno ochrony przed podwójnym Z, i test nie sprawdza już podwójnego kliknięcia."""
+    page.evaluate("""([key, times]) => {
+        for (let i = 0; i < times; i++) {
+            document.body.dispatchEvent(new KeyboardEvent("keydown", {key, bubbles: true, cancelable: true}));
+            document.body.dispatchEvent(new KeyboardEvent("keyup", {key, bubbles: true, cancelable: true}));
+        }
+    }""", [key, times])
 
 
 def wait_until(page, condition, timeout: float = 20.0, message: str = "warunek nie został spełniony") -> None:

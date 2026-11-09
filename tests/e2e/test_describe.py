@@ -294,7 +294,7 @@ def test_wejscie_z_odtwarzacza_i_licznik_nieopisanych(ui):
     page.wait_for_function("document.getElementById('player').currentTime > 11.5")
     page.keyboard.press("z")
     expect(counter).to_have_text("1")
-    page.wait_for_timeout(1200)
+    ui.server.wait_marker_window_over(page, video_id)  # drugi znacznik dopiero po oknie ochrony przed podwójnym Z
     page.keyboard.press("z")
     expect(counter).to_have_text("2")
     page.get_by_role("link", name=re.compile(r"Opisz znaczniki \(2\)")).click()

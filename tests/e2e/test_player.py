@@ -3,6 +3,8 @@ import re
 
 from playwright.sync_api import Page, expect
 
+from tests.e2e.support import press_together
+
 VIDEO = "document.getElementById('player')"
 ROWS = "#decisions li:has(a.t)"  # wiersze znaczników (bez wiersza „Brak znaczników”)
 
@@ -110,17 +112,16 @@ def test_zaznacz_podczas_odtwarzania_nie_zatrzymuje_wideo(ui):
 def test_podwojne_z_to_jeden_znacznik_a_backspace_cofa(ui):
     page, _, video_id = open_player(ui)
     seek_to(page, 20)
-    page.keyboard.press("z")
-    page.keyboard.press("z")
+    press_together(page, "z")  # dwa Z w jednym zadaniu przeglądarki: odstęp nie zależy od obciążenia maszyny
     expect(page.locator(ROWS)).to_have_count(1)
-    page.wait_for_timeout(1300)  # okno ochrony przed podwójnym kliknięciem trwa 1 s (po stronie klienta i serwera)
+    # okno ochrony trwa 1 s (klient i serwer); czekamy na koniec obu, każdego według jego zegara
+    ui.server.wait_marker_window_over(page, video_id)
     assert len(ui.server.clips_of(video_id)) == 1
     expect(page.locator("#mark-count")).to_have_text("Znaczniki: 1")
 
     seek_to(page, 35)
     page.keyboard.press("z")
     expect(page.locator(ROWS)).to_have_count(2)
-    page.wait_for_timeout(1100)
     # Backspace cofa ostatni (35 s) i zostawia pierwszy
     page.keyboard.press("Backspace")
     expect(page.locator(ROWS)).to_have_count(1)

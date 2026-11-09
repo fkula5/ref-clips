@@ -244,3 +244,12 @@ def test_player_page_state_and_shortcuts_help(client, db):
     assert state["missing_periods"] == ["Q1", "Q2", "Q3", "Q4"] and state["next_period"] == "Q1"
     assert [p["period"] for p in state["periods"]] == ["Q1", "Q2", "Q3", "Q4", "OT1", "OT2", "OT3"]
     assert [p["required"] for p in state["periods"]] == [True] * 4 + [False] * 3
+
+
+def test_client_debounce_matches_server_window():
+    """Okno ochrony przed podwójnym Z jest w dwóch miejscach (serwer: config, klient: player.js) —
+    muszą się zgadzać, bo testy interfejsu czekają na koniec obu."""
+    from pathlib import Path
+    js = (Path(__file__).resolve().parent.parent / "app" / "static" / "player.js").read_text(encoding="utf-8")
+    ms = int(re.search(r"const DEBOUNCE_MS = (\d+);", js).group(1))
+    assert ms == config.MARKER_DEBOUNCE_SECONDS * 1000
