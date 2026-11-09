@@ -96,7 +96,7 @@ def build_transcode_command(ffmpeg: str, src: Path, dst: Path, src_fps: float | 
     return [
         ffmpeg, "-y", "-hide_banner", "-loglevel", "error", "-nostdin",
         "-i", str(src),
-        "-map", "0:v:0", "-map", "0:a:0?",
+        "-map", "0:v:0", "-map", "0:a:0?", *STRIP_METADATA,
         "-vf", ",".join(filters),
         "-c:v", "libx264", "-preset", preset, "-crf", "23",
         "-sc_threshold", "0", "-force_key_frames", "expr:gte(t,n_forced*1)",
@@ -128,12 +128,18 @@ def verify_conversion(source: dict, proxy: Path) -> dict:
     return result
 
 
+# Metadane źródła (tytuł, lokalizacja GPS, data nagrania, nazwy strumieni) nie przechodzą do wyników:
+# klipy można udostępnić linkiem bez konta, więc nie mogą zdradzać nic poza obrazem i dźwiękiem.
+STRIP_METADATA = ["-map_metadata", "-1", "-map_metadata:s:v", "-1", "-map_metadata:s:a", "-1",
+                  "-map_chapters", "-1"]
+
+
 def build_cut_command(ffmpeg: str, src: Path, dst: Path, start: float, duration: float) -> list[str]:
     """Dokładne wycięcie z przekodowaniem (-ss przed -i + re-encode daje precyzję co do klatki)."""
     return [
         ffmpeg, "-y", "-hide_banner", "-loglevel", "error", "-nostdin",
         "-ss", f"{start:.3f}", "-i", str(src), "-t", f"{duration:.3f}",
-        "-map", "0:v:0", "-map", "0:a:0?",
+        "-map", "0:v:0", "-map", "0:a:0?", *STRIP_METADATA,
         "-c:v", "libx264", "-preset", "fast", "-crf", "20", "-pix_fmt", "yuv420p",
         "-force_key_frames", "expr:gte(t,n_forced*1)",
         "-c:a", "aac", "-b:a", "128k",

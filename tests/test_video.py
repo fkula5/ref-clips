@@ -35,6 +35,34 @@ def test_commands_have_expected_flags():
     assert any("min(720,ih)" in a for a in tc) and "-force_key_frames" in tc
 
 
+@needs_ffmpeg
+def test_metadata_of_source_does_not_reach_clips(tmp_path):
+    """Klipy mogą być udostępnione bez konta: tytuł, lokalizacja i nazwy strumieni źródła nie przechodzą
+    do wersji roboczej ani klipu, a jednorazowe czyszczenie (app.strip_metadata) usuwa je ze starych klipów."""
+    from app import strip_metadata
+    src = tmp_path / "src.mp4"
+    subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-f", "lavfi", "-i", "testsrc2=size=160x90:rate=10:duration=3",
+                    "-c:v", "libx264", "-metadata", "title=Legia-Wisla-Kowalski", "-metadata", "location=+52.2+021.0/",
+                    "-metadata:s:v", "handler_name=TAJNE", str(src)], check=True)
+
+    def tags(path):
+        out = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format_tags:stream_tags", "-of", "default=nw=1",
+                              str(path)], check=True, capture_output=True, text=True).stdout
+        return out
+
+    assert "Kowalski" in tags(src) and "TAJNE" in tags(src)
+    proxy, clip = tmp_path / "proxy.mp4", tmp_path / "clip.mp4"
+    subprocess.run(vid.build_transcode_command("ffmpeg", src, proxy), check=True, capture_output=True)
+    subprocess.run(vid.build_cut_command("ffmpeg", proxy, clip, 0.5, 1.5), check=True, capture_output=True)
+    for path in (proxy, clip):
+        assert not any(word in tags(path) for word in ("Kowalski", "TAJNE", "location")), tags(path)
+    old = tmp_path / "old.mp4"  # klip sprzed zmiany: źródło z metadanymi
+    old.write_bytes(src.read_bytes())
+    strip_metadata.strip_file("ffmpeg", old)
+    assert "Kowalski" not in tags(old) and "TAJNE" not in tags(old) and "location" not in tags(old)
+    assert not list(tmp_path.glob("*.strip.mp4"))
+
+
 def test_clip_filename(db):
     from app.models import Category
     match = Match(date=date(2026, 10, 28), team_a_name="A", team_b_name="B", level="III liga")
