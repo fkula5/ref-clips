@@ -269,6 +269,29 @@ def cleanup_orphan_clips(db: Session, min_age_seconds: float | None = None) -> i
     return removed
 
 
+# --- pliki tymczasowe ----------------------------------------------------------------------
+def cleanup_tmp(db: Session | None = None, min_age_seconds: float | None = None) -> int:
+    """Usuwa z `tmp` paczki ZIP (linki udostępniające, eksport), starsze niż `ORPHAN_MIN_AGE_SECONDS`.
+    Zwykle plik znika zaraz po wysłaniu; zostaje po awarii albo zerwanym pobieraniu. Pobieranie trwające
+    dłużej nie przeszkadza: plik jest już otwarty. `db` jest niewykorzystane (jednolity podpis kroków
+    sprzątania w workerze). Zwraca liczbę usuniętych plików."""
+    if min_age_seconds is None:
+        min_age_seconds = config.ORPHAN_MIN_AGE_SECONDS
+    cutoff = time.time() - min_age_seconds
+    removed = 0
+    for key, _size, mtime in storage.iter_files("tmp"):
+        if not key.endswith(".zip") or mtime >= cutoff:
+            continue
+        try:
+            storage.delete(key)
+            removed += 1
+        except OSError:
+            log.warning("Nie udało się usunąć pliku tymczasowego %s", key)
+    if removed:
+        log.info("Usunięto pliki tymczasowe: %d", removed)
+    return removed
+
+
 # --- osierocone pliki nagrań -------------------------------------------------------------
 VIDEO_FILE = re.compile(r"^(?:uploads/(?P<up>\d+)_.+|proxies/(?P<proxy>\d+)(?:\.part)?\.mp4)$")
 

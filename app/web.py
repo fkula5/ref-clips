@@ -10,7 +10,7 @@ from fastapi.templating import Jinja2Templates
 from jinja2 import pass_context
 from markupsafe import Markup, escape
 
-from app import clip_list, config, feedback, retention, services
+from app import clip_list, config, feedback, retention, services, share
 from app.auth import set_anon_csrf_cookie
 from app import models as m
 from app import permissions
@@ -91,6 +91,9 @@ env.globals.update(
     expiry_note=retention.expiry_note, video_expiry_note=retention.video_expiry_note,
     clip_bounds=services.clip_range,
     DEFAULT_MARGIN=config.DEFAULT_MARGIN_BEFORE,
+    SHARE_DAYS=config.SHARE_DAYS, SHARE_DEFAULT_DAYS=config.SHARE_DEFAULT_DAYS,
+    SHARE_MAX_CLIPS=config.SHARE_MAX_CLIPS, public_title=share.public_title,
+    public_filename=lambda c: services.clip_filename(c, with_referee=False),
 )
 
 

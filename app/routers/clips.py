@@ -9,7 +9,7 @@ from fastapi.responses import RedirectResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app import clip_list, feedback, permissions, services
+from app import clip_list, feedback, permissions, services, share
 from app.auth import require, via_match
 from app.clip_list import query_clips  # noqa: F401 - używane też przez app/routers/clips_v2.py
 from app.db import get_db
@@ -34,6 +34,7 @@ def clips_list(request: Request, db: Session = Depends(get_db),
     clips = clip_list.select_clips(db, f)
     return render(
         request, "clips.html", clips=clips, f=f, created=created, skipped=skipped,
+        shareable={c.id for c in clips if share.offerable(user, c)},
         pending=any(c.status in ("new", "queued") for c in clips),
         stats=clip_list.clip_stats(db, clips),
         matches=db.scalars(select(Match).order_by(Match.date.desc(), Match.id.desc())).all(),
@@ -51,12 +52,14 @@ def render_clip(request: Request, db: Session, clip: Clip, f: clip_list.ClipFilt
     partial = is_htmx(request)
     previous, following = services.neighbours(clip_list.select_clips(db, f, match_id=clip.match_id), clip)
     nav = f.query(scope=False)
+    user = request.state.user
     full_video = clip.video.purged_at is None and clip.video.status == "ready" and bool(clip.video.proxy_path)
     return render(
         request, "clip_detail.html", status_code=status_code, c=clip, filename=services.clip_filename(clip),
         categories=services.categories_for(db, clip), busy=clip.status in ("new", "queued"),
         previous=previous, following=following, nav=nav, nav_q=f"?{nav}" if nav else "",
         full_video=full_video, problem=describe.cut_problem(clip),
+        share_links=share.active_links(db, clip.id) if permissions.can_share_clip(user, clip) else None,
         blocker=services.describe_block(clip), error=error,
         values=values if values is not None else describe.form_values(clip),
         ratings=None if partial else feedback.ratings_of(db, clip),

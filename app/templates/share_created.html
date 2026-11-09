@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% from "_share_macros.html" import share_warning %}
+{% block title %}Link do klipów{% endblock %}
+{% block content %}
+{% if link %}
+<h1>Link do {{ 'klipu' if clips|length == 1 else 'klipów (' ~ clips|length ~ ')' }} jest gotowy</h1>
+<div class="card invite-box" id="share-created">
+  <strong>Link dla osób bez konta</strong>
+  <p class="muted">Ważny do {{ link.expires_at|local("%d.%m.%Y %H:%M") }}. Skopiuj go teraz — po zamknięciu strony nie da się go odczytać
+    (możesz wtedy unieważnić go na stronie klipu i utworzyć nowy).</p>
+  <div class="row">
+    <input id="share-url" class="wide" readonly value="{{ url }}" onclick="this.select()">
+    <button class="btn primary" type="button" id="share-copy" data-copy="#share-url">Kopiuj</button>
+  </div>
+</div>
+{{ share_warning() }}
+<h2>Co zobaczy odbiorca</h2>
+<ol class="share-contents">
+  {% for position, c in clips %}
+  <li><strong>{{ c.category_label or 'Klip ' ~ position }}</strong>{% if c.match.level %} · {{ c.match.level }}{% endif %}
+    <span class="muted">— plik: {{ public_filename(c) }}</span></li>
+  {% endfor %}
+</ol>
+<p class="small-note muted">Liga i kategoria pochodzą z danych meczu i klipu; tekst wpisany ręcznie jako „własna” kategoria też jest publiczny.</p>
+<p class="row">
+  <a class="btn" href="{{ '/clips/' ~ clips[0][1].id if clips|length == 1 else '/clips' }}">{{ 'Wróć do klipu' if clips|length == 1 else 'Wróć do listy klipów' }}</a>
+</p>
+{% else %}
+<h1>Link do klipów</h1>
+<div class="banner" id="share-gone">Kod linku jest pokazywany tylko raz, zaraz po utworzeniu, i już go nie ma. Nie da się go odczytać
+  ponownie: unieważnij link na stronie klipu i utwórz nowy.</div>
+<p class="row"><a class="btn" href="/clips">Lista klipów</a></p>
+{% endif %}
+{% endblock %}
+{% block scripts %}<script src="/static/share.js"></script>{% endblock %}

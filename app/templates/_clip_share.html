@@ -1,0 +1,36 @@
+{# Udostępnianie klipu linkiem (strona klipu): tworzenie i aktywne linki. Wymaga: c, share_links (nie none). #}
+{% from "_share_macros.html" import share_warning, share_days %}
+<div class="card" id="clip-share">
+  <h3>Udostępnij linkiem</h3>
+  {% if c.status == 'cut' and c.clip_path %}
+  <p class="small-note">Na stronie publicznej będzie widoczne tylko: wideo, liga „{{ c.match.level or '—' }}” i kategoria „{{ c.category_label or '—' }}”.
+    Nazwa pliku do pobrania: <code>{{ public_filename(c) }}</code>.</p>
+  <form method="post" action="/share-links" class="row share-form" id="share-one">
+    {{ csrf_input() }}
+    <input type="hidden" name="clip_ids" value="{{ c.id }}">
+    {{ share_days() }}
+    <button class="btn primary">Utwórz link</button>
+  </form>
+  {{ share_warning() }}
+  {% else %}
+  <p class="muted small-note">Link można utworzyć po wycięciu klipu.</p>
+  {% endif %}
+  {% if share_links %}
+  <h4>Aktywne linki ({{ share_links|length }})</h4>
+  <ul class="share-list">
+    {% for l in share_links %}
+    <li>
+      <span>do {{ l.expires_at|local("%d.%m.%Y %H:%M") }} · wejść: <strong>{{ l.view_count }}</strong>
+        · utworzył(a): {{ l.creator.name if l.creator else '—' }}{% if l.items|length > 1 %} · klipów w linku: {{ l.items|length }}{% endif %}</span>
+      {% if perm.can_revoke_share(user, l) %}
+      <form method="post" action="/share-links/{{ l.id }}/revoke" onsubmit="return confirm('Unieważnić link? Osoby, które go mają, stracą dostęp (pobrane pliki zostają).')">
+        {{ csrf_input() }}<input type="hidden" name="clip_id" value="{{ c.id }}"><button class="btn small danger">Unieważnij</button></form>
+      {% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+  <p class="muted small-note">Kodu istniejącego linku nie da się już odczytać — pokazujemy go tylko raz, po utworzeniu.</p>
+  {% else %}
+  <p class="muted small-note">Brak aktywnych linków do tego klipu.</p>
+  {% endif %}
+</div>

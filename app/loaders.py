@@ -4,7 +4,7 @@ from fastapi import Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.db import get_db
-from app.models import Clip, Comment, Match, PeriodMark, Video
+from app.models import Clip, Comment, Match, PeriodMark, ShareLink, Video
 
 
 def get_match(match_id: int, db: Session = Depends(get_db)) -> Match:
@@ -40,3 +40,10 @@ def get_comment(comment_id: int, db: Session = Depends(get_db)) -> Comment:
     if comment is None:
         raise HTTPException(404, "Nie ma takiego komentarza")
     return comment
+
+
+def get_share_link(link_id: int, db: Session = Depends(get_db)) -> ShareLink:
+    link = db.get(ShareLink, link_id)
+    if link is None:
+        raise HTTPException(404, "Nie ma takiego linku")
+    return link

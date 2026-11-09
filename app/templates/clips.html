@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_clips_macros.html" import clip_filters, clips_table %}
+{% from "_clips_macros.html" import clip_filters, clips_table, share_bar with context %}
 {% block title %}Klipy{% endblock %}
 {% block content %}
 <h1>Klipy</h1>
@@ -9,12 +9,15 @@
 {# Te same filtry co w zakładce „Klipy” meczu; działają w adresie, a HTMX odświeża tylko listę. #}
 {{ clip_filters(f, "/clips", people, categories, matches) }}
 
+{{ share_bar(shareable) }}
+
 <div id="clips-list" {% if pending %}hx-get="/clips{{ '?' ~ query if query }}" hx-trigger="every 3s" hx-select="#clips-list" hx-swap="outerHTML"{% endif %}>
 {% if not clips %}
   <p class="muted">Brak klipów dla wybranych filtrów.</p>
 {% else %}
-  {{ clips_table(clips, nav, true, stats) }}
+  {{ clips_table(clips, nav, true, stats, shareable) }}
   <p class="muted small-note">Klipów: {{ clips|length }}. Czas w kolumnie „Kwarta” liczony jest od początku kwarty w nagraniu — to nie jest zegar meczowy.</p>
 {% endif %}
 </div>
 {% endblock %}
+{% block scripts %}<script src="/static/share.js"></script>{% endblock %}

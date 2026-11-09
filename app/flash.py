@@ -8,7 +8,10 @@ Link zaproszenia ma osobne ciasteczko `INVITE_COOKIE` ze ścieżką `/admin/user
 adresu przekierowania (query string = dzienniki, historia, Referer). Ciasteczko jest HttpOnly,
 SameSite=Strict, żyje `INVITE_MAX_AGE` sekund, jest widziane tylko przez stronę kont i kasowane przy
 jej pierwszym wyświetleniu. Dziennik Caddy nie zapisuje nagłówków Cookie/Set-Cookie (domyślnie
-zastępuje je napisem REDACTED), a filtr `app/logfilter.py` i tak dotyczy tylko `/set-password/`."""
+zastępuje je napisem REDACTED), a filtr `app/logfilter.py` dotyczy adresów `/set-password/` i `/s/`.
+
+Kod linku udostępniającego klipy (`SHARE_COOKIE`, ścieżka `/share-links`) działa tak samo jak link
+zaproszenia: POST /share-links -> 303 -> GET /share-links/created, kod tylko w ciasteczku."""
 from __future__ import annotations
 
 import re
@@ -28,6 +31,11 @@ INVITE_COOKIE = "refclips_invite"
 INVITE_PATH = "/admin/users"
 INVITE_MAX_AGE = 60
 INVITE_VALUE = re.compile(r"^(\d{1,12})\.([A-Za-z0-9_-]{16,128})$")   # <id konta>.<token>
+
+SHARE_COOKIE = "refclips_share"
+SHARE_PATH = "/share-links"
+SHARE_MAX_AGE = 60
+SHARE_VALUE = re.compile(r"^(\d{1,12})\.([A-Za-z0-9_-]{43})$")   # <id linku>.<kod>
 
 
 def redirect_with_notice(url: str, notice: str | None = None) -> RedirectResponse:
@@ -72,4 +80,26 @@ def clear_invite(request: Request, response: Response) -> None:
     """Kasuje ciasteczko zaproszenia (tylko gdy przyszło z żądaniem)."""
     if INVITE_COOKIE in request.cookies:
         response.delete_cookie(INVITE_COOKIE, path=INVITE_PATH, httponly=True,
+                               secure=config.COOKIE_SECURE, samesite="strict")
+
+
+def redirect_with_share(url: str, link_id: int, code: str) -> RedirectResponse:
+    """303 na stronę z nowym linkiem udostępniającym; kod czeka w ciasteczku, nie w adresie."""
+    response = RedirectResponse(url, status_code=303)
+    response.set_cookie(SHARE_COOKIE, f"{link_id}.{code}", max_age=SHARE_MAX_AGE, path=SHARE_PATH,
+                        httponly=True, secure=config.COOKIE_SECURE, samesite="strict")
+    response.headers["Cache-Control"] = "no-store"
+    return response
+
+
+def read_share(request: Request) -> tuple[int, str] | None:
+    """(id linku, kod) z ciasteczka albo None, gdy go nie ma lub ma zły kształt."""
+    found = SHARE_VALUE.match(request.cookies.get(SHARE_COOKIE, ""))
+    return (int(found[1]), found[2]) if found else None
+
+
+def clear_share(request: Request, response: Response) -> None:
+    """Kasuje ciasteczko z kodem linku (tylko gdy przyszło z żądaniem)."""
+    if SHARE_COOKIE in request.cookies:
+        response.delete_cookie(SHARE_COOKIE, path=SHARE_PATH, httponly=True,
                                secure=config.COOKIE_SECURE, samesite="strict")

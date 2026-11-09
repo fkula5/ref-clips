@@ -39,6 +39,7 @@
     {% else %}
       <div class="banner">Klip czeka na wycięcie{% if not ffmpeg_ok() %} — {{ ffmpeg_message }}{% else %} (worker: <code>python -m app.worker</code>){% endif %}.</div>
     {% endif %}
+    {% if share_links is not none %}{% include "_clip_share.html" %}{% endif %}
   </section>
 
   <aside>
@@ -82,4 +83,4 @@
 <form method="post" action="/clips/{{ c.id }}/delete" onsubmit="return confirm('Usunąć klip?')">{{ csrf_input() }}<button class="btn danger small">Usuń klip</button></form>
 {% endif %}
 {% endblock %}
-{% block scripts %}<script src="/static/clip.js"></script><script src="/static/feedback.js"></script>{% endblock %}
+{% block scripts %}<script src="/static/share.js"></script><script src="/static/clip.js"></script><script src="/static/feedback.js"></script>{% endblock %}
