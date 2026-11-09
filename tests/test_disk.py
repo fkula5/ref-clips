@@ -6,7 +6,7 @@ import pytest
 from app import config, disk, uploads
 from app.models import UploadRejection, UploadSession, Video
 from app.storage import storage
-from app.timeutil import utcnow
+from app.timeutil import local, utcnow
 from tests.helpers import make_match, make_ready_video, tus_create
 from tests.test_retention import clip_for, ready
 
@@ -75,7 +75,7 @@ def test_retention_page_lists_videos_with_size_match_and_dates(client, db):
     assert video.match.title in page and "3,0 MB" in page and "Zajętość dysku" in page
     for ident in ("u-drafts", "u-originals", "u-clips", "u-free", "u-reserved"):
         assert f'id="{ident}"' in page
-    assert video.expires_at.strftime("%d.%m.%Y") in page and "za 4 dni" in page
+    assert local(video.expires_at, "%d.%m.%Y") in page and "za 4 dni" in page
 
 
 # --- odrzucone uploady (507) ----------------------------------------------------------------------

@@ -28,6 +28,8 @@ VIDEO_STATUSES = {
 CLIP_STATUSES = {"new": "nowy", "queued": "w kolejce do cięcia", "cut": "wycięty", "error": "błąd cięcia"}
 RATING_VERDICTS = {"correct": "prawidłowa", "incorrect": "nieprawidłowa", "debatable": "dyskusyjna"}
 PERIODS = ["Q1", "Q2", "Q3", "Q4", "OT1", "OT2", "OT3"]
+SHEET_DIFFICULTIES = {"latwy": "łatwy", "normalny": "normalny", "trudny": "trudny"}
+SHEET_STATUSES = {"draft": "szkic", "published": "opublikowany"}
 
 
 def _in(column: str, values) -> str:
@@ -131,6 +133,8 @@ class Match(Base):
         back_populates="match", cascade="all, delete-orphan")
     comments: Mapped[list[Comment]] = relationship(
         back_populates="match", cascade="all, delete-orphan", order_by="Comment.id")
+    sheets: Mapped[list[Sheet]] = relationship(
+        back_populates="match", cascade="all, delete-orphan", order_by="Sheet.id")
 
     @property
     def title(self) -> str:
@@ -370,6 +374,104 @@ class Comment(Base):
     match: Mapped[Match | None] = relationship(back_populates="comments")
     clip: Mapped[Clip | None] = relationship(back_populates="comments")
     author: Mapped[User] = relationship()
+
+
+# --- qualifier assessment sheet ---------------------------------------------------
+class SheetElement(Base):
+    """Assessment element from the admin-editable dictionary. A sheet copies the name when it is created
+    (`SheetRow.name`), so renaming, deactivating or deleting an element never changes existing sheets."""
+    __tablename__ = "sheet_elements"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(100), unique=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    sort: Mapped[int] = mapped_column(Integer, default=100)
+
+
+class Sheet(Base):
+    """Descriptive assessment sheet of a match, one per (match, coach). The header (teams, date, level) is read
+    from the match; the elements and the official columns are copies taken when the sheet is created."""
+    __tablename__ = "sheets"
+    __table_args__ = (
+        UniqueConstraint("match_id", "coach_id"),
+        CheckConstraint(_in("status", SHEET_STATUSES), name="status_valid"),
+        CheckConstraint("difficulty IS NULL OR " + _in("difficulty", SHEET_DIFFICULTIES), name="difficulty_valid"),
+        CheckConstraint("status = 'draft' OR difficulty IS NOT NULL", name="published_has_difficulty"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    match_id: Mapped[int] = mapped_column(ForeignKey("matches.id", ondelete="CASCADE"))
+    coach_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    result: Mapped[str] = mapped_column(String(50), default="", server_default="")
+    difficulty: Mapped[str | None] = mapped_column(String(10))
+    crew_note: Mapped[str] = mapped_column(Text, default="", server_default="")
+    status: Mapped[str] = mapped_column(String(20), default="draft", server_default="draft")
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())  # set in code, only when the content changes
+    published_at: Mapped[datetime | None] = mapped_column(DateTime)
+
+    match: Mapped[Match] = relationship(back_populates="sheets")
+    coach: Mapped[User] = relationship()
+    columns: Mapped[list[SheetColumn]] = relationship(
+        back_populates="sheet", cascade="all, delete-orphan", order_by="SheetColumn.position")
+    rows: Mapped[list[SheetRow]] = relationship(
+        back_populates="sheet", cascade="all, delete-orphan", order_by="SheetRow.position")
+
+    @property
+    def is_published(self) -> bool:
+        return self.status == "published"
+
+    @property
+    def edited_after_publishing(self) -> bool:
+        return self.published_at is not None and self.updated_at > self.published_at
+
+
+class SheetColumn(Base):
+    """Sheet column = an official of the crew at creation time: function and name are copies because the
+    crew may change later. The official's overall assessment and recommendation live here."""
+    __tablename__ = "sheet_columns"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    sheet_id: Mapped[int] = mapped_column(ForeignKey("sheets.id", ondelete="CASCADE"), index=True)
+    position: Mapped[int] = mapped_column(Integer)
+    function: Mapped[str] = mapped_column(String(2))
+    official_name: Mapped[str] = mapped_column(String(100), default="")
+    overall: Mapped[str] = mapped_column(Text, default="", server_default="")
+    recommendation: Mapped[str] = mapped_column(Text, default="", server_default="")
+
+    sheet: Mapped[Sheet] = relationship(back_populates="columns")
+
+    @property
+    def label(self) -> str:
+        return f"{self.function} · {self.official_name}"
+
+
+class SheetRow(Base):
+    """Sheet row = assessment element; the name is a copy. `element_id` only tells whether a dictionary
+    element is in use (only an unused element can be deleted)."""
+    __tablename__ = "sheet_rows"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    sheet_id: Mapped[int] = mapped_column(ForeignKey("sheets.id", ondelete="CASCADE"), index=True)
+    element_id: Mapped[int | None] = mapped_column(ForeignKey("sheet_elements.id", ondelete="SET NULL"), index=True)
+    position: Mapped[int] = mapped_column(Integer)
+    name: Mapped[str] = mapped_column(String(100))
+
+    sheet: Mapped[Sheet] = relationship(back_populates="rows")
+    cells: Mapped[list[SheetCell]] = relationship(cascade="all, delete-orphan")
+
+
+class SheetCell(Base):
+    """Comment on one element for one official (a sheet cell)."""
+    __tablename__ = "sheet_cells"
+    # Deleting a sheet removes its columns (and, through ON DELETE CASCADE, their cells) before the ORM deletes the
+    # cells itself; a DELETE that finds the row already gone is expected.
+    __mapper_args__ = {"confirm_deleted_rows": False}
+
+    row_id: Mapped[int] = mapped_column(ForeignKey("sheet_rows.id", ondelete="CASCADE"), primary_key=True)
+    column_id: Mapped[int] = mapped_column(
+        ForeignKey("sheet_columns.id", ondelete="CASCADE"), primary_key=True, index=True)
+    text: Mapped[str] = mapped_column(Text, default="", server_default="")
 
 
 # --- udostępnianie klipów linkiem bez konta ------------------------------------------

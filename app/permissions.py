@@ -39,6 +39,11 @@ def can_manage_categories(user) -> bool:
     return _has(user, ADMIN)
 
 
+def can_manage_sheet_elements(user) -> bool:
+    """Admin-editable list of assessment sheet elements."""
+    return _has(user, ADMIN)
+
+
 def can_manage_retention(user) -> bool:
     """Retencja i dysk: ustawienie liczby dni, zajętość dysku, ręczne usunięcie pełnego nagrania."""
     return _has(user, ADMIN)
@@ -94,7 +99,11 @@ def can_edit_match(user, match) -> bool:
 
 
 def can_delete_match(user, match) -> bool:
-    return can_edit_match(user, match)
+    """Like editing, but a published assessment sheet goes with the match, so only an admin may remove such a match:
+    otherwise a referee who created the match could erase the assessment of their own work."""
+    if _has(user, ADMIN):
+        return True
+    return can_edit_match(user, match) and not any(sheet.is_published for sheet in match.sheets)
 
 
 def can_delete_video(user, video) -> bool:
@@ -143,3 +152,34 @@ def can_edit_rating(user, rating) -> bool:
 
 def can_delete_rating(user, rating) -> bool:
     return can_edit_rating(user, rating)
+
+
+# --- qualifier assessment sheet ---------------------------------------------------
+def can_create_sheet(user) -> bool:
+    """Starting a sheet: the coach role only (the admin role alone is not enough, as with ratings).
+    One sheet per (match, coach) is enforced by the database; opening it again edits the existing one."""
+    return _has(user, COACH)
+
+
+def can_edit_sheet(user, sheet) -> bool:
+    """Editing a sheet, also after publishing: its author only."""
+    return can_view(user) and sheet.coach_id == user.id
+
+
+def can_publish_sheet(user, sheet) -> bool:
+    return can_edit_sheet(user, sheet)
+
+
+def can_delete_sheet(user, sheet) -> bool:
+    """Deleting: the author while the sheet is a draft, an admin at any time."""
+    return can_view(user) and (_has(user, ADMIN) or (sheet.coach_id == user.id and sheet.status == "draft"))
+
+
+def can_view_sheet(user, sheet) -> bool:
+    """A draft only by its author. A published sheet by its author, the match's officials who have accounts,
+    coaches and admins. Everybody else (including a referee outside the crew) must not learn it exists."""
+    if not can_view(user):
+        return False
+    if sheet.coach_id == user.id:
+        return True
+    return sheet.status == "published" and (_has(user, ADMIN, COACH) or is_official(user, sheet.match))

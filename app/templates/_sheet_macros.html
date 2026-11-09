@@ -1,0 +1,14 @@
+{# Wspólne części arkusza oceny (widok i formularz). #}
+{# Nagłówek z danych meczu i kolumn arkusza (obsada z chwili założenia). Przez {% call(field) head(...) %} formularz
+   podstawia własne pola dla "result" i "difficulty". #}
+{% macro head(sheet, match) %}
+<table class="sheet-head">
+  <tr><th scope="row">Mecz</th><td>{{ match.team_a_name or '—' }} – {{ match.team_b_name or '—' }}</td>
+      <th scope="row">Data</th><td>{{ match.date|local("%d.%m.%Y") }}</td></tr>
+  <tr><th scope="row">Kategoria</th><td>{{ match.level or '—' }}</td>
+      <th scope="row">Kwalifikator</th><td>{{ sheet.coach.name }}</td></tr>
+  <tr><th scope="row">Wynik</th><td>{% if caller %}{{ caller('result') }}{% else %}{{ sheet.result or '—' }}{% endif %}</td>
+      <th scope="row">Trudność</th><td>{% if caller %}{{ caller('difficulty') }}{% else %}{{ SHEET_DIFFICULTIES.get(sheet.difficulty, '—') }}{% endif %}</td></tr>
+  <tr><th scope="row">Obsada</th><td colspan="3">{% for c in sheet.columns %}{{ c.label }}{{ ', ' if not loop.last }}{% endfor %}</td></tr>
+</table>
+{% endmacro %}

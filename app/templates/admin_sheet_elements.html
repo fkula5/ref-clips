@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% block title %}Arkusz oceny{% endblock %}
+{% block content %}
+{% set tab = "sheet" %}{% include "_admin_tabs.html" %}
+<h1>Elementy arkusza oceny</h1>
+<p class="muted">Lista elementów, które szkoleniowiec ocenia dla każdego sędziego w arkuszu. Zmiana dotyczy tylko nowych arkuszy:
+  arkusz zapamiętuje nazwy elementów z chwili założenia, więc zmiana nazwy, dezaktywacja i usunięcie nie zmieniają arkuszy już założonych.
+  Element użyty w arkuszach można tylko dezaktywować, nieużywany można usunąć.</p>
+
+{% if error %}<div class="banner error" role="alert" id="admin-error">{{ error }}</div>{% endif %}
+{% if notice %}<div class="banner ok" role="status" id="admin-notice">{{ notice }}</div>{% endif %}
+
+<h2>Nowy element</h2>
+<form method="post" action="/admin/sheet-elements" class="card form row" id="new-element">
+  {{ csrf_input() }}
+  <label class="grow">Nazwa <input name="name" required maxlength="100" value="{{ new_name }}"></label>
+  <button class="btn primary">Dodaj element</button>
+</form>
+
+<h2>Elementy</h2>
+{% if not elements %}<p class="muted">Brak elementów — nowe arkusze będą miały tylko ocenę ogólną.</p>{% else %}
+<table class="responsive categories-table">
+  <thead><tr><th>Nazwa</th><th>Arkusze</th><th>Stan</th><th></th></tr></thead>
+  <tbody>
+  {% for e in elements %}
+    <tr class="{{ 'inactive' if not e.is_active }}" data-element="{{ e.name }}">
+      <td data-label="Nazwa">
+        <form id="el-{{ e.id }}" method="post" action="/admin/sheet-elements/{{ e.id }}/update">{{ csrf_input() }}</form>
+        <input form="el-{{ e.id }}" name="name" required maxlength="100" aria-label="Nazwa elementu" value="{{ edit_values.get(e.id, e.name) }}">
+      </td>
+      <td data-label="Arkusze">{{ used.get(e.id, 0) }}</td>
+      <td data-label="Stan">{% if e.is_active %}<span class="badge ready">aktywny</span>{% else %}<span class="badge error">nieaktywny</span>{% endif %}</td>
+      <td class="actions-cell"><div class="table-actions">
+        <button form="el-{{ e.id }}" class="btn small primary">Zapisz</button>
+        <form method="post" action="/admin/sheet-elements/{{ e.id }}/move" class="inline">{{ csrf_input() }}<input type="hidden" name="direction" value="up"><button class="btn small" aria-label="Wyżej: {{ e.name }}" title="Wyżej" {{ 'disabled' if loop.first }}>↑</button></form>
+        <form method="post" action="/admin/sheet-elements/{{ e.id }}/move" class="inline">{{ csrf_input() }}<input type="hidden" name="direction" value="down"><button class="btn small" aria-label="Niżej: {{ e.name }}" title="Niżej" {{ 'disabled' if loop.last }}>↓</button></form>
+        {% if e.is_active %}
+          <form method="post" action="/admin/sheet-elements/{{ e.id }}/active" class="inline" onsubmit="return confirm('Dezaktywować element? Zniknie z nowych arkuszy; istniejące arkusze go zachowają.')">
+            {{ csrf_input() }}<input type="hidden" name="active" value="0"><button class="btn small">Dezaktywuj</button></form>
+        {% else %}
+          <form method="post" action="/admin/sheet-elements/{{ e.id }}/active" class="inline">{{ csrf_input() }}<input type="hidden" name="active" value="1"><button class="btn small">Aktywuj</button></form>
+        {% endif %}
+        {% if not used.get(e.id, 0) %}
+          <form method="post" action="/admin/sheet-elements/{{ e.id }}/delete" class="inline" onsubmit="return confirm('Usunąć element „{{ e.name }}”?')">
+            {{ csrf_input() }}<button class="btn small danger">Usuń</button></form>
+        {% endif %}
+      </div></td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+{% endblock %}

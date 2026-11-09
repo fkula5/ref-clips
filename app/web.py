@@ -10,7 +10,7 @@ from fastapi.templating import Jinja2Templates
 from jinja2 import pass_context
 from markupsafe import Markup, escape
 
-from app import clip_list, config, feedback, retention, services, share
+from app import clip_list, config, feedback, flash, retention, services, share
 from app.auth import set_anon_csrf_cookie
 from app import models as m
 from app import permissions
@@ -73,6 +73,7 @@ env.globals.update(
     csrf_input=csrf_input,
     perm=permissions,
     USER_ROLES=m.USER_ROLES, OFFICIAL_FUNCTIONS=m.OFFICIAL_FUNCTIONS,
+    SHEET_DIFFICULTIES=m.SHEET_DIFFICULTIES, SHEET_RESULT_MAX=config.SHEET_RESULT_MAX_CHARS,
     RATING_VERDICTS=m.RATING_VERDICTS, RATING_CHOICES=clip_list.RATING_CHOICES,
     TEXT_MAX_CHARS=config.TEXT_MAX_CHARS, rating_edited=feedback.is_edited,
     VIDEO_STATUSES=m.VIDEO_STATUSES, CLIP_STATUSES=m.CLIP_STATUSES, PERIODS=m.PERIODS,
@@ -111,8 +112,13 @@ def render(request: Request, name: str, status_code: int = 200, **context):
         csrf_token = request.cookies.get(config.CSRF_COOKIE) or new_token()
         if csrf_token != request.cookies.get(config.CSRF_COOKIE):
             anon_cookie = csrf_token
+    # A notice left by the previous request (POST -> 303 -> GET). Fragment requests (HTMX) leave it for the page.
+    page_notice = None if is_htmx(request) else flash.read_page_notice(request)
     response = templates.TemplateResponse(
-        request, name, {"user": user, "csrf_token": csrf_token, **context}, status_code=status_code)
+        request, name, {"user": user, "csrf_token": csrf_token, "page_notice": page_notice, **context},
+        status_code=status_code)
+    if page_notice:
+        flash.clear_page_notice(request, response)
     if anon_cookie:
         set_anon_csrf_cookie(response, anon_cookie)
     return response

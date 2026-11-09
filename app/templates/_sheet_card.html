@@ -1,0 +1,34 @@
+{# Karta „Arkusz oceny” na stronie meczu: pokazuje tylko to, co wolno widzieć bieżącemu użytkownikowi
+   (własny szkic, opublikowane arkusze z nazwiskiem kwalifikatora). Dla kogoś, kto nic nie widzi i nie może
+   założyć arkusza, nie ma jej wcale — nic nie zdradza istnienia arkusza. Zmienne: match, match_sheets. #}
+{% set own_sheet = match_sheets|selectattr('coach_id', 'equalto', user.id)|first %}
+{% if match_sheets or perm.can_create_sheet(user) or perm.is_official(user, match) %}
+<h2 id="arkusz">Arkusz oceny</h2>
+<div class="card" id="sheet-card">
+  {% for s in match_sheets %}
+  <div class="sheet-item" data-sheet="{{ s.id }}">
+    <div>
+      <strong>{{ s.coach.name }}</strong>
+      {% if s.is_published %}<span class="badge ready">opublikowany</span>{% else %}<span class="badge state-uploading">szkic</span>{% endif %}
+      {% if s.coach_id == user.id %}<small class="me">to Ty</small>{% endif %}
+      <span class="muted small-note">
+        {% if s.is_published %}{{ s.published_at|local("%d.%m.%Y") }}{% if s.edited_after_publishing %} · zmieniono {{ s.updated_at|local("%d.%m.%Y") }}{% endif %}
+        {% else %}zapisano {{ s.updated_at|local("%d.%m.%Y %H:%M") }}{% endif %}</span>
+    </div>
+    <div class="table-actions">
+      <a class="btn small" href="/sheets/{{ s.id }}">Otwórz</a>
+      {% if perm.can_edit_sheet(user, s) %}<a class="btn small primary" href="/sheets/{{ s.id }}/edit">{{ 'Kontynuuj' if not s.is_published else 'Edytuj' }}</a>{% endif %}
+      {% if perm.can_delete_sheet(user, s) %}<a class="btn small danger" href="/sheets/{{ s.id }}/delete">Usuń</a>{% endif %}
+    </div>
+  </div>
+  {% else %}
+  <p class="muted">Brak arkuszy oceny, które możesz zobaczyć.</p>
+  {% endfor %}
+  {% if perm.can_create_sheet(user) and not own_sheet %}
+  <form method="post" action="/matches/{{ match.id }}/sheets" class="row">
+    {{ csrf_input() }}<button class="btn primary" id="sheet-open">Wypełnij arkusz</button>
+    <span class="muted small-note">Opisowa ocena sędziów; do czasu publikacji widzisz ją tylko Ty.</span>
+  </form>
+  {% endif %}
+</div>
+{% endif %}

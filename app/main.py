@@ -18,8 +18,8 @@ from app.privacy import SharePrivacyHeadersMiddleware
 from app.db import get_db
 from app.initdb import init_db
 from app.models import Job, User
-from app.routers import (admin, auth, clips, clips_v2, describe, feedback, matches, share, share_links, uploads,
-                         videos)
+from app.routers import (admin, auth, clips, clips_v2, describe, feedback, matches, share, share_links, sheets,
+                         uploads, videos)
 from app.web import BASE, back_url, render
 
 
@@ -52,6 +52,7 @@ if config.ENABLE_V2_FEATURES:  # przed clips: /clips/export.zip nie moÅ¼e trafiÄ
 app.include_router(clips.router, dependencies=PROTECTED)
 app.include_router(feedback.router, dependencies=PROTECTED)
 app.include_router(share_links.router, dependencies=PROTECTED)
+app.include_router(sheets.router, dependencies=PROTECTED)
 
 
 def _wants_page(request: Request) -> bool:

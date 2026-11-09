@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block title %}Usuń arkusz{% endblock %}
+{% block content %}
+<h1>Usunąć arkusz?</h1>
+<div class="card">
+  <p><strong>{{ match.title }}</strong>{% if match.level %} · {{ match.level }}{% endif %}</p>
+  <p>Arkusz oceny: {{ sheet.coach.name }}, {{ 'opublikowany' if sheet.is_published else 'szkic' }}. Wypełnione pola: <strong>{{ filled }}</strong>.
+    Zostanie usunięty bezpowrotnie razem z całą treścią{% if sheet.is_published %}, a sędziowie z obsady przestaną go widzieć{% endif %}.</p>
+  <form method="post" action="/sheets/{{ sheet.id }}/delete" class="row">
+    {{ csrf_input() }}
+    <button class="btn danger">Tak, usuń arkusz</button>
+    <a class="btn" href="/matches/{{ match.id }}#arkusz">Anuluj</a>
+  </form>
+</div>
+{% endblock %}

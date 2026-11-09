@@ -30,6 +30,12 @@ NOTES_MAX_LINES = 300
 # --- oceny i komentarze -------------------------------------------------------------
 TEXT_MAX_CHARS = 5000            # komentarz do meczu/klipu i komentarz do oceny
 
+# --- qualifier assessment sheet ---------------------------------------------------
+# Every free-text field of a sheet (cell, overall assessment, recommendation, crew note) is limited by
+# TEXT_MAX_CHARS; the match result is a short string.
+SHEET_RESULT_MAX_CHARS = 50
+SHEET_ELEMENT_NAME_MAX_CHARS = 100
+
 # --- konta i sesje ----------------------------------------------------------------
 SESSION_COOKIE = "rc_session"
 CSRF_COOKIE = "rc_csrf"  # tylko dla formularzy bez sesji (logowanie, ustawienie hasła)

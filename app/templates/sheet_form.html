@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% from "_sheet_macros.html" import head %}
+{% block title %}Arkusz oceny: {{ match.title }}{% endblock %}
+{% block content %}
+<div class="row between">
+  <p class="muted"><a href="/matches/{{ match.id }}#arkusz">&larr; {{ match.title }}</a></p>
+  <div class="row">
+    <a class="btn" href="/sheets/{{ sheet.id }}">Podgląd</a>
+    {% if perm.can_delete_sheet(user, sheet) %}<a class="btn danger" href="/sheets/{{ sheet.id }}/delete">Usuń</a>{% endif %}
+  </div>
+</div>
+<h1>Arkusz oceny sędziów</h1>
+<p class="muted">
+  {% if sheet.is_published %}Opublikowany {{ sheet.published_at|local("%d.%m.%Y %H:%M") }}{% if sheet.edited_after_publishing %} · zmieniono {{ sheet.updated_at|local("%d.%m.%Y %H:%M") }}{% endif %}. Poprawki są widoczne od razu.
+  {% else %}<span class="badge state-uploading">szkic</span> Widoczny tylko dla Ciebie, dopóki go nie opublikujesz. Puste pola są dozwolone.{% endif %}
+</p>
+
+{% if errors %}<div class="banner error" role="alert" id="sheet-errors"><strong>Nie zapisano arkusza.</strong> Wpisany tekst został w formularzu.
+  <ul>{% for e in errors %}<li>{{ e }}</li>{% endfor %}</ul></div>{% endif %}
+{% if changes %}<div class="banner warn" id="crew-changes">Obsada meczu zmieniła się od założenia arkusza ({{ changes|join('; ') }}).
+  „Odśwież obsadę” zapisuje wpisany tekst, dodaje kolumny nowych sędziów i usuwa puste kolumny sędziów spoza obsady; kolumny z tekstem zostają.</div>{% endif %}
+
+<form method="post" action="/sheets/{{ sheet.id }}/edit" id="sheet-form" class="sheet-form" data-unsaved="{{ 1 if unsaved else 0 }}">
+  {{ csrf_input() }}
+  {% call(field) head(sheet, match) %}
+    {% if field == 'result' %}<input name="result" maxlength="{{ SHEET_RESULT_MAX }}" aria-label="Wynik" placeholder="np. 78:65" value="{{ values.result }}">
+    {% else %}<select name="difficulty" aria-label="Stopień trudności">
+      <option value="">— wybierz —</option>
+      {% for key, label in SHEET_DIFFICULTIES.items() %}<option value="{{ key }}" {{ 'selected' if values.difficulty == key }}>{{ label }}</option>{% endfor %}
+    </select>{% endif %}
+  {% endcall %}
+
+  <h2>Ocena elementów</h2>
+  {% if not sheet.rows %}<p class="muted">Arkusz nie ma elementów oceny.</p>{% else %}
+  <table class="sheet-table sheet-edit" id="sheet-elements">
+    <thead><tr><th scope="col">Element</th>{% for c in sheet.columns %}<th scope="col">{{ c.label }}</th>{% endfor %}</tr></thead>
+    <tbody>
+    {% for row, cells in grid %}
+      <tr><th scope="row">{{ row.name }}</th>
+        {% for cell in cells %}{% set col = sheet.columns[loop.index0] %}
+        <td data-label="{{ col.label }}"><textarea name="cell_{{ row.id }}_{{ col.id }}" rows="4" aria-label="{{ row.name }}, {{ col.label }}">{{ values['cell_%d_%d'|format(row.id, col.id)] }}</textarea></td>{% endfor %}</tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+
+  <h2>Ocena ogólna</h2>
+  <table class="sheet-table sheet-edit" id="sheet-overall">
+    <thead><tr><th scope="col"></th>{% for c in sheet.columns %}<th scope="col">{{ c.label }}</th>{% endfor %}</tr></thead>
+    <tbody>
+      <tr><th scope="row">Ocena ogólna</th>{% for c in sheet.columns %}<td data-label="{{ c.label }}"><textarea name="overall_{{ c.id }}" rows="6" aria-label="Ocena ogólna, {{ c.label }}">{{ values['overall_%d'|format(c.id)] }}</textarea></td>{% endfor %}</tr>
+      <tr><th scope="row">Rekomendacja obsadowa</th>{% for c in sheet.columns %}<td data-label="{{ c.label }}"><textarea name="recommendation_{{ c.id }}" rows="3" aria-label="Rekomendacja, {{ c.label }}" placeholder="np. Może sędziować każde zawody jako sędzia główny">{{ values['recommendation_%d'|format(c.id)] }}</textarea></td>{% endfor %}</tr>
+    </tbody>
+  </table>
+
+  <h2>Uwaga o parze sędziowskiej</h2>
+  <textarea name="crew_note" rows="5" aria-label="Uwaga o parze sędziowskiej">{{ values.crew_note }}</textarea>
+
+  <div class="row sheet-actions">
+    {% if sheet.is_published %}
+      <button class="btn primary" name="action" value="save">Zapisz zmiany</button>
+    {% else %}
+      <button class="btn" name="action" value="save">Zapisz szkic</button>
+      <button class="btn primary" name="action" value="publish" id="sheet-publish">Opublikuj</button>
+      {% if changes %}<button class="btn" name="action" value="refresh" id="sheet-refresh">Odśwież obsadę</button>{% endif %}
+    {% endif %}
+    <a class="btn" href="/matches/{{ match.id }}#arkusz">Anuluj</a>
+  </div>
+</form>
+{% endblock %}
+{% block scripts %}<script src="/static/sheet.js"></script>{% endblock %}

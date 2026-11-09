@@ -3,7 +3,7 @@ from datetime import date
 from functools import lru_cache
 
 from app import security
-from app.models import Category, Match, MatchOfficial, PeriodMark, User, Video
+from app.models import Category, Match, MatchOfficial, PeriodMark, SheetElement, User, Video
 from app.storage import storage
 
 PASSWORD = "correct-horse-battery"
@@ -98,3 +98,14 @@ def mark_periods(db, video, times=(0.0, 150.0, 300.0, 450.0), periods=("Q1", "Q2
 
 def category_named(db, name) -> int:
     return db.query(Category.id).filter(Category.name == name).scalar()
+
+
+SHEET_ELEMENT_NAMES = ["Obowiązki przedmeczowe", "Przygotowanie fizyczne", "Mechanika", "Sygnalizacja", "Ocena kontaktów",
+                       "Ocena błędów", "Współpraca", "Kontrola gry", "Przywództwo", "Jakość pracy"]
+
+
+def seed_sheet_elements(db, names=SHEET_ELEMENT_NAMES):
+    """The elements that migration mvp0006 seeds (tests build the schema with create_all, so they are added here)."""
+    for index, name in enumerate(names, start=1):
+        db.add(SheetElement(name=name, sort=index * 10))
+    db.commit()
