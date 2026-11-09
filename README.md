@@ -6,7 +6,8 @@ i szkoleniowców jednego okręgu. Wgrywasz nagranie, zaznaczasz momenty albo wkl
 klipy z opisem, komentarzami i ocenami szkoleniowców.
 
 Dokumentacja projektu: [specyfikacja MVP](docs/specyfikacja-mvp.md),
-[plan techniczny](docs/plan-techniczny.md). Stan prac: segment 1 („Fundament”) — konta,
+[plan techniczny](docs/plan-techniczny.md), [wdrożenie na serwer](docs/wdrozenie.md),
+[wydania i automatyczne wdrożenie (GitHub Actions)](docs/ci-cd.md). Stan prac: segment 1 („Fundament”) — konta,
 logowanie, role, obsada CC/U1/U2, nowy model danych; segment 2 („Mecze i obsada”) — lista meczów
 z filtrami i stanem, strona meczu, błędy w formularzach; segment 3 („Wgrywanie i konwersja”) —
 wznawialne wgrywanie (tus), deklaracja zawartości pliku, usuwanie oryginału po konwersji;
@@ -183,6 +184,11 @@ Konfiguracja produkcyjna (Caddy z HTTPS, kopie zapasowe, skrypt wdrożenia z kom
 opisana w [docs/wdrozenie.md](docs/wdrozenie.md): `compose.prod.yaml` (nakładka na `compose.yaml`),
 `deploy/Caddyfile`, `deploy/env.prod.example`, `deploy/deploy.sh`, `deploy/backup.sh`. Odtwarzanie
 z kopii: [deploy/restore.md](deploy/restore.md).
+
+Wydania i wdrożenie są zautomatyzowane (GitHub Actions): testy na każdym PR-ze, PR „wydanie vX.Y.Z” tworzony przez
+release-please, obraz Dockera w GHCR i wdrożenie po jego scaleniu, z automatycznym powrotem przy nieudanym starcie.
+Jak to działa, kroki jednorazowe i powrót do starszej wersji: [docs/ci-cd.md](docs/ci-cd.md). Numer wersji widać
+w stopce strony po zalogowaniu.
 
 ## Konta, role i zapraszanie użytkowników
 
@@ -546,6 +552,7 @@ app/categories.py      słownik kategorii: walidacja nazw i aliasów, kolejnoś�
 Dockerfile, compose.yaml, .env.example   obraz i uruchomienie w Dockerze (app, worker, init)
 compose.prod.yaml, deploy/               produkcja: Caddy, wdrożenie (deploy.sh), kopie zapasowe; docs/wdrozenie.md
 scripts/docker-smoke.sh                  test dymny Dockera
+.github/workflows/, release-please-config.json   CI (testy), wydania i wdrożenie; docs/ci-cd.md
 scripts/e2e.sh, tests/e2e/               testy interfejsu w przeglądarce (Playwright)
 app/services.py        obsada, kwarty, granice klipów, nazwy plików, kolejka
 app/templates, static  interfejs (Jinja2, HTMX 2.0.4 w static/vendor, czysty JS)
