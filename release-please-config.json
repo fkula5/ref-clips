@@ -3,8 +3,8 @@
   "bootstrap-sha": "19d41f5f8aaabce70e2affa7f3fbf59ffb0606a8",
   "include-component-in-tag": false,
   "include-v-in-tag": true,
-  "pull-request-title-pattern": "chore: wydanie v${version}",
-  "pull-request-header": ":robot: Wydanie przygotowane automatycznie. Merge tego PR-a tworzy tag i GitHub Release, buduje obraz Dockera i wdraża go na serwer (docs/ci-cd.md).",
+  "pull-request-title-pattern": "chore: release v${version}",
+  "pull-request-header": ":robot: Automated release. Merging this PR creates the tag and GitHub Release, builds the Docker image and deploys it to the server.",
   "packages": {
     ".": {
       "release-type": "simple",
