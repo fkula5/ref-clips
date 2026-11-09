@@ -148,3 +148,16 @@ def test_uklad_strony_klipu_wideo_i_pierwsza_karta_w_jednej_linii_a_pasek_akcji_
     assert abs(box["videoTop"] - box["cardTop"]) <= 1, box
     assert box["gap"] >= 8, box
     assert abs(box["barLeft"] - box["videoLeft"]) <= 1 and abs(box["barRight"] - box["videoRight"]) <= 1, box
+
+
+def test_strzalki_na_stronie_klipu_przewijaja_o_1_i_5_s(ui):
+    page, _ = cut_clip(ui, 25.0)
+    wait_clip_ready(page)
+    video = "document.getElementById('clip-video')"
+    page.wait_for_function(f"{video}.readyState >= 1 && {video}.duration > 0")
+    page.evaluate(f"{video}.pause(); {video}.currentTime = 10")
+    page.wait_for_function(f"Math.abs({video}.currentTime - 10) <= 0.2")
+    page.keyboard.press("ArrowRight")
+    page.wait_for_function(f"Math.abs({video}.currentTime - 11) <= 0.2")
+    page.keyboard.press("Shift+ArrowLeft")
+    page.wait_for_function(f"Math.abs({video}.currentTime - 6) <= 0.2")
