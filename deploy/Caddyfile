@@ -29,9 +29,10 @@
 		-Server
 	}
 
-	# Referrer-Policy: strona z tokenem zaproszenia w adresie ma `no-referrer` ustawione przez aplikację.
-	# `header` w Caddy nadpisuje nagłówek z aplikacji, więc dla tej ścieżki nie ustawiamy własnego.
-	@reszta not path /set-password/*
+	# Referrer-Policy: strony z tokenem w adresie (zaproszenie /set-password/<token>, publiczny link do klipów
+	# /s/<kod>) mają `no-referrer` ustawione przez aplikację. `header` w Caddy nadpisuje nagłówek z aplikacji,
+	# więc dla tych ścieżek nie ustawiamy własnego.
+	@reszta not path /set-password/* /s/*
 	header @reszta Referrer-Policy "strict-origin-when-cross-origin"
 
 	# Wgrywanie tus: kawałki po 50 MB (52 428 800 B) w PATCH. Limit z zapasem; reszta serwisu to
@@ -46,14 +47,15 @@
 	}
 
 	# Dziennik dostępu: token z linku zaproszenia (/set-password/<token>) pozwala ustawić hasło do cudzego
-	# konta, więc nie zostaje w logach — ani w adresie żądania, ani w Referer. Ciasteczka i Authorization
+	# konta, a kod z linku do klipów (/s/<kod>) otwiera klipy bez logowania, więc nie zostają w logach — ani
+	# w adresie żądania, ani w Referer; reszta ścieżki zostaje (/s/[ukryty]/zip). Ciasteczka i Authorization
 	# Caddy i tak zastępuje napisem REDACTED.
 	log {
 		output stdout
 		format filter {
 			wrap json
-			request>uri regexp (/set-password/)[^/?#\s"]+ $1[ukryty]
-			request>headers>Referer regexp (/set-password/)[^/?#\s"]+ $1[ukryty]
+			request>uri regexp (/(?:set-password|s)/)[^/?#\s"]+ $1[ukryty]
+			request>headers>Referer regexp (/(?:set-password|s)/)[^/?#\s"]+ $1[ukryty]
 		}
 	}
 

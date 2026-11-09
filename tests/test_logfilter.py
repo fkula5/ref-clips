@@ -16,6 +16,14 @@ def test_redact_podmienia_tylko_token():
     assert logfilter.redact("/login?next=/matches/1") == "/login?next=/matches/1"
 
 
+def test_redact_ukrywa_kod_linku_udostepniajacego_i_zachowuje_reszte_sciezki():
+    code = "aB3_-" * 8 + "xyz"
+    assert logfilter.redact(f"GET /s/{code} HTTP/1.1") == "GET /s/[ukryty] HTTP/1.1"
+    assert logfilter.redact(f"/s/{code}/clips/2/file?x=1") == "/s/[ukryty]/clips/2/file?x=1"
+    assert logfilter.redact(f'Referer: "https://klipy.example.pl/s/{code}/zip"') == 'Referer: "https://klipy.example.pl/s/[ukryty]/zip"'
+    assert logfilter.redact("/static/app.css /clips/5/file /admin/users") == "/static/app.css /clips/5/file /admin/users"
+
+
 def test_dziennik_dostepu_uvicorna_ukrywa_token(caplog):
     logfilter.install()
     logfilter.install()   # idempotentne

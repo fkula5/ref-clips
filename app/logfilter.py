@@ -1,14 +1,16 @@
-"""Filtr logów: tokeny z linków zaproszeń (`/set-password/<token>`) nie trafiają do dziennika dostępu.
+"""Filtr logów: tokeny z linków zaproszeń (`/set-password/<token>`) i kody linków udostępniających klipy
+(`/s/<kod>`) nie trafiają do dziennika dostępu.
 
-Token w adresie pozwala ustawić hasło do cudzego konta, więc nie powinien zostawać w logach
-(uvicorn zapisuje pełny adres każdego żądania). Odpowiednik dla Caddy jest w `deploy/Caddyfile`.
+Token w adresie pozwala ustawić hasło do cudzego konta, a kod linku otwiera klipy bez logowania, więc
+nie powinny zostawać w logach (uvicorn zapisuje pełny adres każdego żądania). Reszta ścieżki zostaje:
+`/s/[ukryty]/clips/1/file`. Odpowiednik dla Caddy jest w `deploy/Caddyfile`.
 """
 from __future__ import annotations
 
 import logging
 import re
 
-TOKEN_PATH = re.compile(r"(/set-password/)[^/?#\s\"]+")
+TOKEN_PATH = re.compile(r"(/(?:set-password|s)/)[^/?#\s\"]+")
 REPLACEMENT = r"\1[ukryty]"
 
 
