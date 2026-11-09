@@ -1,0 +1,16 @@
+{# Wspólne elementy udostępniania klipów linkiem: ostrzeżenie i wybór ważności. #}
+
+{% macro share_warning() %}
+<div class="banner warn share-warning" role="note">
+  <strong>Uwaga:</strong> każdy, kto dostanie ten link, może obejrzeć i pobrać klip bez logowania i przesłać go dalej.
+  Unieważnienie linku nie cofnie już pobranych plików. Na nagraniach mogą być niepełnoletni — udostępniaj świadomie.
+  Osoba z linkiem widzi tylko wideo, ligę i kategorię decyzji (bez nazwisk, drużyn, daty i opisu).
+</div>
+{% endmacro %}
+
+{% macro share_days(form_id=none) %}
+<label>Ważny przez
+  <select name="days" {% if form_id %}form="{{ form_id }}"{% endif %}>
+    {% for d in SHARE_DAYS %}<option value="{{ d }}" {{ 'selected' if d == SHARE_DEFAULT_DAYS }}>{{ d }} {{ 'dzień' if d == 1 else 'dni' }}</option>{% endfor %}
+  </select></label>
+{% endmacro %}

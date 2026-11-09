@@ -7,7 +7,7 @@ import pytest
 from sqlalchemy import select
 
 from app import permissions as p
-from app.models import Clip, Comment, Match, MatchOfficial, Rating, User, Video
+from app.models import Clip, Comment, Match, MatchOfficial, Rating, ShareLink, User, Video
 from tests.helpers import (TUS, category_named, make_match, make_ready_video, make_user, mark_periods, tus_create,
                            tus_metadata)
 
@@ -123,6 +123,18 @@ ROWS = [
          **{"brak ról": (False, False), "admin": (True, True), "coach": (True, False),
             "referee": (True, False), "admin+coach": (True, True), "admin+referee": (True, True),
             "coach+referee": (True, False)}),
+    # 8c2. udostępnianie klipu linkiem: administrator i szkoleniowiec każdy, sędzia tylko klip, którego jest autorem
+    _row("udostępnianie klipu", lambda u, c: p.can_share_clip(u, c),
+         [clip(author=ME), clip(author=OTHER)],
+         **{"brak ról": (False, False), "admin": (True, True), "coach": (True, True),
+            "referee": (True, False), "admin+coach": (True, True), "admin+referee": (True, True),
+            "coach+referee": (True, True)}),
+    # 8c3. unieważnienie linku: administrator każdy, pozostali (także bez ról) tylko własny
+    _row("unieważnienie linku", lambda u, link: p.can_revoke_share(u, link),
+         [ShareLink(created_by=ME), ShareLink(created_by=OTHER)],
+         **{"brak ról": (True, False), "admin": (True, True), "coach": (True, False),
+            "referee": (True, False), "admin+coach": (True, True), "admin+referee": (True, True),
+            "coach+referee": (True, False)}),
     # 8d. oceny: admin wszystkie, szkoleniowiec własne; scenariusze: własna / cudza
     _row("edycja oceny", lambda u, r: p.can_edit_rating(u, r),
          [Rating(coach_id=ME), Rating(coach_id=OTHER)],
@@ -175,6 +187,8 @@ def test_inactive_user_and_anonymous_have_no_access():
     assert not p.can_view(inactive) and not p.can_comment(inactive)
     assert not p.can_view(None) and not p.can_manage_users(None) and not p.can_create_match(None)
     assert not p.can_upload_to_match(None, match(in_crew=True))
+    assert not p.can_share_clip(inactive, clip(author=ME)) and not p.can_share_clip(None, clip())
+    assert not p.can_revoke_share(inactive, ShareLink(created_by=ME)) and not p.can_revoke_share(None, ShareLink())
 
 
 # --- serwer odrzuca zabronione żądania wysłane bez interfejsu --------------------------------

@@ -9,7 +9,7 @@ from fastapi.responses import RedirectResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
-from app import clip_list, feedback, match_list, permissions, services, uploads
+from app import clip_list, feedback, match_list, permissions, services, share, uploads
 from app.auth import require
 from app.db import get_db
 from app.loaders import get_match
@@ -132,6 +132,7 @@ def render_match(request: Request, db: Session, match: Match, *, status_code: in
     busy = any(v.status in ("uploading", "queued", "processing") for v in match.videos)
     return render(request, "match_detail.html", status_code=status_code, match=match, busy=busy, clips=clips,
                   f=f, stats=clip_list.clip_stats(db, clips),
+                  shareable={c.id for c in clips if share.offerable(request.state.user, c)},
                   pending=any(c.status in ("new", "queued") for c in clips),
                   nav=f.query(scope=False), total_clips=len(all_clips),
                   people=[*clip_list.match_people(db, match), (clip_list.TEAM, "cały zespół")],

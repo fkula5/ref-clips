@@ -223,3 +223,26 @@ tr.inactive td { color: var(--muted); }
 .rejections { margin-top: 8px; }
 .banner.warn table { background: #fff; }
 @media (max-width: 720px) { .usage th { width: auto; } .admin-tabs a { padding: 6px 10px; } }
+
+/* publiczna strona linku (/s/<kod>): sama treść, bez nawigacji aplikacji */
+.share { max-width: 860px; margin: 0 auto; padding: 16px 16px 48px; }
+.share-clip h2 { margin: 0 0 2px; } .share-clip p { margin: 0 0 8px; }
+
+/* udostępnianie linkiem: pasek nad listą, lista linków klipu, zaznaczanie klipów */
+.share-bar { gap: 8px 14px; align-items: flex-end; }
+.share-bar label, .share-form label { display: flex; flex-direction: column; font-size: 13px; color: var(--muted); gap: 2px; }
+.share-bar .share-note { flex: 1 1 100%; margin: 0; color: var(--muted); }
+.share-bar .error-text { color: var(--danger); }
+.share-warning { margin: 10px 0; font-size: 14px; }
+.share-list { list-style: none; margin: 6px 0; padding: 0; }
+.share-list li { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 4px 12px; padding: 6px 0; border-top: 1px solid var(--line); }
+.share-list form { margin: 0; }
+.share-contents { overflow-wrap: anywhere; }
+.clips-table .select-cell { width: 1%; white-space: nowrap; }
+.clips-table .select-cell input { margin: 0; }
+@media (max-width: 720px) {
+  table.responsive td.select-cell:empty { display: none; }
+  table.responsive td.select-cell { flex-wrap: nowrap; align-items: center; width: auto; }
+  table.responsive td.select-cell input { flex: 0 0 24px; width: 24px; height: 24px; }
+  .share-bar label { flex: 1 1 140px; } .share-bar select { width: 100%; }
+}

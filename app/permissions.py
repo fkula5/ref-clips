@@ -119,6 +119,17 @@ def can_delete_clip(user, clip) -> bool:
     return _has(user, ADMIN) or (_has(user, COACH, REFEREE) and clip.author_id == user.id)
 
 
+# --- udostępnianie linkiem -----------------------------------------------------------
+def can_share_clip(user, clip) -> bool:
+    """Link do klipu dla osób bez konta: administrator, szkoleniowiec oraz autor znacznika (sędzia)."""
+    return can_view(user) and (_has(user, ADMIN, COACH) or (_has(user, REFEREE) and clip.author_id == user.id))
+
+
+def can_revoke_share(user, link) -> bool:
+    """Unieważnienie linku: jego twórca albo administrator."""
+    return can_view(user) and (_has(user, ADMIN) or link.created_by == user.id)
+
+
 # --- oceny ----------------------------------------------------------------------
 def can_rate(user) -> bool:
     """Ocena klipu: tylko rola szkoleniowca (sama rola administratora nie wystarcza)."""

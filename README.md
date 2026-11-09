@@ -279,7 +279,22 @@ nie wstrzymuje pozostałych):
    (`retention_last_run`), więc restart workera w ciągu doby ani dwa workery naraz nie uruchomią zadania drugi raz,
    a po dłuższej przerwie nadrobi się przy starcie;
 4. osierocone pliki klipów: pliki `.mp4` w `clips/`, do których nie prowadzi `clip_path` żadnego klipu (np. po
-   usunięciu znacznika w trakcie cięcia), starsze niż godzina.
+   usunięciu znacznika w trakcie cięcia), starsze niż godzina;
+5. pozostałości paczek ZIP w `tmp/` (po awarii albo zerwanym pobieraniu), starsze niż godzina.
+
+## Udostępnianie klipów linkiem (bez konta)
+
+Na stronie klipu („Udostępnij linkiem”) albo na liście klipów („Udostępnij zaznaczone”) administrator, szkoleniowiec
+i autor znacznika tworzą link `https://…/s/<kod>` (ważność 1, 7 albo 30 dni, domyślnie 7). Osoba bez konta może obejrzeć
+klipy i pobrać je (jeden klip: MP4, kilka: jeden ZIP). Link można unieważnić na stronie klipu (twórca albo administrator),
+tam też widać aktywne linki i liczbę wejść. Pełny adres jest pokazany tylko raz, po utworzeniu; w bazie jest skrót kodu.
+
+Publicznie widać wyłącznie wideo, ligę i kategorię decyzji — bez nazwisk, drużyn, daty, opisów, ocen i komentarzy
+(nazwa pliku: `III-liga_blok-szarza.mp4`). Tekst wpisany ręcznie jako kategoria „własna” też jest publiczny. Strony
+`/s/*` mają `noindex`, `no-referrer` i `no-store`, a kod nie trafia do logów (`/s/[ukryty]`). Klipy wycięte przed
+wprowadzeniem funkcji mogą nieść metadane pliku źródłowego (tytuł, GPS): po wdrożeniu raz uruchom
+`python -m app.strip_metadata` (patrz `docs/wdrozenie.md`). Limity: `SHARE_MAX_CLIPS` (30 klipów w linku),
+`SHARE_ZIP_MAX_PARALLEL` (2 równoległe paczki ZIP) w `app/config.py`.
 
 ## Workflow
 
@@ -525,6 +540,8 @@ app/storage.py         magazyn plików (lokalny; interfejs pod przyszłe S3)
 app/worker.py          pętla zadań z tabeli jobs, sprzątanie okresowe
 app/retention.py       retencja pełnych nagrań (termin, usuwanie, zadanie dobowe), osierocone pliki klipów
 app/disk.py            zajętość dysku i lista nagrań dla panelu, odrzucone uploady
+app/share.py           linki udostępniające klipy bez konta: tworzenie, ważność, paczka ZIP; strony: app/routers/share.py,
+                       zarządzanie: app/routers/share_links.py, nagłówki prywatności: app/privacy.py
 app/categories.py      słownik kategorii: walidacja nazw i aliasów, kolejność, aktywacja
 Dockerfile, compose.yaml, .env.example   obraz i uruchomienie w Dockerze (app, worker, init)
 compose.prod.yaml, deploy/               produkcja: Caddy, wdrożenie (deploy.sh), kopie zapasowe; docs/wdrozenie.md

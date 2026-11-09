@@ -500,16 +500,33 @@ def _filename_part(text: str) -> str:
     return slugify(text)[:FILENAME_PART_MAX].strip("-")
 
 
-def clip_filename(clip: Clip) -> str:
+def clip_filename(clip: Clip, *, with_referee: bool = True) -> str:
     """kategoria-rozgrywek_nazwisko_decyzja.mp4, np. III-liga_Kowalski_blok-szarza.mp4
     (nazwisko to ostatni wyraz nazwy sędziego, przy klipie całego zespołu „zespol”; puste części
     są pomijane; tylko znaki ASCII; liczona na bieżąco, więc po zmianie opisu pobrany plik ma już
-    nową nazwę). Nazwy mogą się powtarzać — eksport ZIP numeruje je sam."""
-    referee = "zespol" if clip.whole_team else ""
-    if clip.official and not clip.whole_team:
-        referee = " ".join(clip.official.display_name.split()[-1:])
+    nową nazwę). `with_referee=False` (linki bez konta) pomija część z sędzią i nawet nie czyta obsady:
+    III-liga_blok-szarza.mp4. Nazwy mogą się powtarzać — paczki ZIP numeruje `unique_filenames`."""
+    referee = ""
+    if with_referee:
+        referee = "zespol" if clip.whole_team else ""
+        if clip.official and not clip.whole_team:
+            referee = " ".join(clip.official.display_name.split()[-1:])
     parts = (_filename_part(value) for value in (clip.match.level, referee, clip.category_label))
     return ("_".join(part for part in parts if part) or "klip") + ".mp4"
+
+
+def unique_filenames(names: Iterable[str]) -> list[str]:
+    """Nazwy plików w jednej paczce bez powtórzeń: kolejne takie same dostają _2, _3 przed rozszerzeniem."""
+    used: set[str] = set()
+    result = []
+    for name in names:
+        candidate, n = name, 1
+        while candidate in used:
+            n += 1
+            candidate = f"{name[:-4]}_{n}.mp4"
+        used.add(candidate)
+        result.append(candidate)
+    return result
 
 
 # --- słownik kategorii i kontekst parsera ------------------------------------------

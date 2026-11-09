@@ -14,10 +14,12 @@ from starlette.exceptions import HTTPException
 from app import config, health, logfilter, permissions
 from app import video as vid
 from app.auth import PROTECTED, PUBLIC, SessionRefreshMiddleware, require
+from app.privacy import SharePrivacyHeadersMiddleware
 from app.db import get_db
 from app.initdb import init_db
 from app.models import Job, User
-from app.routers import admin, auth, clips, clips_v2, describe, feedback, matches, uploads, videos
+from app.routers import (admin, auth, clips, clips_v2, describe, feedback, matches, share, share_links, uploads,
+                         videos)
 from app.web import BASE, back_url, render
 
 
@@ -33,10 +35,12 @@ async def lifespan(_app: FastAPI):
 # Bez publicznej dokumentacji API: każda strona poza logowaniem wymaga sesji.
 app = FastAPI(title="ref-clips", lifespan=lifespan, docs_url=None, redoc_url=None, openapi_url=None)
 app.add_middleware(SessionRefreshMiddleware)
+app.add_middleware(SharePrivacyHeadersMiddleware)   # nagłówki prywatności pod /s/ (strony linków bez konta)
 app.mount("/static", StaticFiles(directory=BASE / "static"), name="static")
 
 # Poza logowaniem i ustawieniem hasła każda trasa wymaga sesji i tokenu CSRF (dla POST/DELETE).
 app.include_router(auth.public_router, dependencies=PUBLIC)
+app.include_router(share.router)   # publiczne linki do klipów (/s/<kod>): bez sesji i CSRF, tylko odczyt
 app.include_router(auth.router, dependencies=PROTECTED)
 app.include_router(admin.router, dependencies=PROTECTED)
 app.include_router(matches.router, dependencies=PROTECTED)
@@ -47,6 +51,7 @@ if config.ENABLE_V2_FEATURES:  # przed clips: /clips/export.zip nie może trafi�
     app.include_router(clips_v2.router, dependencies=PROTECTED)
 app.include_router(clips.router, dependencies=PROTECTED)
 app.include_router(feedback.router, dependencies=PROTECTED)
+app.include_router(share_links.router, dependencies=PROTECTED)
 
 
 def _wants_page(request: Request) -> bool:
@@ -79,6 +84,8 @@ def error_page(request: Request, status_code: int, detail: str | None = None):
 @app.exception_handler(RequestValidationError)
 async def validation_error(request: Request, exc: RequestValidationError):
     """Niepoprawne parametry (np. id w adresie): w przeglądarce strona błędu, w API JSON."""
+    if request.url.path.startswith("/s/"):   # publiczne linki: zawsze ta sama prosta strona, bez ciasteczek
+        return share.gone_response(request)
     if _is_browser_form(request):
         return error_page(request, 422)
     return await request_validation_exception_handler(request, exc)
@@ -87,6 +94,8 @@ async def validation_error(request: Request, exc: RequestValidationError):
 @app.exception_handler(HTTPException)
 async def http_error(request: Request, exc: HTTPException):
     """401 na stronie przekierowuje na logowanie; w API zostaje kod błędu (JSON)."""
+    if request.url.path.startswith("/s/"):   # publiczne linki: każdy błąd (404, 405) wygląda tak samo
+        return share.gone_response(request)
     if exc.status_code == 401:
         if _wants_page(request):
             target = request.url.path + (f"?{request.url.query}" if request.url.query else "")

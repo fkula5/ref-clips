@@ -55,16 +55,7 @@ def export_zip(db: Session = Depends(get_db), user: User = require(permissions.c
     clips = [c for c in clips if c.clip_path and storage.exists(c.clip_path)]
     if not clips:
         raise HTTPException(404, "Brak wyciętych klipów do wyeksportowania")
-    names: dict[int, str] = {}
-    used: set[str] = set()
-    for c in clips:
-        name = services.clip_filename(c)
-        n = 1
-        while name in used:  # unikalne nazwy w paczce
-            n += 1
-            name = services.clip_filename(c)[:-4] + f"_{n}.mp4"
-        used.add(name)
-        names[c.id] = name
+    names = dict(zip((c.id for c in clips), services.unique_filenames(services.clip_filename(c) for c in clips)))
     fd, tmp_path = tempfile.mkstemp(suffix=".zip", dir=config.DATA_DIR / "tmp")
     with os.fdopen(fd, "wb") as fh, zipfile.ZipFile(fh, "w", zipfile.ZIP_STORED) as zf:
         for c in clips:

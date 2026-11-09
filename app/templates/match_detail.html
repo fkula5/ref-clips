@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% from "_content_picker.html" import content_picker %}
-{% from "_clips_macros.html" import clip_filters, clips_table %}
+{% from "_clips_macros.html" import clip_filters, clips_table, share_bar with context %}
 {% block title %}{{ match.title }}{% endblock %}
 {% block content %}
 {% macro team(name, color) %}
@@ -83,13 +83,14 @@
   {% endif %}
 </div>
 {{ clip_filters(f, "/matches/" ~ match.id ~ "#klipy", people, categories) }}
+{{ share_bar(shareable) }}
 <div id="clips-list" {% if pending %}hx-get="/matches/{{ match.id }}{{ '?' ~ nav if nav }}" hx-trigger="every 3s" hx-select="#clips-list" hx-select-oob="#clips-head" hx-swap="outerHTML"{% endif %}>
 {% if not total_clips %}
   <p class="muted">Ten mecz nie ma jeszcze klipów. Klipy powstają ze znaczników zaznaczonych w odtwarzaczu albo z wklejonych notatek.</p>
 {% elif not clips %}
   <p class="muted">Brak klipów dla wybranych filtrów. <a href="/matches/{{ match.id }}#klipy">Wyczyść filtry</a></p>
 {% else %}
-  {{ clips_table(clips, nav, false, stats) }}
+  {{ clips_table(clips, nav, false, stats, shareable) }}
   <p class="muted small-note">{% if f.active %}Pokazano {{ clips|length }} z {{ total_clips }}. {% endif %}Czas w kolumnie „Kwarta” liczony jest od początku kwarty w nagraniu — to nie jest zegar meczowy.</p>
 {% endif %}
 </div>
@@ -98,4 +99,4 @@
 {# Komentarze do meczu: poza #videos-panel, #clips-head i #clips-list (odświeżanie co 3 s ich nie rusza). #}
 {% if comments is not none %}{% set cbase = "/matches/" ~ match.id %}{% include "_comments.html" %}{% endif %}
 {% endblock %}
-{% block scripts %}<script src="/static/vendor/tus-js-client-4.3.1.min.js"></script><script src="/static/upload.js"></script><script src="/static/feedback.js"></script>{% endblock %}
+{% block scripts %}<script src="/static/vendor/tus-js-client-4.3.1.min.js"></script><script src="/static/upload.js"></script><script src="/static/feedback.js"></script><script src="/static/share.js"></script>{% endblock %}

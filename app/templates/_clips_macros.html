@@ -1,5 +1,6 @@
 {# Wspólne elementy zakładki „Klipy” meczu i globalnej listy /clips: filtry (HTMX nad zwykłym formularzem GET)
    i tabela, która na telefonie zamienia się w karty. #}
+{% from "_share_macros.html" import share_days %}
 
 {% macro category_options(categories, selected) %}
   {% for group, items in category_groups(categories) %}
@@ -42,12 +43,27 @@
 </form>
 {% endmacro %}
 
+{# Pasek „Udostępnij zaznaczone” (import z kontekstem: potrzebny token CSRF). Leży poza #clips-list, więc
+   przeżywa odświeżanie listy; pola wyboru z listy należą do niego przez atrybut form. static/share.js
+   pamięta zaznaczenie między odświeżeniami i filtrami. `shareable` to id klipów, które użytkownik może udostępnić. #}
+{% macro share_bar(shareable) %}
+<form method="post" action="/share-links" id="share-form" class="card row share-bar {{ 'hidden' if not shareable }}" data-max="{{ SHARE_MAX_CLIPS }}">
+  {{ csrf_input() }}
+  <span id="share-count" class="muted" aria-live="polite">Zaznaczono: 0</span>
+  {{ share_days() }}
+  <button class="btn primary" id="share-submit" disabled>Udostępnij zaznaczone</button>
+  <p class="small-note share-note">Każdy, kto dostanie link, może obejrzeć i pobrać zaznaczone klipy bez logowania (widzi tylko wideo, ligę i kategorię decyzji).
+    Unieważnienie linku nie cofnie już pobranych plików. W jednym linku najwyżej {{ SHARE_MAX_CLIPS }} klipów.</p>
+</form>
+{% endmacro %}
+
 {# Tabela klipów; `nav` to filtry (bez meczu) dopisywane do linków, żeby strona klipu wiedziała,
-   z jakiej listy przyszedł użytkownik (poprzedni/następny). #}
-{% macro clips_table(clips, nav, show_match=false, stats=none) %}
+   z jakiej listy przyszedł użytkownik (poprzedni/następny). `shareable`: id klipów z polem wyboru do udostępnienia. #}
+{% macro clips_table(clips, nav, show_match=false, stats=none, shareable=none) %}
 {% set nav_q = '?' ~ nav if nav else '' %}
 <table class="responsive clips-table">
   <thead><tr>
+    {% if shareable %}<th class="select-cell" title="Zaznacz do udostępnienia linkiem">Udostępnij</th>{% endif %}
     {% if show_match %}<th>Mecz</th>{% endif %}
     <th>Sędzia</th><th>Kategoria</th>
     <th title="Kwarta i czas od jej początku w czasie nagrania (nie zegar meczowy)">Kwarta · od początku kwarty</th>
@@ -56,6 +72,7 @@
   <tbody>
   {% for c in clips %}
     <tr>
+      {% if shareable %}<td class="select-cell"{% if c.id in shareable %} data-label="Udostępnij"{% endif %}>{% if c.id in shareable %}<input type="checkbox" class="share-check" name="clip_ids" value="{{ c.id }}" form="share-form" aria-label="Zaznacz klip do udostępnienia">{% endif %}</td>{% endif %}
       {% if show_match %}<td data-label="Mecz"><a href="/matches/{{ c.match_id }}">{{ c.match.date|local("%d.%m.%Y") }} {{ c.match.team_a_name or c.match.team_a_color }}–{{ c.match.team_b_name or c.match.team_b_color }}</a></td>{% endif %}
       <td data-label="Sędzia" class="main-cell"><a href="/clips/{{ c.id }}{{ nav_q }}">{{ c.official_label or 'bez sędziego' }}</a></td>
       <td data-label="Kategoria">{% if c.category_label %}<span class="chip">{{ c.category_label }}</span>{% else %}—{% endif %}</td>

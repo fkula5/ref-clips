@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="pl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow">
+  <meta name="referrer" content="no-referrer">
+  <title>{{ 'Udostępniony klip' if view.single else 'Udostępnione klipy' }}</title>
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+{# Strona publiczna: tylko wideo, liga i kategoria decyzji. Bez nawigacji, linków do aplikacji i danych użytkownika. #}
+<body class="share-page">
+<main class="share">
+  <h1>{{ 'Udostępniony klip' if view.single else 'Udostępnione klipy' }}</h1>
+  {% for c in view.clips %}
+  <section class="card share-clip">
+    <h2>{{ c.category or ('Klip ' ~ c.position) }}</h2>
+    {% if c.level %}<p class="muted">{{ c.level }}</p>{% endif %}
+    <video controls preload="{{ 'auto' if view.single else 'metadata' }}" playsinline src="/s/{{ code }}/clips/{{ c.position }}/file"></video>
+  </section>
+  {% endfor %}
+  <div class="clip-actions">
+  {% if view.single %}
+    <a class="btn primary" id="share-download" href="/s/{{ code }}/clips/{{ view.clips[0].position }}/download">Pobierz MP4</a>
+    <span class="muted clip-filename" title="{{ view.clips[0].filename }}">{{ view.clips[0].filename }}</span>
+  {% else %}
+    <a class="btn primary" id="share-download" href="/s/{{ code }}/zip">Pobierz wszystkie ({{ view.clips|length }}) jako ZIP</a>
+  {% endif %}
+  </div>
+</main>
+</body>
+</html>

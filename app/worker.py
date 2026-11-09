@@ -147,11 +147,11 @@ def recover_interrupted() -> None:
 
 def run_maintenance() -> None:
     """Okresowe sprzątanie (co godzinę, także zaraz po starcie): porzucone uploady (> 24 h bez
-    aktywności), osierocone pliki klipów i nagrań, stare wpisy o odrzuconych uploadach oraz retencja —
+    aktywności), osierocone pliki klipów i nagrań, pozostałości paczek ZIP w `tmp`, stare wpisy o odrzuconych uploadach oraz retencja —
     usuwanie wersji roboczych po terminie, raz na dobę (`retention.run_if_due` pilnuje, żeby restart
     ani drugi worker nie uruchomił jej drugi raz). Błąd jednego kroku nie wstrzymuje pozostałych."""
     steps = (uploads.cleanup_stale, uploads.prune_rejections, retention.run_if_due,
-             retention.cleanup_orphan_clips, retention.cleanup_orphan_videos)
+             retention.cleanup_orphan_clips, retention.cleanup_orphan_videos, retention.cleanup_tmp)
     for step in steps:
         try:
             with SessionLocal() as db:
