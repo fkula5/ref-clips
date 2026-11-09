@@ -17,11 +17,14 @@ from app import permissions
 from app import video as vid
 from app.security import new_token
 from app.textutil import format_clock, normalize
+from app.timeutil import local as local_time
 
 BASE = Path(__file__).parent
 templates = Jinja2Templates(directory=str(BASE / "templates"))
 env = templates.env
 env.filters["clock"] = format_clock
+# Daty i godziny z bazy (UTC) pokazujemy w strefie z konfiguracji: {{ x.created_at|local("%d.%m.%Y %H:%M") }}.
+env.filters["local"] = local_time
 
 
 def human_bytes(value: int | float | None) -> str:

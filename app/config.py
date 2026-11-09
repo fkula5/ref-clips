@@ -7,6 +7,9 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 DATA_DIR = Path(os.environ.get("REFCLIPS_DATA_DIR", BASE_DIR / "data")).resolve()
 DATABASE_URL = os.environ.get("DATABASE_URL", f"sqlite:///{DATA_DIR / 'ref-clips.db'}")
 
+# Strefa, w której pokazujemy daty i godziny (baza zawsze trzyma UTC). Nazwa IANA, np. Europe/Warsaw.
+TIMEZONE = os.environ.get("REFCLIPS_TIMEZONE", "").strip() or "Europe/Warsaw"
+
 # Ścieżki do ffmpeg/ffprobe: nazwa polecenia z PATH albo pełna ścieżka.
 FFMPEG_PATH = os.environ.get("FFMPEG_PATH", "ffmpeg")
 FFPROBE_PATH = os.environ.get("FFPROBE_PATH", "ffprobe")

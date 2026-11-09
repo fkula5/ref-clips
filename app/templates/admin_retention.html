@@ -12,10 +12,10 @@
   <strong>Brak miejsca na dysku.</strong> W ostatnich {{ warn_days }} dniach odrzucono uploady z tego powodu: {{ rejections|length }}.
   Zwolnij miejsce (usuń pełne nagrania poniżej) albo skróć retencję.
   <table id="odrzucone" class="rejections">
-    <thead><tr><th>Kiedy (UTC)</th><th>Kto</th><th>Plik</th><th>Rozmiar</th><th>Wolne wtedy</th></tr></thead>
+    <thead><tr><th>Kiedy</th><th>Kto</th><th>Plik</th><th>Rozmiar</th><th>Wolne wtedy</th></tr></thead>
     <tbody>
     {% for r in rejections %}
-      <tr><td>{{ r.created_at.strftime("%d.%m.%Y %H:%M") }}</td><td>{{ r.user.name if r.user else '—' }}</td>
+      <tr><td>{{ r.created_at|local("%d.%m.%Y %H:%M") }}</td><td>{{ r.user.name if r.user else '—' }}</td>
           <td>{{ r.filename or '—' }}</td><td>{{ r.size_bytes|filesize }}</td><td>{{ r.free_bytes|filesize }}</td></tr>
     {% endfor %}
     </tbody>
@@ -36,7 +36,7 @@
   <button class="btn primary">Zapisz</button>
 </form>
 <p class="muted small-note">Worker sprząta raz na dobę (i po starcie, jeśli minęła doba).
-  Ostatnie uruchomienie: {% if last_run %}{{ last_run.strftime("%d.%m.%Y %H:%M") }} UTC{% if last_summary %} — {{ last_summary }}{% endif %}{% else %}jeszcze nie było{% endif %}.
+  Ostatnie uruchomienie: {% if last_run %}{{ last_run|local("%d.%m.%Y %H:%M") }}{% if last_summary %} — {{ last_summary }}{% endif %}{% else %}jeszcze nie było{% endif %}.
   Nagranie w trakcie konwersji i takie, z którego czekają jeszcze klipy na wycięcie, jest pomijane do następnego razu.</p>
 
 <h2>Zajętość dysku</h2>
@@ -64,8 +64,8 @@
     <tr data-video="{{ v.id }}">
       <td data-label="Mecz" class="main-cell"><a href="/matches/{{ v.match_id }}">{{ v.match.title }}</a></td>
       <td data-label="Nagranie">{{ v.display_name }} <span class="badge {{ v.status }}">{{ VIDEO_STATUSES.get(v.status, v.status) }}</span></td>
-      <td data-label="Wgrano">{{ v.created_at.strftime("%d.%m.%Y") }}</td>
-      <td data-label="Termin usunięcia">{% if v.expires_at %}{{ v.expires_at.strftime("%d.%m.%Y") }}
+      <td data-label="Wgrano">{{ v.created_at|local("%d.%m.%Y") }}</td>
+      <td data-label="Termin usunięcia">{% if v.expires_at %}{{ v.expires_at|local("%d.%m.%Y") }}
         {% if r.days_left is not none %}<small class="muted">({{ 'po terminie' if r.days_left <= 0 else 'za ' ~ r.days_left ~ ' dni' }})</small>{% endif %}
         {% else %}<span class="muted">bez terminu</span>{% endif %}</td>
       <td data-label="Rozmiar">{{ r.size|filesize if r.size else '—' }}</td>

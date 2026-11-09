@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from datetime import date as date_type
+from datetime import datetime
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.responses import RedirectResponse
@@ -14,6 +15,7 @@ from app.db import get_db
 from app.loaders import get_match
 from app.models import OFFICIAL_FUNCTIONS, Match, UploadSession, User
 from app.storage import storage
+from app.timeutil import local_tz
 from app.web import is_htmx, render
 
 router = APIRouter()
@@ -48,7 +50,7 @@ def _form_values(match: Match | None, user: User | None = None) -> dict:
             values[f"{key}_user"] = str(official.user_id) if official.user_id else ""
             values[f"{key}_name"] = official.name or ""
     else:
-        values["date"] = date_type.today().isoformat()
+        values["date"] = datetime.now(local_tz()).date().isoformat()  # „dziś” w strefie lokalnej, nie UTC
         if user is not None and "referee" in user.roles:
             values["cc_user"] = str(user.id)
     return values

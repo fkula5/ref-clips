@@ -17,7 +17,7 @@
 
 <div class="card match-head">
   <dl class="facts">
-    <dt>Data</dt><dd>{{ match.date.strftime("%d.%m.%Y") }}</dd>
+    <dt>Data</dt><dd>{{ match.date|local("%d.%m.%Y") }}</dd>
     <dt>Liga</dt><dd>{{ match.level or '—' }}</dd>
     <dt>Drużyny</dt><dd>{{ team(match.team_a_name, match.team_a_color) }} <span class="muted">vs</span> {{ team(match.team_b_name, match.team_b_color) }}</dd>
     <dt>Obsada</dt>
@@ -28,7 +28,7 @@
           {% if o.user_id == user.id %}<small class="me">to Ty</small>{% endif %}</span>
       {% else %}<span class="muted">brak</span>{% endfor %}
     </dd>
-    <dt>Dodał(a)</dt><dd>{{ match.creator.name if match.creator else '—' }}, {{ match.created_at.strftime("%d.%m.%Y") }}</dd>
+    <dt>Dodał(a)</dt><dd>{{ match.creator.name if match.creator else '—' }}, {{ match.created_at|local("%d.%m.%Y") }}</dd>
     <dt>Stan</dt><dd id="match-state"><span class="badge state-{{ state.code }}">{{ state.label }}</span> {% if state.detail %}<small class="muted">{{ state.detail }}</small>{% endif %}
       {% set expiry = expiry_note(match.videos) %}{% if expiry %}<span class="expiry-note warn-text" id="expiry-note">{{ expiry }}</span>{% endif %}</dd>
   </dl>

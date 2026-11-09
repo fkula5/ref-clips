@@ -50,8 +50,8 @@
         <dt>Sędzia</dt><dd>{{ c.official_label or '—' }}</dd>
         <dt>Kategoria</dt><dd>{{ c.category_label or '—' }}</dd>
         <dt>Opis</dt><dd>{{ c.description or '—' }}</dd>
-        <dt>Znacznik dodał(a)</dt><dd>{{ c.author.name if c.author else '—' }}, {{ c.created_at.strftime("%d.%m.%Y %H:%M") if c.created_at }}</dd>
-        <dt>Opisano</dt><dd>{{ c.described_at.strftime("%d.%m.%Y %H:%M") if c.described_at else '—' }}</dd>
+        <dt>Znacznik dodał(a)</dt><dd>{{ c.author.name if c.author else '—' }}, {{ c.created_at|local("%d.%m.%Y %H:%M") if c.created_at }}</dd>
+        <dt>Opisano</dt><dd>{{ c.described_at|local("%d.%m.%Y %H:%M") if c.described_at else '—' }}</dd>
       </dl>
     </div>
 

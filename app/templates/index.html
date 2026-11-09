@@ -41,7 +41,7 @@
   {% for row in result.rows %}
     {% set m = row.match %}
     <tr>
-      <td data-label="Data">{{ m.date.strftime("%d.%m.%Y") }}</td>
+      <td data-label="Data">{{ m.date|local("%d.%m.%Y") }}</td>
       <td data-label="Mecz" class="main-cell"><a href="/matches/{{ m.id }}">{{ m.team_a_name or m.team_a_color }} – {{ m.team_b_name or m.team_b_color }}</a></td>
       <td data-label="Liga">{{ m.level or '—' }}</td>
       <td data-label="Obsada">{% for o in m.officials %}<span class="chip">{{ o.function }} {{ o.display_name }}</span>{% endfor %}</td>

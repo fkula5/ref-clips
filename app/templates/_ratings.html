@@ -19,7 +19,7 @@
       <span class="verdict {{ r.verdict }}">{{ RATING_VERDICTS[r.verdict] }}</span>
       <strong>{{ r.coach.name }}</strong>
     </div>
-    <div class="muted small-note">{{ r.created_at.strftime("%d.%m.%Y %H:%M") }}{% if rating_edited(r) %} · zmieniona {{ r.updated_at.strftime("%d.%m.%Y %H:%M") }}{% endif %}</div>
+    <div class="muted small-note">{{ r.created_at|local("%d.%m.%Y %H:%M") }}{% if rating_edited(r) %} · zmieniona {{ r.updated_at|local("%d.%m.%Y %H:%M") }}{% endif %}</div>
     {% if r.comment %}<div class="body">{{ r.comment }}</div>{% endif %}
     {% if perm.can_edit_rating(user, r) or perm.can_delete_rating(user, r) %}
     <div class="actions">

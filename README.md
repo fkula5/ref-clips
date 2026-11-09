@@ -84,6 +84,7 @@ Zmienne środowiskowe:
 | `REFCLIPS_UPLOAD_MAX_GB` | maks. rozmiar jednego wgrywanego pliku (domyślnie 8) |
 | `REFCLIPS_DRAFT_RESERVE_GB` | miejsce rezerwowane na wersję roboczą przy przyjmowaniu uploadu (domyślnie 1,5) |
 | `REFCLIPS_DISK_SAFETY_GB` | zapas wolnego miejsca, którego upload nie może zająć (domyślnie 3) |
+| `REFCLIPS_TIMEZONE` | strefa czasowa, w której aplikacja pokazuje daty i godziny (domyślnie `Europe/Warsaw`; baza zawsze trzyma UTC) |
 | `REFCLIPS_FFMPEG_NICE` | priorytet (`nice`) ffmpeg w workerze (domyślnie 10, `0` = bez zmiany) |
 | `REFCLIPS_TEST_UPLOAD_CHUNK_KB` | **tylko testy interfejsu:** rozmiar kawałka tus w KB (domyślnie 50 MB); nie ustawiaj w produkcji |
 | `REFCLIPS_V2_FEATURES` | `1` włącza ukryte funkcje wersji 2 (korekta granic klipu, eksport ZIP) |
