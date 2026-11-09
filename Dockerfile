@@ -30,6 +30,12 @@ COPY alembic.ini ./
 COPY alembic ./alembic
 COPY app ./app
 
+# Numer wersji pokazywany w stopce strony (zalogowani). Wdrożenie z GitHub Actions podaje go w
+# --build-arg REFCLIPS_VERSION=vX.Y.Z; przy ręcznym budowaniu zostaje „dev”. Celowo po instalacji
+# zależności i kopiowaniu kodu, żeby zmiana numeru nie unieważniała wcześniejszych warstw.
+ARG REFCLIPS_VERSION=dev
+ENV REFCLIPS_VERSION=$REFCLIPS_VERSION
+
 # Katalog danych tworzymy i oddajemy użytkownikowi przed VOLUME: nowy, pusty wolumin
 # dziedziczy ten właściciel, więc pierwszy start nie kończy się błędem uprawnień.
 RUN mkdir /data && chown app:app /data

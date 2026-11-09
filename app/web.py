@@ -68,6 +68,7 @@ def csrf_input(context) -> Markup:
 
 env.globals.update(
     ffmpeg_ok=vid.ffmpeg_available,
+    app_version=config.VERSION,
     ffmpeg_message=config.FFMPEG_MISSING_MESSAGE,
     csrf_input=csrf_input,
     perm=permissions,
