@@ -7,7 +7,7 @@ import pytest
 from sqlalchemy import select
 
 from app import permissions as p
-from app.models import Clip, Comment, Match, MatchOfficial, Rating, ShareLink, User, Video
+from app.models import Clip, Comment, Match, MatchOfficial, Rating, ShareLink, Sheet, User, Video
 from tests.helpers import (TUS, category_named, make_match, make_ready_video, make_user, mark_periods, tus_create,
                            tus_metadata)
 
@@ -44,6 +44,10 @@ def clip(*, in_crew=False, author=OTHER) -> Clip:
     return Clip(match=match(in_crew=in_crew), author_id=author)
 
 
+def sheet(*, author=OTHER, published=False, in_crew=False) -> Sheet:
+    return Sheet(match=match(in_crew=in_crew), coach_id=author, status="published" if published else "draft")
+
+
 # (nazwa reguły, funkcja(user, kontekst), {zestaw ról: oczekiwany wynik})
 # Kontekst jest listą scenariuszy; oczekiwanie to krotka wyników dla tych scenariuszy.
 def _row(name, check, scenarios, **expected):
@@ -61,6 +65,10 @@ ROWS = [
             "admin+coach": (True,), "admin+referee": (True,), "coach+referee": (False,)}),
     # 2b. Retencja, zajętość dysku i ręczne usuwanie pełnych nagrań
     _row("retencja i dysk", lambda u, _: p.can_manage_retention(u), [None],
+         **{"brak ról": (False,), "admin": (True,), "coach": (False,), "referee": (False,),
+            "admin+coach": (True,), "admin+referee": (True,), "coach+referee": (False,)}),
+    # 2c. Elementy arkusza oceny (słownik)
+    _row("elementy arkusza", lambda u, _: p.can_manage_sheet_elements(u), [None],
          **{"brak ról": (False,), "admin": (True,), "coach": (False,), "referee": (False,),
             "admin+coach": (True,), "admin+referee": (True,), "coach+referee": (False,)}),
     # 3. Przeglądanie wszystkich meczów i klipów (każdy zalogowany, także bez ról)
@@ -157,6 +165,31 @@ ROWS = [
          **{"brak ról": (True, False), "admin": (True, True), "coach": (True, False),
             "referee": (True, False), "admin+coach": (True, True), "admin+referee": (True, True),
             "coach+referee": (True, False)}),
+    # 9. Arkusz oceny kwalifikatora. Założenie: tylko rola szkoleniowca (sam admin nie wystarcza, jak przy ocenie klipu)
+    _row("zakładanie arkusza", lambda u, _: p.can_create_sheet(u), [None],
+         **{"brak ról": (False,), "admin": (False,), "coach": (True,), "referee": (False,),
+            "admin+coach": (True,), "admin+referee": (False,), "coach+referee": (True,)}),
+    # edycja i publikacja: tylko autor (scenariusze: własny / cudzy)
+    _row("edycja arkusza", lambda u, s: p.can_edit_sheet(u, s), [sheet(author=ME), sheet(author=OTHER)],
+         **{k: (True, False) for k in ROLE_SETS}),
+    _row("publikacja arkusza", lambda u, s: p.can_publish_sheet(u, s),
+         [sheet(author=ME, published=True), sheet(author=OTHER)], **{k: (True, False) for k in ROLE_SETS}),
+    # usunięcie: autor, dopóki to szkic; admin zawsze (własny szkic / własny opublikowany / cudzy szkic / cudzy opublikowany)
+    _row("usuwanie arkusza", lambda u, s: p.can_delete_sheet(u, s),
+         [sheet(author=ME), sheet(author=ME, published=True), sheet(author=OTHER), sheet(author=OTHER, published=True)],
+         **{"brak ról": (True, False, False, False), "admin": (True, True, True, True),
+            "coach": (True, False, False, False), "referee": (True, False, False, False),
+            "admin+coach": (True, True, True, True), "admin+referee": (True, True, True, True),
+            "coach+referee": (True, False, False, False)}),
+    # podgląd: własny szkic / własny opublikowany / cudzy szkic (jestem w obsadzie) / cudzy opublikowany (jestem w obsadzie)
+    # / cudzy opublikowany (nie jestem w obsadzie)
+    _row("podgląd arkusza", lambda u, s: p.can_view_sheet(u, s),
+         [sheet(author=ME), sheet(author=ME, published=True), sheet(in_crew=True),
+          sheet(published=True, in_crew=True), sheet(published=True)],
+         **{"brak ról": (True, True, False, True, False), "admin": (True, True, False, True, True),
+            "coach": (True, True, False, True, True), "referee": (True, True, False, True, False),
+            "admin+coach": (True, True, False, True, True), "admin+referee": (True, True, False, True, True),
+            "coach+referee": (True, True, False, True, True)}),
 ]
 
 
@@ -189,6 +222,9 @@ def test_inactive_user_and_anonymous_have_no_access():
     assert not p.can_upload_to_match(None, match(in_crew=True))
     assert not p.can_share_clip(inactive, clip(author=ME)) and not p.can_share_clip(None, clip())
     assert not p.can_revoke_share(inactive, ShareLink(created_by=ME)) and not p.can_revoke_share(None, ShareLink())
+    own = sheet(author=ME, published=True, in_crew=True)
+    assert not any(f(inactive, own) for f in (p.can_view_sheet, p.can_edit_sheet, p.can_delete_sheet))
+    assert not p.can_view_sheet(None, own) and not p.can_create_sheet(None) and not p.can_manage_sheet_elements(None)
 
 
 # --- serwer odrzuca zabronione żądania wysłane bez interfejsu --------------------------------
