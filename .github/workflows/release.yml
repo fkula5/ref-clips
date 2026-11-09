@@ -80,15 +80,13 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}   # ten job nie robi checkoutu, więc gh nie zna repozytorium
+          BRANCH: ${{ fromJSON(steps.rp.outputs.pr).headBranchName }}   # nie z `gh pr list --label`: wyszukiwarka GitHuba widzi nowy PR z opóźnieniem
         run: |
           set -euo pipefail
-          gh pr list --state open --label "autorelease: pending" --base main \
-            --json headRefName --jq '.[].headRefName' | while read -r branch; do
-            case "$branch" in
-              release-please--*) echo "Testy na gałęzi: $branch"; gh workflow run ci.yml --ref "$branch" ;;
-              *) echo "Pomijam nieoczekiwaną gałąź: $branch" ;;
-            esac
-          done
+          case "$BRANCH" in
+            release-please--*) echo "Testy na gałęzi: $BRANCH"; gh workflow run ci.yml --ref "$BRANCH" ;;
+            *) echo "::error::Nieoczekiwana gałąź PR-a wydania: ${BRANCH:0:60}"; exit 1 ;;
+          esac
 
       - name: Podsumowanie
         env:
