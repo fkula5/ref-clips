@@ -86,6 +86,7 @@ Zmienne środowiskowe:
 | `REFCLIPS_DISK_SAFETY_GB` | zapas wolnego miejsca, którego upload nie może zająć (domyślnie 3) |
 | `REFCLIPS_TIMEZONE` | strefa czasowa, w której aplikacja pokazuje daty i godziny (domyślnie `Europe/Warsaw`; baza zawsze trzyma UTC) |
 | `REFCLIPS_FFMPEG_NICE` | priorytet (`nice`) ffmpeg w workerze (domyślnie 10, `0` = bez zmiany) |
+| `REFCLIPS_FFMPEG_STALL_SECONDS` | po ilu sekundach bez postępu zawieszony ffmpeg jest zabijany, a zadanie kończy się błędem (domyślnie 900, `0` = bez czuwania) |
 | `REFCLIPS_TEST_UPLOAD_CHUNK_KB` | **tylko testy interfejsu:** rozmiar kawałka tus w KB (domyślnie 50 MB); nie ustawiaj w produkcji |
 | `REFCLIPS_V2_FEATURES` | `1` włącza ukryte funkcje wersji 2 (korekta granic klipu, eksport ZIP) |
 

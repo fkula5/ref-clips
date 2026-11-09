@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import logging
+import signal
+import sys
 import threading
 import time
 
@@ -178,8 +180,16 @@ def heartbeat_loop(stop: threading.Event, interval: float = config.WORKER_HEARTB
             return
 
 
+def _on_sigterm(signum, frame) -> None:
+    """Zatrzymanie workera (docker stop, systemd): zabija trwający ffmpeg i kończy proces. Przerwane
+    zadanie zostaje w bazie jako `running` i wraca do kolejki przy następnym starcie (`recover_interrupted`)."""
+    vid.terminate_active()
+    sys.exit(128 + signum)
+
+
 def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(message)s")
+    signal.signal(signal.SIGTERM, _on_sigterm)
     from app.initdb import init_db
     init_db()
     recover_interrupted()
