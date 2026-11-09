@@ -1,3 +1,4 @@
+import pytest
 from alembic import command
 from alembic.autogenerate import compare_metadata
 from alembic.config import Config
@@ -11,6 +12,7 @@ EXPECTED_TABLES = {
     "users", "user_roles", "sessions", "invites", "login_attempts", "matches", "match_officials",
     "videos", "upload_sessions", "period_marks", "categories", "clips", "ratings", "comments",
     "jobs", "settings", "upload_rejections", "share_links", "share_link_clips",
+    "sheet_elements", "sheets", "sheet_columns", "sheet_rows", "sheet_cells",
 }
 
 
@@ -160,3 +162,44 @@ def test_share_links_migration_is_additive(tmp_path):
         assert compare_metadata(MigrationContext.configure(conn), Base.metadata) == []
     command.downgrade(cfg, "mvp0004")
     assert not {"share_links", "share_link_clips"} & set(inspect(create_engine(url)).get_table_names())
+
+
+def test_sheet_migration_seeds_elements_and_cascades(tmp_path):
+    """mvp0006 seeds the ten standard elements in order, enforces one sheet per (match, coach) and a difficulty on
+    published sheets, cascades from the match down to the cells, and keeps the author FK without cascade."""
+    from sqlalchemy import text
+
+    url = f"sqlite:///{tmp_path / 'm.db'}"
+    cfg = _config(url)
+    command.upgrade(cfg, "mvp0005")
+    assert "sheets" not in inspect(create_engine(url)).get_table_names()
+    command.upgrade(cfg, "head")
+    engine = create_engine(url)
+    with engine.begin() as conn:
+        conn.execute(text("PRAGMA foreign_keys=ON"))
+        names = conn.execute(text("SELECT name FROM sheet_elements WHERE is_active ORDER BY sort")).scalars().all()
+        assert names[:3] == ["Obowiązki przedmeczowe", "Przygotowanie fizyczne", "Mechanika"]
+        assert names[-1] == "Jakość pracy" and len(names) == 10
+        conn.execute(text("INSERT INTO users (id, email, name, is_active) VALUES (1, 'a@b.pl', 'A', 1)"))
+        conn.execute(text("INSERT INTO matches (id, date, level, team_a_name, team_a_color, team_b_name, team_b_color) "
+                          "VALUES (1, '2026-10-28', '', '', '', '', '')"))
+        conn.execute(text("INSERT INTO sheets (id, match_id, coach_id) VALUES (1, 1, 1)"))
+        conn.execute(text("INSERT INTO sheet_columns (id, sheet_id, position, function, official_name) VALUES (1, 1, 0, 'CC', 'X')"))
+        conn.execute(text("INSERT INTO sheet_rows (id, sheet_id, position, name) VALUES (1, 1, 0, 'Mechanika')"))
+        conn.execute(text("INSERT INTO sheet_cells (row_id, column_id, text) VALUES (1, 1, 'ok')"))
+        assert compare_metadata(MigrationContext.configure(conn), Base.metadata) == []
+    for sql in ("INSERT INTO sheets (match_id, coach_id) VALUES (1, 1)",                          # second sheet
+                "UPDATE sheets SET status = 'published'",                                         # no difficulty
+                "UPDATE sheets SET difficulty = 'bardzo'",
+                "DELETE FROM users WHERE id = 1"):                                                # author FK: no cascade
+        with engine.begin() as conn, pytest.raises(Exception):
+            conn.execute(text("PRAGMA foreign_keys=ON"))
+            conn.execute(text(sql))
+    with engine.begin() as conn:
+        conn.execute(text("PRAGMA foreign_keys=ON"))
+        conn.execute(text("DELETE FROM matches WHERE id = 1"))
+        for table in ("sheets", "sheet_columns", "sheet_rows", "sheet_cells"):
+            assert conn.execute(text(f"SELECT count(*) FROM {table}")).scalar() == 0, table
+        assert conn.execute(text("SELECT count(*) FROM sheet_elements")).scalar() == 10
+    command.downgrade(cfg, "mvp0005")
+    assert not {"sheets", "sheet_elements", "sheet_cells"} & set(inspect(create_engine(url)).get_table_names())
