@@ -118,6 +118,7 @@ pobranych plików. Uwaga: tekst wpisany ręcznie jako kategoria „własna” or
 | C-03 | Rysowanie na stopklatce (strzałki, linie, pozycje) przy komentarzu | ⬜ | |
 | C-04 | Ocena szkoleniowca odrębna od samooceny sędziego | ⬜ | |
 | C-05 | Odniesienie do przepisu / interpretacji FIBA przy klipie | ⬜ | |
+| C-06 | Arkusz oceny kwalifikatora: opisowa ocena obsady meczu (komentarz do każdego elementu dla każdego sędziego, ocena ogólna i rekomendacja, uwaga o parze), szkic i publikacja, wydruk do PDF; elementy edytowalne w panelu admina. Szczegóły: `docs/arkusz-kwalifikatora.md` | ✅ | |
 
 ### 4.7 Słowniki i ustawienia
 
