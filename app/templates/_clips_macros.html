@@ -56,7 +56,7 @@
   <tbody>
   {% for c in clips %}
     <tr>
-      {% if show_match %}<td data-label="Mecz"><a href="/matches/{{ c.match_id }}">{{ c.match.date.strftime("%d.%m.%Y") }} {{ c.match.team_a_name or c.match.team_a_color }}–{{ c.match.team_b_name or c.match.team_b_color }}</a></td>{% endif %}
+      {% if show_match %}<td data-label="Mecz"><a href="/matches/{{ c.match_id }}">{{ c.match.date|local("%d.%m.%Y") }} {{ c.match.team_a_name or c.match.team_a_color }}–{{ c.match.team_b_name or c.match.team_b_color }}</a></td>{% endif %}
       <td data-label="Sędzia" class="main-cell"><a href="/clips/{{ c.id }}{{ nav_q }}">{{ c.official_label or 'bez sędziego' }}</a></td>
       <td data-label="Kategoria">{% if c.category_label %}<span class="chip">{{ c.category_label }}</span>{% else %}—{% endif %}</td>
       <td data-label="Kwarta · od początku">{{ period_short(c) }}</td>

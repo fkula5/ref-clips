@@ -257,7 +257,7 @@ class QuickClipIn(BaseModel):
 @router.post("/api/videos/{video_id}/quick-clip")
 def quick_clip(body: QuickClipIn, db: Session = Depends(get_db), video: Video = Depends(get_video),
                user: User = require(can_manage_video_clips, get_video)):
-    """Znacznik z notatką: tekst jest parsowany jak linia notatek (sędzia, kategoria, opis)."""
+    """Znacznik z notatką: tekst jest parsowany jak linia notatek (sędzia, kategoria, opis = reszta)."""
     _require_playable(video)
     time_sec = services.clamp_time(body.time_sec, video.duration)
     clock = format_clock(time_sec)
@@ -267,7 +267,7 @@ def quick_clip(body: QuickClipIn, db: Session = Depends(get_db), video: Video = 
     clip = services.create_clip(
         db, video, user, time_sec=time_sec, official_id=line.referee_id,
         category_id=category.id if category else None,
-        description=f"{clock} {body.text}".strip())
+        description=line.description)  # tylko reszta: bez czasu, sędziego i kategorii (są w osobnych polach)
     db.commit()
     return {"clip": clip_json(clip), "warnings": line.warnings, **_state(video, user)}
 

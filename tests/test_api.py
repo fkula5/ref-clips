@@ -144,6 +144,31 @@ def test_notes_preview_and_commit_creates_clips(client, db):
     assert job.clip_id == c.id
 
 
+def test_notes_preview_description_is_only_the_unrecognised_remainder(client, db):
+    video = make_ready_video(db, make_match(db))
+    text = "2:54 CC kroki za późno\n3:17 Filip Dlaczego nie blok?\n4:00 U1 aut"
+    page = client.post(f"/videos/{video.id}/notes/preview", data={"text": text}).text
+    assert 'name="desc_0" value="za późno"' in page
+    assert 'name="desc_1" value="Dlaczego nie blok?"' in page      # zdanie swobodne zostaje w całości
+    assert 'name="desc_2" value=""' in page                          # nic nie zostało -> pusty opis
+
+
+def test_quick_clip_description_keeps_only_what_was_not_recognised(client, db):
+    """Klawisz M: sędzia, kategoria i czas są w polach klipu, w opisie zostaje reszta."""
+    video = make_ready_video(db, make_match(db), duration=600)
+    cases = [
+        (174, "CC kroki za późno", "za późno", "kroki"),
+        (197, "Filip Dlaczego nie blok?", "Dlaczego nie blok?", "blok / szarża"),
+        (250, "CC kroki", "", "kroki"),
+        (300, "", "", None),
+        (310, "Marek dziwna sytuacja", "Marek dziwna sytuacja", None),
+    ]
+    for t, text, description, category in cases:
+        c = quick(client, video.id, t, text).json()["clip"]
+        assert c["description"] == description and c["category"] == category, text
+        assert db.get(Clip, c["id"]).description == description
+
+
 def test_quarter_from_period_marks(client, db):
     video = make_ready_video(db, make_match(db), duration=4000)
     url = f"/api/videos/{video.id}"

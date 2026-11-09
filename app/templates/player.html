@@ -15,14 +15,14 @@
 </div>
 
 {% if video.purged_at %}
-  <div class="banner" id="purged-banner">Pełne nagranie zostało usunięte ({{ video.purged_at.strftime("%d.%m.%Y") }}), więc nie ma już odtwarzacza ani możliwości
+  <div class="banner" id="purged-banner">Pełne nagranie zostało usunięte ({{ video.purged_at|local("%d.%m.%Y") }}), więc nie ma już odtwarzacza ani możliwości
     dodawania znaczników. Klipy wycięte wcześniej zostają i dalej się odtwarzają:
     <a href="/clips?video_id={{ video.id }}">klipy tego nagrania ({{ video.clips|length }})</a>.</div>
 {% elif video.status != 'ready' %}
   <div class="banner error">Wersja robocza nie jest jeszcze gotowa (status: {{ VIDEO_STATUSES.get(video.status, video.status) }}). Wróć do <a href="/matches/{{ match.id }}">meczu</a>.</div>
 {% else %}
 {% set expiry = video_expiry_note(video) %}
-{% if expiry %}<div class="banner warn" id="expiry-banner">Uwaga: {{ expiry }} (do {{ video.expires_at.strftime("%d.%m.%Y") }}). Po tym terminie nie będzie odtwarzacza ani możliwości dodawania znaczników; wycięte klipy zostają.</div>{% endif %}
+{% if expiry %}<div class="banner warn" id="expiry-banner">Uwaga: {{ expiry }} (do {{ video.expires_at|local("%d.%m.%Y") }}). Po tym terminie nie będzie odtwarzacza ani możliwości dodawania znaczników; wycięte klipy zostają.</div>{% endif %}
 <div id="marks-banner" class="banner warn hidden">
   <strong>Ustaw początki kwart, żeby klipy miały kwartę i czas.</strong>
   Brakuje: <span id="missing-list"></span>. Do tego czasu klipy mają kwartę „nieustaloną” (wycinanie działa). Użyj panelu „Początki kwart”.

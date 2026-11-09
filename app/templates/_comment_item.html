@@ -21,7 +21,7 @@
 <div class="comment" id="comment-{{ cm.id }}">
   <div class="meta">
     <strong>{{ cm.author.name }}</strong>
-    <span class="muted">{{ cm.created_at.strftime("%d.%m.%Y %H:%M") if cm.created_at }}{% if cm.edited_at %} · edytowano {{ cm.edited_at.strftime("%d.%m.%Y %H:%M") }}{% endif %}</span>
+    <span class="muted">{{ cm.created_at|local("%d.%m.%Y %H:%M") if cm.created_at }}{% if cm.edited_at %} · edytowano {{ cm.edited_at|local("%d.%m.%Y %H:%M") }}{% endif %}</span>
   </div>
   <div class="body">{{ cm.body }}</div>
   {% if perm.can_edit_comment(user, cm) or perm.can_delete_comment(user, cm) %}

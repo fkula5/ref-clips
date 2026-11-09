@@ -42,7 +42,7 @@ def test_preview_uses_match_crew_and_category_dictionary(client, db):
     assert rows[1]["official"] == "Kasia Żółć" and rows[1]["category"] == "blok / szarża"
     assert rows[2]["category"] == "techniczny" and rows[2]["clock"] == "4:10"
     assert rows[3]["ok"] is False and rows[3]["warnings"]
-    assert all(r["description"] for r in rows)
+    assert [r["description"] for r in rows] == ["PTS", "dlaczego nie blok?", "", "bez czasu na początku"]
 
 
 def test_preview_warns_about_unknown_referee_and_works_again_after_edit(client, db):
@@ -89,7 +89,9 @@ def test_notes_are_stored_with_the_session_and_become_clips_after_finish(client,
     assert found[0].official_id == cc.id and found[0].category_id is None
     assert found[1].official_id == u1.id and found[1].category.name == "blok / szarża"
     assert found[2].official_id == cc.id and found[2].category.name == "techniczny"
-    assert found[0].description == "2:54 Filip PTS"
+    assert found[0].description == "PTS"                  # bez czasu i sędziego
+    assert found[1].description == "dlaczego nie blok?"     # alias w środku zdania: zdanie zostaje
+    assert found[2].description == ""                       # „CC faul techniczny”: nic nie zostaje
     jobs = db.scalars(select(Job).where(Job.type == "cut")).all()
     assert len(jobs) == 3
     # cięcie czeka na wersję roboczą

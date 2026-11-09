@@ -7,6 +7,9 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 DATA_DIR = Path(os.environ.get("REFCLIPS_DATA_DIR", BASE_DIR / "data")).resolve()
 DATABASE_URL = os.environ.get("DATABASE_URL", f"sqlite:///{DATA_DIR / 'ref-clips.db'}")
 
+# Strefa, w której pokazujemy daty i godziny (baza zawsze trzyma UTC). Nazwa IANA, np. Europe/Warsaw.
+TIMEZONE = os.environ.get("REFCLIPS_TIMEZONE", "").strip() or "Europe/Warsaw"
+
 # Ścieżki do ffmpeg/ffprobe: nazwa polecenia z PATH albo pełna ścieżka.
 FFMPEG_PATH = os.environ.get("FFMPEG_PATH", "ffmpeg")
 FFPROBE_PATH = os.environ.get("FFPROBE_PATH", "ffprobe")
@@ -97,6 +100,16 @@ try:
     FFMPEG_NICE = int(os.environ.get("REFCLIPS_FFMPEG_NICE", "10"))  # 0 = bez obniżania priorytetu
 except ValueError:
     FFMPEG_NICE = 10
+
+# Czuwanie nad konwersją: gdy ffmpeg przez tyle sekund nie zgłosi postępu (brak danych albo `out_time`
+# stoi w miejscu), proces jest zabijany, a zadanie kończy się błędem. 0 = czuwanie wyłączone.
+try:
+    FFMPEG_STALL_SECONDS = float(os.environ.get("REFCLIPS_FFMPEG_STALL_SECONDS", "900"))
+except ValueError:
+    FFMPEG_STALL_SECONDS = 900.0
+# Cięcie klipu nie zgłasza postępu, więc ma zwykły limit czasu: większa z: stałego minimum i wielokrotności długości klipu.
+CUT_TIMEOUT_MIN_SECONDS = 300
+CUT_TIMEOUT_PER_CLIP_SECOND = 20
 
 FFMPEG_MISSING_MESSAGE = "Brak ffmpeg — uruchom: sudo apt install ffmpeg"
 

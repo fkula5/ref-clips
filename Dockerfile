@@ -21,7 +21,8 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /srv/app
 
-# Zależności przed kodem — zmiana kodu nie unieważnia tej warstwy.
+# Zależności przed kodem — zmiana kodu nie unieważnia tej warstwy. Baza stref czasowych dla `zoneinfo`
+# (Europe/Warsaw) pochodzi z pakietu tzdata w requirements.txt, więc nie zależy od systemu obrazu.
 COPY requirements.txt ./
 RUN pip install -r requirements.txt
 

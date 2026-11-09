@@ -212,7 +212,8 @@ def test_clip_page_shows_description_fields_and_ratings_card(client, tab, admin)
     page = clip_page(client, tab["clips"]["q2_team"])
     info = page.split('id="clip-info"')[1].split('id="oceny"')[0]
     for text in ("cały zespół", "Kontakt z ławką", "Q2 · 1:20 od początku kwarty (czas nagrania)",
-                 "czas nagrania – nie zegar meczowy", "Znacznik dodał(a)", "Opisano", "29.10.2026 12:00"):
+                 "czas nagrania – nie zegar meczowy", "Znacznik dodał(a)", "Opisano",
+                 "29.10.2026 13:00"):  # described_at 12:00 UTC, po 25.10 czas zimowy (+1)
         assert text in info, text
     assert "Klip nie ma jeszcze ocen." in page
 
