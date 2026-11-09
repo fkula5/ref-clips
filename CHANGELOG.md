@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.3.0](https://github.com/fkula5/ref-clips/compare/v1.2.1...v1.3.0) (2026-11-09)
+
+
+### Features
+
+* **sheet:** add assessment sheet tables and seed the standard elements ([8b17747](https://github.com/fkula5/ref-clips/commit/8b1774747fc7b6b8a5a21be0e580bf6db892e64a))
+* **sheet:** add permission rules for assessment sheets ([f4519cb](https://github.com/fkula5/ref-clips/commit/f4519cb0defc672f51654b8b02dcbfc9d0ef0a61))
+* **sheet:** add the qualifier assessment sheet ([5d3a567](https://github.com/fkula5/ref-clips/commit/5d3a5673ca355219d3cac562b9901b8b0cd18e3c))
+* **sheet:** edit the assessment elements in the admin panel ([e77a77a](https://github.com/fkula5/ref-clips/commit/e77a77a5612ce6db1dcd48334cdc48e3e0c2801f))
+* **sheet:** fill in, publish and read the assessment sheet ([cd7384d](https://github.com/fkula5/ref-clips/commit/cd7384d53ed5d429d354e7c9d1106e398e99fa56))
+
+
+### Bug Fixes
+
+* **sheet:** keep published sheets safe when a match is deleted ([f9dff5e](https://github.com/fkula5/ref-clips/commit/f9dff5ea74228a0061098e65fa79de9f1a266ea6))
+
 ## [1.2.1](https://github.com/fkula5/ref-clips/compare/v1.2.0...v1.2.1) (2026-11-09)
 
 
