@@ -79,6 +79,7 @@ jobs:
         if: ${{ github.event_name == 'push' && steps.rp.outputs.prs_created == 'true' }}
         env:
           GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}   # ten job nie robi checkoutu, więc gh nie zna repozytorium
         run: |
           set -euo pipefail
           gh pr list --state open --label "autorelease: pending" --base main \
