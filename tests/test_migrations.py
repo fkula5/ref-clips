@@ -10,7 +10,7 @@ from app.db import Base
 EXPECTED_TABLES = {
     "users", "user_roles", "sessions", "invites", "login_attempts", "matches", "match_officials",
     "videos", "upload_sessions", "period_marks", "categories", "clips", "ratings", "comments",
-    "jobs", "settings", "upload_rejections",
+    "jobs", "settings", "upload_rejections", "share_links", "share_link_clips",
 }
 
 
@@ -124,3 +124,39 @@ def test_retention_migration_is_additive(tmp_path):
     command.downgrade(cfg, "mvp0003")
     assert "upload_rejections" not in inspect(create_engine(url)).get_table_names()
     assert "proxy_bytes" not in {c["name"] for c in inspect(create_engine(url)).get_columns("videos")}
+
+
+def test_share_links_migration_is_additive(tmp_path):
+    """Migracja mvp0005 dodaje tylko tabele linków; schemat zgadza się z modelami, a usunięcie klipu albo
+    linku kasuje powiązania (ON DELETE CASCADE), ale nie sam link ani klip."""
+    from sqlalchemy import text
+
+    url = f"sqlite:///{tmp_path / 'm.db'}"
+    cfg = _config(url)
+    command.upgrade(cfg, "mvp0004")
+    engine = create_engine(url)
+    assert "share_links" not in inspect(engine).get_table_names()
+    command.upgrade(cfg, "head")
+    with engine.begin() as conn:
+        conn.execute(text("PRAGMA foreign_keys=ON"))
+        conn.execute(text("INSERT INTO users (id, email, name, is_active) VALUES (1, 'a@b.pl', 'A', 1)"))
+        conn.execute(text("INSERT INTO matches (id, date, level, team_a_name, team_a_color, team_b_name, team_b_color) "
+                          "VALUES (1, '2026-10-28', '', '', '', '', '')"))
+        conn.execute(text("INSERT INTO videos (id, match_id, size_bytes, content, status, label, original_filename) "
+                          "VALUES (1, 1, 1, 'full', 'ready', '', '')"))
+        for i in (1, 2):
+            conn.execute(text("INSERT INTO clips (id, match_id, video_id, whole_team, time_sec, margin_before, margin_after, "
+                              "description, status, clip_version) VALUES (:i, 1, 1, 0, 10, 15, 15, '', 'cut', 1)"), {"i": i})
+        conn.execute(text("INSERT INTO share_links (id, token_hash, created_by, expires_at) VALUES (1, 'h', 1, '2026-12-01')"))
+        conn.execute(text("INSERT INTO share_link_clips VALUES (1, 1, 1), (1, 2, 2)"))
+        assert conn.execute(text("SELECT view_count FROM share_links")).scalar() == 0
+        conn.execute(text("DELETE FROM clips WHERE id = 2"))
+        assert conn.execute(text("SELECT clip_id FROM share_link_clips")).scalars().all() == [1]
+        conn.execute(text("DELETE FROM users WHERE id = 1"))  # twórca znika, link zostaje
+        assert conn.execute(text("SELECT created_by FROM share_links")).one()[0] is None
+        conn.execute(text("DELETE FROM share_links"))
+        assert conn.execute(text("SELECT count(*) FROM share_link_clips")).scalar() == 0
+        assert conn.execute(text("SELECT count(*) FROM clips")).scalar() == 1
+        assert compare_metadata(MigrationContext.configure(conn), Base.metadata) == []
+    command.downgrade(cfg, "mvp0004")
+    assert not {"share_links", "share_link_clips"} & set(inspect(create_engine(url)).get_table_names())

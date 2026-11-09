@@ -86,6 +86,12 @@ except ValueError:
 # bo poniżej niego aplikacja i tak odrzuca każdy nowy upload.
 HEALTH_DISK_MIN_BYTES = _gb("REFCLIPS_HEALTH_DISK_MIN_GB", DISK_SAFETY_BYTES / GB)
 
+# --- udostępnianie klipów linkiem bez konta ------------------------------------------
+SHARE_DAYS = (1, 7, 30)         # dozwolona ważność linku w dniach; linków bezterminowych nie ma
+SHARE_DEFAULT_DAYS = 7
+SHARE_MAX_CLIPS = 30            # klipów w jednym linku (sprawdzane przy tworzeniu)
+SHARE_ZIP_MAX_PARALLEL = 2      # równolegle budowanych paczek ZIP; kolejne dostają 503
+
 # --- retencja i sprzątanie (segment 7) ------------------------------------------------
 RETENTION_DAYS_MIN, RETENTION_DAYS_MAX = 1, 365   # zakres ustawienia `retention_days`
 EXPIRY_WARN_DAYS = 7                    # tyle dni przed terminem mecz pokazuje „dostępne jeszcze X dni”

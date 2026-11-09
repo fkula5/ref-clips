@@ -372,6 +372,39 @@ class Comment(Base):
     author: Mapped[User] = relationship()
 
 
+# --- udostępnianie klipów linkiem bez konta ------------------------------------------
+class ShareLink(Base):
+    """Link do jednego lub kilku klipów dla osób bez konta (`/s/<kod>`). W bazie tylko skrót SHA-256
+    kodu — jawny kod widzi twórca raz, po utworzeniu. Ważność jest zawsze ograniczona (`expires_at`)."""
+    __tablename__ = "share_links"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True)
+    created_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    expires_at: Mapped[datetime] = mapped_column(DateTime)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime)
+    view_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0")  # wejścia na stronę
+
+    creator: Mapped[User | None] = relationship(foreign_keys=[created_by])
+    items: Mapped[list[ShareLinkClip]] = relationship(
+        back_populates="link", cascade="all, delete-orphan", order_by="ShareLinkClip.position")
+
+
+class ShareLinkClip(Base):
+    """Klip w linku. `position` (od 1) jest stała i trafia do adresów publicznych zamiast id klipu;
+    po usunięciu klipu (ON DELETE CASCADE) pozostałe pozycje się nie zmieniają."""
+    __tablename__ = "share_link_clips"
+    __table_args__ = (UniqueConstraint("link_id", "position"),)
+
+    link_id: Mapped[int] = mapped_column(ForeignKey("share_links.id", ondelete="CASCADE"), primary_key=True)
+    clip_id: Mapped[int] = mapped_column(ForeignKey("clips.id", ondelete="CASCADE"), primary_key=True, index=True)
+    position: Mapped[int] = mapped_column(Integer)
+
+    link: Mapped[ShareLink] = relationship(back_populates="items")
+    clip: Mapped[Clip] = relationship()
+
+
 # --- kolejka zadań i ustawienia --------------------------------------------------
 class Job(Base):
     __tablename__ = "jobs"
