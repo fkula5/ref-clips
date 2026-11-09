@@ -9,12 +9,13 @@ from __future__ import annotations
 
 import logging
 import math
+import re
 import time
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 
 from sqlalchemy import func, or_, select, update
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app import config, services
@@ -113,20 +114,30 @@ def abandon_pending_clips(db: Session, video: Video) -> int:
 
 
 def purge_video(db: Session, video: Video, now: datetime | None = None) -> None:
-    """Usuwa pliki wersji roboczej (i oryginału, jeśli został po błędzie konwersji) i ustawia
-    `purged_at`. Klipy zostają. Błąd reguł albo dysku to PurgeError, a nagranie zostaje bez zmian."""
+    """Oznacza pełne nagranie jako usunięte (`purged_at`, wyzerowane ścieżki; klipy zostają), a dopiero
+    potem kasuje pliki wersji roboczej (i oryginału, jeśli został po błędzie konwersji). Kolejność
+    jest celowa: gdyby zapis w bazie się nie udał, nagranie zostaje nietknięte (z plikami); gdyby
+    nie udało się skasować pliku, to tylko ostrzeżenie w logu — plik-sierotę zabierze później
+    `cleanup_orphan_videos`. Wyjątkiem jest wyłącznie PurgeError z reguł (`purge_blocker`); błąd
+    bazy przy zapisie leci dalej, a nagranie zostaje bez zmian."""
     blocker = purge_blocker(db, video)
     if blocker:
         raise PurgeError(blocker)
-    try:
-        storage.delete(video.original_path)
-        storage.delete(video.proxy_path)
-    except OSError as exc:
-        raise PurgeError(f"Nie udało się usunąć plików nagrania: {exc}") from exc
+    keys = [key for key in (video.original_path, video.proxy_path) if key]  # zapamiętane przed wyzerowaniem
     video.original_path = video.proxy_path = video.proxy_bytes = None
     video.purged_at = now or utcnow()
     abandon_pending_clips(db, video)  # klip dodany tuż przed usunięciem (wyścig z „Zaznacz”)
-    db.commit()
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()  # obiekt wraca do stanu z bazy; pliki nietknięte
+        raise
+    for key in keys:
+        try:
+            storage.delete(key)
+        except (OSError, ValueError):
+            log.warning("Nie udało się usunąć pliku %s po usunięciu nagrania %s — zostanie sprzątnięty "
+                        "jako osierocony", key, video.id, exc_info=True)
 
 
 @dataclass
@@ -142,7 +153,8 @@ class RetentionResult:
 
 def run_retention(db: Session, now: datetime | None = None) -> RetentionResult:
     """Usuwa wersje robocze nagrań po terminie. Nagrania w konwersji i z klipami czekającymi na
-    cięcie są pomijane (wrócą przy następnym uruchomieniu). Idempotentne: usunięte mają `purged_at`."""
+    cięcie oraz te, których usunięcia nie udało się zapisać w bazie, są pomijane (wrócą przy następnym
+    uruchomieniu); nieudane kasowanie samego pliku nie przerywa przebiegu. Idempotentne: usunięte mają `purged_at`."""
     now = now or utcnow()
     result = RetentionResult()
     due = db.scalars(select(Video).where(
@@ -155,6 +167,9 @@ def run_retention(db: Session, now: datetime | None = None) -> RetentionResult:
             db.rollback()
             result.skipped.append((video.id, str(exc)))
             log.info("Retencja: pominięto nagranie %s: %s", video.id, exc)
+        except SQLAlchemyError as exc:  # np. zajęta baza: nagranie zostaje bez zmian, wróci w następnym przebiegu
+            result.skipped.append((video.id, f"błąd bazy danych: {exc.__class__.__name__}"))
+            log.warning("Retencja: nie zapisano usunięcia nagrania %s w bazie", video.id, exc_info=True)
         else:
             result.purged.append(video.id)
             log.info("Retencja: usunięto pełne nagranie %s (termin %s)", video.id, video.expires_at)
@@ -251,4 +266,44 @@ def cleanup_orphan_clips(db: Session, min_age_seconds: float | None = None) -> i
             log.warning("Nie udało się usunąć osieroconego pliku klipu %s", key)
     if removed:
         log.info("Usunięto osierocone pliki klipów: %d", removed)
+    return removed
+
+
+# --- osierocone pliki nagrań -------------------------------------------------------------
+VIDEO_FILE = re.compile(r"^(?:uploads/(?P<up>\d+)_.+|proxies/(?P<proxy>\d+)(?:\.part)?\.mp4)$")
+
+
+def cleanup_orphan_videos(db: Session, min_age_seconds: float | None = None) -> int:
+    """Usuwa pliki oryginałów (`uploads/<id>_nazwa`) i wersji roboczych (`proxies/<id>.mp4`,
+    `proxies/<id>.part.mp4`), do których nie prowadzi `original_path` ani `proxy_path` żadnego
+    nagrania, starsze niż `ORPHAN_MIN_AGE_SECONDS`. Zostają po nieudanym kasowaniu pliku przy
+    usunięciu nagrania (`purge_video`) albo po usunięciu meczu. Pomija pliki nagrań w trakcie
+    wgrywania i konwersji (świeży `.part.mp4` powstaje, zanim `proxy_path` trafi do bazy) oraz
+    trwające uploady (`uploads/tus-*.part` nie pasuje do wzorca; porzucone sprząta
+    `uploads.cleanup_stale`). Zwraca liczbę usuniętych plików."""
+    if min_age_seconds is None:
+        min_age_seconds = config.ORPHAN_MIN_AGE_SECONDS
+    cutoff = time.time() - min_age_seconds
+    candidates = []
+    for prefix in ("uploads", "proxies"):
+        for key, _size, mtime in storage.iter_files(prefix):
+            match = VIDEO_FILE.match(key)
+            if match and mtime < cutoff:
+                candidates.append((key, int(match["up"] or match["proxy"])))
+    if not candidates:
+        return 0
+    used = set(db.scalars(select(Video.original_path).where(Video.original_path.is_not(None))))
+    used |= set(db.scalars(select(Video.proxy_path).where(Video.proxy_path.is_not(None))))
+    busy = set(db.scalars(select(Video.id).where(Video.status.in_(BUSY_VIDEO))))
+    removed = 0
+    for key, video_id in candidates:
+        if key in used or video_id in busy:
+            continue
+        try:
+            storage.delete(key)
+            removed += 1
+        except OSError:
+            log.warning("Nie udało się usunąć osieroconego pliku nagrania %s", key)
+    if removed:
+        log.info("Usunięto osierocone pliki nagrań: %d", removed)
     return removed
