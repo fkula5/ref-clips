@@ -1,5 +1,5 @@
 """Panel administratora: użytkownicy i role (linki zaproszeń, reset hasła), słownik kategorii,
-retencja i zajętość dysku."""
+elementy arkusza oceny, retencja i zajętość dysku."""
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
@@ -7,15 +7,16 @@ from fastapi.responses import RedirectResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app import accounts, categories, config, disk, flash, permissions, retention, services
+from app import accounts, categories, config, disk, flash, permissions, retention, services, sheet_elements
 from app.auth import require
 from app.db import get_db
-from app.models import Category, User, Video
+from app.models import Category, SheetElement, User, Video
 from app.web import render
 
 router = APIRouter(prefix="/admin")
 admin_only = require(permissions.can_manage_users)
 categories_admin = require(permissions.can_manage_categories)
+sheet_elements_admin = require(permissions.can_manage_sheet_elements)
 retention_admin = require(permissions.can_manage_retention)
 
 
@@ -216,6 +217,76 @@ def delete_category(request: Request, category_id: int, db: Session = Depends(ge
         db.rollback()
         return _categories_page(request, db, status_code=exc.status_code, error=str(exc))
     return flash.redirect_with_notice("/admin/categories", f"Usunięto kategorię „{name}”.")
+
+
+# --- assessment sheet elements ----------------------------------------------------------------
+def _get_element(db: Session, element_id: int) -> SheetElement:
+    element = db.get(SheetElement, element_id)
+    if element is None:
+        raise HTTPException(404, "Nie ma takiego elementu")
+    return element
+
+
+def _elements_page(request: Request, db: Session, *, status_code: int = 200, error: str | None = None,
+                   new_name: str = "", edit_values: dict[int, str] | None = None):
+    """List of elements. After a failed save the typed name stays: `new_name` (new element) or `edit_values`."""
+    return render_admin(request, db, "admin_sheet_elements.html", status_code=status_code, error=error,
+                        elements=sheet_elements.ordered(db), used=sheet_elements.usage_counts(db),
+                        new_name=new_name, edit_values=edit_values or {})
+
+
+def _element_action(request: Request, db: Session, action, notice: str, **failed):
+    try:
+        action()
+    except sheet_elements.SheetElementError as exc:
+        db.rollback()
+        return _elements_page(request, db, status_code=exc.status_code, error=str(exc), **failed)
+    return flash.redirect_with_notice("/admin/sheet-elements", notice)
+
+
+@router.get("/sheet-elements")
+def sheet_elements_page(request: Request, db: Session = Depends(get_db), _admin: User = sheet_elements_admin):
+    return _elements_page(request, db)
+
+
+@router.post("/sheet-elements")
+def create_sheet_element(request: Request, db: Session = Depends(get_db), _admin: User = sheet_elements_admin,
+                         name: str = Form("")):
+    return _element_action(request, db, lambda: sheet_elements.create(db, name),
+                           "Dodano element arkusza.", new_name=name)
+
+
+@router.post("/sheet-elements/{element_id}/update")
+def update_sheet_element(request: Request, element_id: int, db: Session = Depends(get_db),
+                         _admin: User = sheet_elements_admin, name: str = Form("")):
+    element = _get_element(db, element_id)
+    return _element_action(request, db, lambda: sheet_elements.rename(db, element, name),
+                           "Zapisano nazwę elementu (istniejące arkusze zostają bez zmian).",
+                           edit_values={element_id: name})
+
+
+@router.post("/sheet-elements/{element_id}/active")
+def set_sheet_element_active(request: Request, element_id: int, db: Session = Depends(get_db),
+                             _admin: User = sheet_elements_admin, active: int = Form(0)):
+    element = _get_element(db, element_id)
+    return _element_action(request, db, lambda: sheet_elements.set_active(db, element, bool(active)),
+                           f"Element „{element.name}” jest teraz {'aktywny' if active else 'nieaktywny'}.")
+
+
+@router.post("/sheet-elements/{element_id}/move")
+def move_sheet_element(request: Request, element_id: int, db: Session = Depends(get_db),
+                       _admin: User = sheet_elements_admin, direction: str = Form("")):
+    element = _get_element(db, element_id)
+    return _element_action(request, db, lambda: sheet_elements.move(db, element, direction), "")
+
+
+@router.post("/sheet-elements/{element_id}/delete")
+def delete_sheet_element(request: Request, element_id: int, db: Session = Depends(get_db),
+                         _admin: User = sheet_elements_admin):
+    element = _get_element(db, element_id)
+    name = element.name
+    return _element_action(request, db, lambda: sheet_elements.delete(db, element),
+                           f"Usunięto element „{name}”.")
 
 
 # --- retencja i dysk -----------------------------------------------------------------------
