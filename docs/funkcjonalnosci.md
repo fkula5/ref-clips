@@ -94,7 +94,7 @@ Priorytet: **M** = musi być w MVP · **S** = warto mieć · **P** = później (
 | K-01 | Lista klipów z filtrami: mecz, sędzia, tag, ocena, kwarta | ✅ | |
 | K-02 | Strona klipu: odtwarzanie, edycja opisu, tagów, oceny | ✅ | |
 | K-03 | Korekta początku i końca klipu z automatycznym ponownym wycięciem | ✅ | |
-| K-04 | Pobranie klipu MP4 z czytelną nazwą (`data_kwarta_czas_sędzia_tag.mp4`) | ✅ | |
+| K-04 | Pobranie klipu MP4 z czytelną nazwą (`kategoria-rozgrywek_nazwisko_decyzja.mp4`) | ✅ | |
 | K-05 | Eksport ZIP: wybrane klipy + `opisy.csv` | ✅ | |
 | K-06 | Usunięcie klipu | ✅ | |
 | K-07 | Playlista: zestaw klipów do omówienia (kolejność, tytuł) | ⬜ | |

@@ -117,7 +117,7 @@
 
 ## Uwagi z testów (2026-11-09)
 
-- [ ] **Nowa nazwa pliku klipu: `kategoria-rozgrywek_kto-gwizdnal_decyzja.mp4`**, np. `III-liga_CC_w-akcji-rzutowej.mp4` (`services.clip_filename`, testy w `tests/test_clip_tab.py`). Kategoria rozgrywek to `Match.level`, decyzja to `clip.category_label`. Puste części pomijać; gdy wszystkie puste, nazwa domyślna `klip.mp4`. Data, kwarta i czas znikają z nazwy, więc nazwy mogą się powtarzać: przy pobieraniu numeruje przeglądarka, w ZIP-ie numeruje już `clips_v2`.
+- [x] **Nowa nazwa pliku klipu: `kategoria-rozgrywek_nazwisko_decyzja.mp4`**, np. `III-liga_Kowalski_w-akcji-rzutowej.mp4` (`services.clip_filename`, testy w `tests/test_clip_tab.py`). Kategoria rozgrywek to `Match.level`, decyzja to `clip.category_label`. Puste części pomijać; gdy wszystkie puste, nazwa domyślna `klip.mp4`. Data, kwarta i czas znikają z nazwy, więc nazwy mogą się powtarzać: przy pobieraniu numeruje przeglądarka, w ZIP-ie numeruje już `clips_v2`.
 
 ## Pomysły do przemyślenia
 

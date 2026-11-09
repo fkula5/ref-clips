@@ -264,7 +264,7 @@ def test_download(client, db):
     db.commit()
     dl = client.get(f"/clips/{clip_id}/download")
     assert dl.status_code == 200
-    assert 'filename="2026-10-28_Q1_01m40s_CC_kroki.mp4"' in dl.headers["content-disposition"]
+    assert 'filename="II-liga_Kowalski_kroki.mp4"' in dl.headers["content-disposition"]
     assert client.get(f"/clips/{clip_id}/file").content == b"clip"
 
 

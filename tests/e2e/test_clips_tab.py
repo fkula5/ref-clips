@@ -195,7 +195,7 @@ def test_klip_w_bledzie_ciecia_ma_wytnij_ponownie_i_usun(ui):
     # nazwa pliku: data_kwarta_czas_sędzia_kategoria
     with page.expect_download() as download:
         page.get_by_role("link", name="Pobierz MP4").click()
-    assert download.value.suggested_filename == "2026-10-28_Q1_00m20s.mp4"
+    assert download.value.suggested_filename == "II-liga.mp4"
 
 
 def test_nazwa_pobieranego_pliku_po_opisie_i_zmianie_kategorii(ui):
@@ -214,7 +214,7 @@ def test_nazwa_pobieranego_pliku_po_opisie_i_zmianie_kategorii(ui):
     expect(page.locator("#clip-info")).not_to_contain_text("nieopisany")
     with page.expect_download() as download:
         page.get_by_role("link", name="Pobierz MP4").click()
-    assert download.value.suggested_filename == "2026-10-28_Q2_00m40s_CC_blok-szarza.mp4"
+    assert download.value.suggested_filename == "II-liga_Sedzia_blok-szarza.mp4"
     page.locator("#category-select").select_option(label="własna")
     page.locator("input[name=custom_category]").fill("Zażółć gęślą jaźń")
     page.get_by_label("cały zespół").check()
@@ -222,4 +222,4 @@ def test_nazwa_pobieranego_pliku_po_opisie_i_zmianie_kategorii(ui):
     expect(page.locator("#clip-info")).to_contain_text("Zażółć gęślą jaźń")
     with page.expect_download() as download:
         page.get_by_role("link", name="Pobierz MP4").click()
-    assert download.value.suggested_filename == "2026-10-28_Q2_00m40s_zespol_Zazolc-gesla-jazn.mp4"
+    assert download.value.suggested_filename == "II-liga_zespol_Zazolc-gesla-jazn.mp4"

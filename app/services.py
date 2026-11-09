@@ -493,24 +493,23 @@ def clip_range(clip: Clip) -> tuple[float, float]:
 
 
 # --- nazwy plików ---------------------------------------------------------------
-FILENAME_CATEGORY_MAX = 40  # nazwa własnej kategorii bywa długa — w nazwie pliku ją skracamy
+FILENAME_PART_MAX = 40  # liga i nazwa własnej kategorii bywają długie — w nazwie pliku je skracamy
+
+
+def _filename_part(text: str) -> str:
+    return slugify(text)[:FILENAME_PART_MAX].strip("-")
 
 
 def clip_filename(clip: Clip) -> str:
-    """data_kwarta_czas_sędzia_kategoria.mp4, np. 2026-10-28_Q2_02m54s_CC_blok-szarza.mp4
-    (funkcja sędziego albo „zespol”; tylko znaki ASCII; liczona na bieżąco, więc po zmianie
-    opisu pobrany plik ma już nową nazwę)."""
-    period = period_for(clip.video.marks, clip.time_sec) or "Qx"
-    minutes, seconds = divmod(int(clip.time_sec), 60)
-    parts = [clip.match.date.isoformat(), period, f"{minutes:02d}m{seconds:02d}s"]
-    if clip.whole_team:
-        parts.append("zespol")
-    elif clip.official:
-        parts.append(clip.official.function)
-    category = slugify(clip.category_label)[:FILENAME_CATEGORY_MAX].strip("-")
-    if category:
-        parts.append(category)
-    return "_".join(parts) + ".mp4"
+    """kategoria-rozgrywek_nazwisko_decyzja.mp4, np. III-liga_Kowalski_blok-szarza.mp4
+    (nazwisko to ostatni wyraz nazwy sędziego, przy klipie całego zespołu „zespol”; puste części
+    są pomijane; tylko znaki ASCII; liczona na bieżąco, więc po zmianie opisu pobrany plik ma już
+    nową nazwę). Nazwy mogą się powtarzać — eksport ZIP numeruje je sam."""
+    referee = "zespol" if clip.whole_team else ""
+    if clip.official and not clip.whole_team:
+        referee = " ".join(clip.official.display_name.split()[-1:])
+    parts = (_filename_part(value) for value in (clip.match.level, referee, clip.category_label))
+    return ("_".join(part for part in parts if part) or "klip") + ".mp4"
 
 
 # --- słownik kategorii i kontekst parsera ------------------------------------------

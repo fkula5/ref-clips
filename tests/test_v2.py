@@ -67,7 +67,7 @@ def test_zip_export(v2_client, db):
     z = v2_client.get("/clips/export.zip", params={"match_id": video.match_id})
     assert z.status_code == 200
     with zipfile.ZipFile(io.BytesIO(z.content)) as zf:
-        assert sorted(zf.namelist()) == ["2026-10-28_Q1_01m40s_CC.mp4", "2026-10-28_Q1_01m40s_CC_2.mp4", "opisy.csv"]
+        assert sorted(zf.namelist()) == ["II-liga_Kowalski.mp4", "II-liga_Kowalski_2.mp4", "opisy.csv"]
         csv_text = zf.read("opisy.csv").decode("utf-8-sig")
         assert "Filip Kowalski" in csv_text and "Q1" in csv_text and csv_text.startswith("plik;")
     assert v2_client.get("/clips/export.zip", params={"ids": [9999]}).status_code == 404
