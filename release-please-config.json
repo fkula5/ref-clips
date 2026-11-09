@@ -1,0 +1,15 @@
+{
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+  "bootstrap-sha": "19d41f5f8aaabce70e2affa7f3fbf59ffb0606a8",
+  "include-component-in-tag": false,
+  "include-v-in-tag": true,
+  "pull-request-title-pattern": "chore: wydanie v${version}",
+  "pull-request-header": ":robot: Wydanie przygotowane automatycznie. Merge tego PR-a tworzy tag i GitHub Release, buduje obraz Dockera i wdraża go na serwer (docs/ci-cd.md).",
+  "packages": {
+    ".": {
+      "release-type": "simple",
+      "changelog-path": "CHANGELOG.md",
+      "version-file": "version.txt"
+    }
+  }
+}
