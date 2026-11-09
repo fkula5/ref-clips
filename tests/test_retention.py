@@ -5,6 +5,7 @@ import time
 from datetime import timedelta
 
 import pytest
+from sqlalchemy.exc import OperationalError
 
 from app import config, retention, services, worker
 from app.models import Clip, Job, Setting, Video
@@ -208,6 +209,76 @@ def test_cut_job_for_purged_video_fails_with_clear_message(db):
     assert fresh(db, Clip, clip.id).status == "error" and "usunięte" in fresh(db, Clip, clip.id).error
 
 
+def test_purge_commit_failure_keeps_files_and_video_untouched(db, monkeypatch):
+    video = ready(db, expires_in_days=-1)
+    key = video.proxy_path
+    clip = clip_for(db, video, status="cut")
+    db.expire_all()
+    video = db.get(Video, video.id)
+
+    def broken_commit():
+        raise OperationalError("COMMIT", {}, Exception("database is locked"))
+
+    monkeypatch.setattr(db, "commit", broken_commit)
+    with pytest.raises(OperationalError):
+        retention.purge_video(db, video)
+    monkeypatch.undo()
+    assert storage.exists(key)                                         # plik nietknięty
+    video = fresh(db, Video, video.id)
+    assert video.purged_at is None and video.proxy_path == key and fresh(db, Clip, clip.id).status == "cut"
+
+
+def test_run_retention_skips_video_when_commit_fails_and_retries_later(db, monkeypatch):
+    first, second = ready(db, expires_in_days=-2), ready(db, expires_in_days=-1)
+    first_key, second_key = first.proxy_path, second.proxy_path
+    real_commit, calls = db.commit, []
+
+    def flaky_commit():
+        calls.append(1)
+        if len(calls) == 1:
+            raise OperationalError("COMMIT", {}, Exception("database is locked"))
+        real_commit()
+
+    monkeypatch.setattr(db, "commit", flaky_commit)
+    result = retention.run_retention(db)
+    monkeypatch.undo()
+    assert result.purged == [second.id] and [v for v, _ in result.skipped] == [first.id]
+    assert storage.exists(first_key) and not storage.exists(second_key)
+    assert retention.run_retention(db).purged == [first.id]            # następny przebieg kończy robotę
+
+
+def test_purge_file_delete_failure_is_only_a_warning_and_orphan_is_cleaned_later(db, monkeypatch, caplog):
+    video = ready(db, expires_in_days=-1)
+    key = video.proxy_path
+    real_delete = storage.delete
+
+    def broken_delete(k):
+        raise PermissionError("brak uprawnień")
+
+    monkeypatch.setattr(storage, "delete", broken_delete)
+    with caplog.at_level("WARNING", logger="retention"):
+        result = retention.run_retention(db)                           # brak wyjątku
+    monkeypatch.setattr(storage, "delete", real_delete)
+    assert result.purged == [video.id] and not result.skipped
+    assert any("Nie udało się usunąć pliku" in r.message for r in caplog.records)
+    video = fresh(db, Video, video.id)
+    assert video.purged_at is not None and video.proxy_path is None and video.proxy_bytes is None
+    assert storage.exists(key)                                         # plik-sierota został
+    # świeża sierota zostaje (może być w użyciu), stara znika
+    assert retention.cleanup_orphan_videos(db) == 0
+    old = time.time() - config.ORPHAN_MIN_AGE_SECONDS - 60
+    os.utime(storage.local_path(key), (old, old))
+    assert retention.cleanup_orphan_videos(db) == 1 and not storage.exists(key)
+
+
+def test_manual_purge_route_survives_file_delete_failure(client, db, monkeypatch):
+    video = ready(db, expires_in_days=20)
+    monkeypatch.setattr(storage, "delete", lambda k: (_ for _ in ()).throw(OSError("dysk")))
+    r = client.post(f"/admin/videos/{video.id}/purge", follow_redirects=False)
+    assert r.status_code in (200, 303)
+    assert fresh(db, Video, video.id).purged_at is not None
+
+
 # --- ręczne usunięcie pełnego nagrania ----------------------------------------------------------
 def test_manual_purge_removes_draft_and_keeps_clips(client, db):
     video = ready(db, expires_in_days=20)
@@ -321,6 +392,36 @@ def test_maintenance_cleans_orphan_clip_files(db):
     write_clip_file("clips/123_v1.mp4", age_seconds=config.ORPHAN_MIN_AGE_SECONDS + 60)
     worker.run_maintenance()
     assert not storage.exists("clips/123_v1.mp4")
+
+
+def test_orphan_video_files_are_removed_only_when_old_unused_and_not_converting(db):
+    old_age = config.ORPHAN_MIN_AGE_SECONDS + 600
+    ok = ready(db, original_path="uploads/1_zachowany.mp4")                  # pliki znane z bazy
+    ok.proxy_path = "proxies/1.mp4"
+    converting = ready(db, status="processing", original_path="uploads/2_w_konwersji.mp4")
+    db.commit()
+    for key in (ok.original_path, ok.proxy_path, converting.original_path):
+        write_clip_file(key, age_seconds=old_age)
+    write_clip_file(f"proxies/{converting.id}.part.mp4", age_seconds=old_age)   # trwająca konwersja
+    write_clip_file("proxies/501.mp4", age_seconds=old_age)                     # nagranie usunięte: sierota
+    write_clip_file("proxies/502.part.mp4", age_seconds=old_age)                # sierota po przerwanej konwersji
+    write_clip_file("uploads/503_stary_oryginal.mp4", age_seconds=old_age)      # sierota
+    write_clip_file("proxies/504.mp4", age_seconds=60)                          # świeża: zostaje
+    write_clip_file("uploads/tus-abc.part", age_seconds=old_age)                # trwający upload: nie nasze
+    write_clip_file("uploads/notatka.txt", age_seconds=old_age)                 # obcy plik: zostaje
+    assert retention.cleanup_orphan_videos(db) == 3
+    for key in (ok.original_path, ok.proxy_path, converting.original_path, f"proxies/{converting.id}.part.mp4",
+                "proxies/504.mp4", "uploads/tus-abc.part", "uploads/notatka.txt"):
+        assert storage.exists(key), key
+    for key in ("proxies/501.mp4", "proxies/502.part.mp4", "uploads/503_stary_oryginal.mp4"):
+        assert not storage.exists(key), key
+    assert retention.cleanup_orphan_videos(db) == 0                              # idempotentne
+
+
+def test_maintenance_cleans_orphan_video_files(db):
+    write_clip_file("proxies/777.mp4", age_seconds=config.ORPHAN_MIN_AGE_SECONDS + 60)
+    worker.run_maintenance()
+    assert not storage.exists("proxies/777.mp4")
 
 
 # --- oznaczenie „dostępne jeszcze X dni” ------------------------------------------------------------

@@ -83,8 +83,9 @@
 - [ ] Konflikty aliasów wykrywamy tylko na równość znormalizowanych napisów; aliasy będące fragmentem innych (np. „blok” i „blok / szarża”) rozstrzyga parser (dłuższy alias wygrywa), bez ostrzeżenia w panelu.
 - [ ] Zmiana `retention_days` z przeliczeniem nadaje termin także nagraniom bez terminu (`expires_at` NULL, np. sprzed wprowadzenia retencji); bez przeliczenia takie nagrania nigdy nie wygasają.
 - [ ] Daty w panelu retencji są w UTC, jak w reszcie aplikacji; „dostępne jeszcze X dni” zaokrągla w górę do pełnych dni.
-- [ ] `retention.purge_video` usuwa pliki przed zapisem `purged_at` w bazie; jeśli commit się nie uda (np. zajęta baza), nagranie zostaje „gotowe” bez pliku do najbliższego przebiegu retencji. Bezpieczniejsza kolejność: najpierw `purged_at` (commit), potem pliki, a nieudane usunięcie pliku zostawić sprzątaniu.
+- [x] `retention.purge_video` usuwał pliki przed zapisem `purged_at` w bazie. Naprawione (`fix/review-cleanup`): najpierw zapis i commit w bazie, potem kasowanie plików; nieudane kasowanie to tylko ostrzeżenie w logu, a plik-sierotę zabiera nowy krok `retention.cleanup_orphan_videos` (godzinne sprzątanie workera: `uploads/<id>_*`, `proxies/<id>[.part].mp4`; tylko pliki starsze niż `ORPHAN_MIN_AGE_SECONDS`, nieznane z bazy i nie należące do nagrania w trakcie wgrywania/konwersji). Błąd bazy przy zapisie w `run_retention` pomija nagranie do następnego przebiegu.
 - [ ] Formularze panelu admina (kategorie, retencja, usunięcie nagrania) odpowiadają stroną zamiast przekierowania 303 — odświeżenie strony po zapisie wysyła formularz ponownie (tak jak dotychczasowa strona kont).
+- [ ] `cleanup_orphan_videos`: oryginał przenoszony z `uploads/tus-*.part` na `uploads/<id>_nazwa` zachowuje stary czas modyfikacji, a wiersz nagrania jest widoczny dla innych procesów dopiero po commicie — teoretyczne okno na ułamek sekundy, w którym godzinne sprzątanie mogłoby uznać taki plik za sierotę (wymagałoby trafienia dokładnie w ten moment). Gdyby to się zdarzyło: sprawdzać też czas zmiany metadanych (ctime) albo pomijać uploady zakończone w ostatnich minutach.
 
 ## Uwagi z testów UI (2026-11-03)
 
