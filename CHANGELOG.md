@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.2.1](https://github.com/fkula5/ref-clips/compare/v1.2.0...v1.2.1) (2026-11-09)
+
+
+### Bug Fixes
+
+* **ci:** keep a release from failing on the release PR test step ([643c3a0](https://github.com/fkula5/ref-clips/commit/643c3a0d25fbf0268bc7a1e161b13dc00d37d5b0))
+* **ci:** keep a release from failing on the release PR test step ([1b7e4d4](https://github.com/fkula5/ref-clips/commit/1b7e4d4b48942245c0bb287908fe9baacc9dd3ad))
+* **player:** ignore play() interrupted by a quick pause ([d69ee20](https://github.com/fkula5/ref-clips/commit/d69ee202fcbdf0068bedc425c7297629ffffdc41))
+* **player:** ignore play() interrupted by a quick pause ([faaf9d4](https://github.com/fkula5/ref-clips/commit/faaf9d47471b4a4c60835cce4f4932ea034282d1))
+
 ## [1.2.0](https://github.com/fkula5/ref-clips/compare/v1.1.0...v1.2.0) (2026-11-09)
 
 
