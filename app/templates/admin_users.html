@@ -5,6 +5,7 @@
 <h1>Użytkownicy</h1>
 
 {% if error %}<div class="banner error" role="alert">{{ error }}</div>{% endif %}
+{% if notice %}<div class="banner ok" role="status" id="admin-notice">{{ notice }}</div>{% endif %}
 {% if invite_link %}
 <div class="card invite-box">
   <strong>Link dla {{ invite_for.name }} ({{ invite_for.email }})</strong>

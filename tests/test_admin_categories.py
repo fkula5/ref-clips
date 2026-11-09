@@ -259,3 +259,23 @@ def test_admin_post_routes_require_csrf_token(admin, db):
     for path in ("/admin/categories", "/admin/retention", "/admin/categories/1/delete", "/admin/videos/1/purge"):
         assert client.post(path, data={"days": "10"}).status_code == 403, path
     assert db.query(Category).count() > 0 and services.retention_days(db) == 30
+
+
+def test_category_posts_redirect_to_list_with_one_time_notice(admin, db):
+    client = admin[0]
+    r = client.post("/admin/categories", data={"name": "Przekierowanie", "group": "Inne", "aliases": ""},
+                    follow_redirects=False)
+    assert r.status_code == 303 and r.headers["location"] == "/admin/categories"
+    page = client.get("/admin/categories")
+    assert 'id="admin-notice"' in page.text and "Dodano kategorię „Przekierowanie”" in page.text
+    assert 'id="admin-notice"' not in client.get("/admin/categories").text      # po odświeżeniu znika
+    c = cat(db, "Przekierowanie")
+    for path, data in ((f"/admin/categories/{c.id}/update", {"name": "Przekierowanie 2", "group": "Inne", "aliases": ""}),
+                       (f"/admin/categories/{c.id}/active", {"active": "0"}),
+                       (f"/admin/categories/{c.id}/move", {"direction": "down"}),
+                       (f"/admin/categories/{c.id}/delete", {})):
+        r = client.post(path, data=data, follow_redirects=False)
+        assert r.status_code == 303 and r.headers["location"] == "/admin/categories", path
+    # błąd walidacji: strona z kodem błędu i wpisanymi wartościami, bez przekierowania
+    r = client.post("/admin/categories", data={"name": "", "group": "Inne", "aliases": "x"}, follow_redirects=False)
+    assert r.status_code == 422 and 'value="x"' in r.text

@@ -275,7 +275,7 @@ def test_manual_purge_route_survives_file_delete_failure(client, db, monkeypatch
     video = ready(db, expires_in_days=20)
     monkeypatch.setattr(storage, "delete", lambda k: (_ for _ in ()).throw(OSError("dysk")))
     r = client.post(f"/admin/videos/{video.id}/purge", follow_redirects=False)
-    assert r.status_code in (200, 303)
+    assert r.status_code == 303 and r.headers["location"] == "/admin/retention"
     assert fresh(db, Video, video.id).purged_at is not None
 
 
@@ -312,6 +312,24 @@ def test_manual_purge_refused_during_conversion_and_with_pending_cuts(client, db
     assert storage.exists(waiting.proxy_path)
     page = client.get("/admin/retention").text
     assert f'action="/admin/videos/{waiting.id}/purge"' not in page and "nie teraz" in page
+
+
+def test_retention_admin_posts_redirect_and_flash_once(client, db):
+    video = ready(db, expires_in_days=20)
+    r = client.post("/admin/retention", data={"days": "14"}, follow_redirects=False)
+    assert r.status_code == 303 and r.headers["location"] == "/admin/retention"
+    page = client.get("/admin/retention").text
+    assert 'id="admin-notice"' in page and "14 dni" in page
+    assert 'id="admin-notice"' not in client.get("/admin/retention").text       # komunikat tylko raz
+    assert services.retention_days(db) == 14
+    r = client.post(f"/admin/videos/{video.id}/purge", follow_redirects=False)
+    assert r.status_code == 303 and r.headers["location"] == "/admin/retention"
+    assert "Usunięto pełne nagranie" in client.get("/admin/retention").text
+    # błędy zostają stroną z kodem błędu i wartościami (bez przekierowania)
+    r = client.post("/admin/retention", data={"days": "0"}, follow_redirects=False)
+    assert r.status_code == 422 and 'value="0"' in r.text
+    r = client.post(f"/admin/videos/{video.id}/purge", follow_redirects=False)
+    assert r.status_code == 409
 
 
 # --- trasy zapisu na usuniętym nagraniu -----------------------------------------------------------

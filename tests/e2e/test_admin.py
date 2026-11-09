@@ -18,8 +18,15 @@ def test_dodanie_konta_link_zaproszenia_i_logowanie_nowym_kontem(ui):
     expect(admin.locator(".invite-box")).to_contain_text("Nowy Sędzia (nowy.sedzia@example.com)")
     invite_url = link_box.input_value()
     assert "/set-password/" in invite_url
+    # PRG: po zapisie jesteśmy na zwykłym adresie listy kont (token nie leci w adresie), a odświeżenie
+    # strony nie wysyła formularza ponownie i nie pokazuje linku drugi raz
+    expect(admin).to_have_url(ui.server.base_url + "/admin/users")
     # nowe konto na liście czeka na ustawienie hasła
     expect(admin.locator("tr", has_text="nowy.sedzia@example.com")).to_contain_text("czeka na ustawienie hasła")
+    admin.reload()
+    expect(admin.get_by_role("heading", name="Konta")).to_be_visible()
+    expect(admin.locator("#invite-link")).to_have_count(0)
+    assert ui.server.user_by_email("nowy.sedzia@example.com") is not None
 
     # Link otwiera osoba zapraszana — osobny kontekst (bez sesji admina).
     guest = ui.page()
@@ -38,6 +45,10 @@ def test_dodanie_konta_link_zaproszenia_i_logowanie_nowym_kontem(ui):
     expect(guest.locator(".who")).to_contain_text("Nowy Sędzia")
     expect(guest.get_by_role("link", name="+ Nowy mecz")).to_be_visible()  # role sędziego i szkoleniowca
     expect(guest.get_by_role("link", name="Użytkownicy")).to_have_count(0)
+
+    # Token nie zostaje w dzienniku dostępu serwera (ani w przekierowaniu po utworzeniu konta, ani w linku).
+    token = invite_url.rsplit("/", 1)[-1]
+    assert token not in (ui.server.logs / "server.log").read_text(errors="replace")
 
     # Link jest jednorazowy: ponowne otwarcie pokazuje komunikat o nieważnym linku.
     ui.allow(r"status of 410")
