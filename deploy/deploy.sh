@@ -180,6 +180,12 @@ if [ "$2" != 1 ] && "${DOCKER[@]}" compose ps --status running --services | grep
 fi
 
 "${DOCKER[@]}" compose up -d --remove-orphans --wait --wait-timeout 300
+# Caddyfile jest zamontowany jako pojedynczy plik, a wysyłka tworzy go na nowo: działający Caddy dalej
+# widzi starą treść i compose go nie odtwarza. Po zmianie konfiguracji trzeba go zrestartować.
+if ! "${DOCKER[@]}" compose exec -T caddy cat /etc/caddy/Caddyfile | cmp -s - deploy/Caddyfile; then
+  echo "--- Caddyfile się zmienił, restart Caddy:"
+  "${DOCKER[@]}" compose restart caddy
+fi
 echo "--- status:"
 "${DOCKER[@]}" compose ps
 echo "--- sprzątanie nieużywanych obrazów:"
