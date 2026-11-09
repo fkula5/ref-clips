@@ -184,6 +184,30 @@ znacznik życia młodszy niż 3 minuty); `docker compose ps` pokaże `unhealthy`
 `docker compose restart worker`. Znacznik bije wątek, nie pętla zadań, więc wiszący (zablokowany) ffmpeg go nie
 przeterminuje; takie zadanie widać w panelu jako konwersję bez postępu.
 
+## Linki do klipów bez konta (`/s/<kod>`)
+
+Pierwsza funkcja dostępna bez logowania: osoba z linkiem ogląda i pobiera klipy. Domyślnie pokazujemy jak najmniej.
+
+- **Co widać publicznie:** wideo, liga (`Match.level`) i kategoria decyzji (`Clip.category_label`). Nie ma nazwisk
+  sędziów, drużyn, daty i godziny meczu, opisów, ocen, komentarzy, nawigacji ani nazwy użytkownika, który udostępnił
+  (także w nazwach plików i w ZIP-ie). **Uwaga:** tekst wpisany ręcznie jako kategoria „własna” oraz liga są wolnym
+  tekstem i też są publiczne; przy tworzeniu linku strona pokazuje, co zobaczy odbiorca.
+- **Kod poza logami:** kod (256 bitów losowości) jest tylko w adresie. Filtr dziennika Caddy (`deploy/Caddyfile`, adres
+  żądania i Referer) oraz dziennika aplikacji (`app/logfilter.py`) zamienia go na `/s/[ukryty]`, reszta ścieżki zostaje.
+  W bazie jest wyłącznie skrót SHA-256. Zmiana `Caddyfile` wymaga restartu Caddy: `deploy/deploy.sh` robi to sam.
+  Sprawdzenie po wdrożeniu: `docker compose logs caddy | grep '"/s/'` nie może pokazać kodu.
+- **Nagłówki:** na `/s/*` aplikacja ustawia `X-Robots-Tag: noindex, nofollow`, `Referrer-Policy: no-referrer`,
+  `Cache-Control: no-store` (plik wideo: `private, no-store`, Range działa). Caddy nie nadpisuje `Referrer-Policy` na tej ścieżce.
+- **Ważność i unieważnianie:** 1, 7 albo 30 dni, bez linków bezterminowych; unieważnia twórca albo administrator.
+  Unieważnienie nie cofa plików już pobranych. Wygasłe i unieważnione linki zostają w bazie (bez czyszczenia).
+- **ZIP:** budowany w `DATA_DIR/tmp`, usuwany po wysłaniu; najwyżej `SHARE_ZIP_MAX_PARALLEL` (2) naraz, kolejne dostają
+  503, tak samo przy braku wolnego miejsca. Pozostałości po awarii sprząta worker (pliki `.zip` w `tmp/` starsze niż godzina).
+- **Przy pierwszym wdrożeniu tej funkcji:** migracja `mvp0005` wykonuje się sama (usługa `init`). Klipy wycięte wcześniej mogą
+  mieć metadane pliku źródłowego (tytuł, lokalizacja GPS, data nagrania); nowe już ich nie mają. Jednorazowo wyczyść stare
+  (bez przekodowania, idempotentne):
+  `COMPOSE_FILE=compose.yaml:compose.prod.yaml docker compose exec -T app python -m app.strip_metadata`.
+- **Podgląd przez komunikatory:** roboty podglądu linków (np. Messenger) mogą otworzyć stronę i zwiększyć licznik wejść.
+
 ## Kopie zapasowe
 
 `deploy/backup.sh` (timer: codziennie ok. 03:30 UTC) tworzy migawkę `/var/backups/ref-clips/RRRR-MM-DD`:

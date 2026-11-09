@@ -98,6 +98,16 @@ Priorytet: **M** = musi być w MVP · **S** = warto mieć · **P** = później (
 | K-05 | Eksport ZIP: wybrane klipy + `opisy.csv` | ✅ | |
 | K-06 | Usunięcie klipu | ✅ | |
 | K-07 | Playlista: zestaw klipów do omówienia (kolejność, tytuł) | ⬜ | |
+| K-08 | Link do jednego albo kilku klipów dla osób **bez konta** (`/s/<kod>`): oglądanie i pobranie (MP4 albo jeden ZIP), ważność 1/7/30 dni, unieważnianie, lista linków i liczba wejść przy klipie | ✅ | |
+
+**K-08, szczegóły.** Tworzą: administrator, szkoleniowiec i autor znacznika (`Clip.author_id`); zaznaczenie na liście
+klipów (`/clips`, zakładka meczu) albo przycisk na stronie klipu. Gdy w zaznaczeniu jest klip niedozwolony albo
+niewycięty, cały formularz zwraca błąd i nic się nie tworzy. W linku najwyżej 30 klipów. Unieważnia twórca linku albo
+administrator. Pełny adres widać **raz**, zaraz po utworzeniu (potem w bazie jest tylko skrót kodu). Strona publiczna
+pokazuje wyłącznie wideo, ligę i kategorię decyzji — bez nazwisk, drużyn, daty, opisów, ocen, komentarzy i nawigacji
+aplikacji; nazwa pliku to `liga_decyzja.mp4` (np. `III-liga_blok-szarza.mp4`), w ZIP-ie powtórzenia dostają `_2`, `_3`.
+Zalogowani nadal pobierają klipy z nazwiskiem sędziego. Odbiorca linku może go przesłać dalej, a unieważnienie nie cofa
+pobranych plików. Uwaga: tekst wpisany ręcznie jako kategoria „własna” oraz pole „liga” meczu są publiczne.
 
 ### 4.6 Komentarze i ocena
 
