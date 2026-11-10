@@ -6,7 +6,7 @@ from __future__ import annotations
 import datetime as dt
 from datetime import datetime
 
-from sqlalchemy import (BigInteger, Boolean, CheckConstraint, Date, DateTime, Float, ForeignKey,
+from sqlalchemy import (BigInteger, Boolean, CheckConstraint, Date, DateTime, Float, ForeignKey, Index,
                         Integer, String, Text, UniqueConstraint, func)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -27,6 +27,11 @@ RATING_VERDICTS = {"correct": "prawidłowa", "incorrect": "nieprawidłowa", "deb
 PERIODS = ["Q1", "Q2", "Q3", "Q4", "OT1", "OT2", "OT3"]
 SHEET_DIFFICULTIES = {"latwy": "łatwy", "normalny": "normalny", "trudny": "trudny"}
 SHEET_STATUSES = {"draft": "szkic", "published": "opublikowany"}
+NOTIFICATION_KINDS = {
+    "rating": "nowa ocena klipu", "rating_changed": "zmieniona ocena klipu",
+    "clip_comment": "komentarz do klipu", "match_comment": "komentarz do meczu",
+    "sheet_published": "opublikowany arkusz oceny",
+}
 
 
 def _in(column: str, values) -> str:
@@ -129,10 +134,14 @@ class Match(Base):
     sheets: Mapped[list[Sheet]] = relationship(
         back_populates="match", cascade="all, delete-orphan", order_by="Sheet.id")
 
-    def _title(self, date_text: str) -> str:
+    @property
+    def teams(self) -> str:
         a = self.team_a_name or self.team_a_color or "A"
         b = self.team_b_name or self.team_b_color or "B"
-        return f"{date_text} · {a} – {b}"
+        return f"{a} – {b}"
+
+    def _title(self, date_text: str) -> str:
+        return f"{date_text} · {self.teams}"
 
     @property
     def title(self) -> str:
@@ -499,6 +508,39 @@ class ShareLinkClip(Base):
 
     link: Mapped[ShareLink] = relationship(back_populates="items")
     clip: Mapped[Clip] = relationship()
+
+
+class Notification(Base):
+    """Created in the transaction of the event. Deleting the target match, clip or sheet deletes its
+    notifications (a link to it would lead nowhere); deleting a comment or rating leaves them. `match_id`
+    is always set, `clip_id` for clip kinds, `sheet_id` for sheets, `verdict` for ratings.
+    """
+    __tablename__ = "notifications"
+    __table_args__ = (
+        CheckConstraint(_in("kind", NOTIFICATION_KINDS), name="kind_valid"),
+        CheckConstraint("verdict IS NULL OR " + _in("verdict", RATING_VERDICTS), name="verdict_valid"),
+        Index("ix_notifications_unread", "recipient_id", "read_at"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    recipient_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    kind: Mapped[str] = mapped_column(String(20))
+    actor_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    match_id: Mapped[int] = mapped_column(ForeignKey("matches.id", ondelete="CASCADE"), index=True)
+    clip_id: Mapped[int | None] = mapped_column(ForeignKey("clips.id", ondelete="CASCADE"), index=True)
+    sheet_id: Mapped[int | None] = mapped_column(ForeignKey("sheets.id", ondelete="CASCADE"), index=True)
+    verdict: Mapped[str | None] = mapped_column(String(20))
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    read_at: Mapped[datetime | None] = mapped_column(DateTime)
+
+    actor: Mapped[User | None] = relationship(foreign_keys=[actor_id])
+    match: Mapped[Match] = relationship()
+    clip: Mapped[Clip | None] = relationship()
+    sheet: Mapped[Sheet | None] = relationship()
+
+    @property
+    def is_unread(self) -> bool:
+        return self.read_at is None
 
 
 class Job(Base):

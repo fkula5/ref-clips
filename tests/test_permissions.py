@@ -5,7 +5,7 @@ import pytest
 from sqlalchemy import select
 
 from app import permissions as p
-from app.models import Clip, Comment, Match, MatchOfficial, Rating, ShareLink, Sheet, User, Video
+from app.models import Clip, Comment, Match, MatchOfficial, Notification, Rating, ShareLink, Sheet, User, Video
 from tests.helpers import (TUS, category_named, make_match, make_ready_video, make_user, mark_periods, tus_create,
                            tus_metadata)
 
@@ -175,6 +175,9 @@ ROWS = [
             "coach": (True, True, False, True, True), "referee": (True, True, False, True, False),
             "admin+coach": (True, True, False, True, True), "admin+referee": (True, True, False, True, True),
             "coach+referee": (True, True, False, True, True)}),
+    # notifications: only the recipient (own / foreign)
+    _row("podgląd powiadomienia", lambda u, n: p.can_view_notification(u, n),
+         [Notification(recipient_id=ME), Notification(recipient_id=OTHER)], **{k: (True, False) for k in ROLE_SETS}),
 ]
 
 
@@ -202,6 +205,8 @@ def test_crew_membership_counts_only_accounts_not_typed_names():
 def test_inactive_user_and_anonymous_have_no_access():
     inactive = user(["admin"], active=False)
     assert not p.can_view(inactive) and not p.can_comment(inactive)
+    assert not p.can_view_notification(inactive, Notification(recipient_id=ME))
+    assert not p.can_view_notification(None, Notification(recipient_id=ME))
     assert not p.can_view(None) and not p.can_manage_users(None) and not p.can_create_match(None)
     assert not p.can_upload_to_match(None, match(in_crew=True))
     assert not p.can_share_clip(inactive, clip(author=ME)) and not p.can_share_clip(None, clip())

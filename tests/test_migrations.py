@@ -12,7 +12,7 @@ EXPECTED_TABLES = {
     "users", "user_roles", "sessions", "invites", "login_attempts", "matches", "match_officials",
     "videos", "upload_sessions", "period_marks", "categories", "clips", "ratings", "comments",
     "jobs", "settings", "upload_rejections", "share_links", "share_link_clips",
-    "sheet_elements", "sheets", "sheet_columns", "sheet_rows", "sheet_cells",
+    "sheet_elements", "sheets", "sheet_columns", "sheet_rows", "sheet_cells", "notifications",
 }
 
 
@@ -195,3 +195,44 @@ def test_sheet_migration_seeds_elements_and_cascades(tmp_path):
         assert conn.execute(text("SELECT count(*) FROM sheet_elements")).scalar() == 10
     command.downgrade(cfg, "mvp0005")
     assert not {"sheets", "sheet_elements", "sheet_cells"} & set(inspect(create_engine(url)).get_table_names())
+
+
+def test_notifications_migration_is_additive_and_cascades(tmp_path):
+    from sqlalchemy import text
+
+    url = f"sqlite:///{tmp_path / 'm.db'}"
+    cfg = _config(url)
+    command.upgrade(cfg, "mvp0006")
+    assert "notifications" not in inspect(create_engine(url)).get_table_names()
+    command.upgrade(cfg, "head")
+    engine = create_engine(url)
+    assert {"ix_notifications_unread", "ix_notifications_clip_id"} <= {i["name"] for i in inspect(engine).get_indexes("notifications")}
+    with engine.begin() as conn:
+        conn.execute(text("PRAGMA foreign_keys=ON"))
+        for i in (1, 2):
+            conn.execute(text(f"INSERT INTO users (id, email, name, is_active) VALUES ({i}, 'u{i}@b.pl', 'U', 1)"))
+        conn.execute(text("INSERT INTO matches (id, date, level, team_a_name, team_a_color, team_b_name, team_b_color) "
+                          "VALUES (1, '2026-10-28', '', '', '', '', '')"))
+        conn.execute(text("INSERT INTO videos (id, match_id, size_bytes, content, status, label, original_filename) "
+                          "VALUES (1, 1, 1, 'full', 'ready', '', '')"))
+        conn.execute(text("INSERT INTO clips (id, match_id, video_id, whole_team, time_sec, margin_before, margin_after, "
+                          "description, status, clip_version) VALUES (1, 1, 1, 0, 10, 15, 15, '', 'cut', 1)"))
+        conn.execute(text("INSERT INTO notifications (recipient_id, kind, actor_id, match_id, clip_id, verdict) "
+                          "VALUES (1, 'rating', 2, 1, 1, 'correct'), (1, 'match_comment', 2, 1, NULL, NULL)"))
+        assert conn.execute(text("SELECT count(*) FROM notifications WHERE read_at IS NULL")).scalar() == 2
+        assert compare_metadata(MigrationContext.configure(conn), Base.metadata) == []
+    for sql in ("INSERT INTO notifications (recipient_id, kind, match_id) VALUES (1, 'bogus', 1)",
+                "INSERT INTO notifications (recipient_id, kind, match_id, verdict) VALUES (1, 'rating', 1, 'bogus')"):
+        with engine.begin() as conn, pytest.raises(Exception):
+            conn.execute(text("PRAGMA foreign_keys=ON"))
+            conn.execute(text(sql))
+    with engine.begin() as conn:
+        conn.execute(text("PRAGMA foreign_keys=ON"))
+        conn.execute(text("DELETE FROM users WHERE id = 2"))
+        assert conn.execute(text("SELECT count(*) FROM notifications WHERE actor_id IS NULL")).scalar() == 2
+        conn.execute(text("DELETE FROM clips"))
+        assert conn.execute(text("SELECT kind FROM notifications")).scalars().all() == ["match_comment"]
+        conn.execute(text("DELETE FROM users WHERE id = 1"))
+        assert conn.execute(text("SELECT count(*) FROM notifications")).scalar() == 0
+    command.downgrade(cfg, "mvp0006")
+    assert "notifications" not in inspect(create_engine(url)).get_table_names()

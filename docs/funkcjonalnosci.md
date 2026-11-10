@@ -141,7 +141,7 @@ field are public.
 | G-02 | Roles referee / coach / admin and permissions | ⬜ | |
 | G-03 | Clip visibility: private / group / library | ⬜ (the field exists in the database) | |
 | G-04 | Tasks from the coach („describe the situation at 3:17”) and the referee's task list | ⬜ | |
-| G-05 | In-app notifications (new comment, new task) | ⬜ | |
+| G-05 | In-app notifications (bell with the unread count, list at `/notifications`): new or changed rating and new comment on a clip, new comment on a match, first publication of an assessment sheet; to the crew, the clip author or match creator and earlier commenters, never to the actor; read ones vanish after 30 days, unread after 90; no e-mail, no tasks yet | ✅ | |
 | G-06 | Training library: search by tags, model rating, option to hide surnames | ⬜ | |
 
 ### 4.9 Deployment and automation (stage 3)

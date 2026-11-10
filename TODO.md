@@ -142,6 +142,19 @@
 - [ ] Printing checked in Chromium (`print` emulation, A4 snapshot), not in Safari/Firefox or on a real printer; the page breaks of a long sheet are worth reviewing manually.
 - [ ] Only one coach sheet per match; two qualifiers assessing the same match see each other's published sheets (list on the match page). Build a „comparison” or hiding if it becomes a problem.
 
+## Notes from notifications (minor, postponed)
+
+- [ ] Opening a clip, match or sheet directly (not through the notification) leaves the related notifications unread; consider marking those of the target read when its page is opened.
+- [ ] Every event gets its own notification, so a coach flipping a verdict three times sends three; consider merging unread notifications of the same kind and target into one.
+- [ ] A comment notification links to `#komentarze`, not to the comment itself (the notification does not store the comment id).
+- [ ] The wording is deliberately neutral („Imię Nazwisko: nowa ocena klipu …”) because the app does not know a person's grammatical gender.
+- [ ] A coach whose verdict an admin changed gets nothing, and coaches who rated a clip but never commented are not told about its comments (recipient sets as decided). Revisit if people miss them.
+- [ ] A notification is opened with a POST form, so „open in a new tab” and middle click do not work on the list lines.
+- [ ] A referee removed from the crew still holds the sheet notification, but the link then answers 404 (the sheet is visible only to the current crew).
+- [ ] No per-user settings (muting a match or a kind of event) and no e-mail; the bell checks for news every minute and when the tab becomes visible again, not in real time.
+- [ ] The count in the top bar is read with its own short database session on every page; if that ever shows up in profiling, cache it per request.
+- [ ] Not checked in Safari or on a real phone (Chromium at 390 px only).
+
 ## Plan (set 2026-11-09)
 
 1. `v1.0.1` fixes: times in Polish time, aborting a hung ffmpeg, description from the `M` marker without repetitions, a stable `Z` key test.

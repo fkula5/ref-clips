@@ -6,7 +6,7 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
-from app import config
+from app import config, notify
 from app.models import RATING_VERDICTS, Clip, Comment, Rating
 from app.timeutil import utcnow
 
@@ -45,6 +45,7 @@ def create_comment(db: Session, author_id: int, body: str, *, clip_id: int | Non
                       body=clean_text(body, label="Komentarz", required=True))
     db.add(comment)
     db.flush()
+    notify.comment_added(db, comment)
     return comment
 
 
@@ -65,15 +66,18 @@ def _own_rating(db: Session, clip_id: int, coach_id: int) -> Rating | None:
     return db.scalar(select(Rating).where(Rating.clip_id == clip_id, Rating.coach_id == coach_id))
 
 
-def edit_rating(rating: Rating, verdict: str, comment: str) -> None:
+def edit_rating(db: Session, rating: Rating, verdict: str, comment: str, actor_id: int) -> None:
     """The author (`coach_id`) stays unchanged even when an admin edits; `updated_at` moves only on a
-    real change because "changed" relies on it.
+    real change because "changed" relies on it. Only a changed verdict is announced, not a reworded comment.
     """
     verdict = clean_verdict(verdict)
     comment = clean_text(comment, label="Komentarz do oceny", required=False)
     if (verdict, comment) != (rating.verdict, rating.comment):
+        verdict_changed = verdict != rating.verdict
         rating.verdict, rating.comment = verdict, comment
         rating.updated_at = utcnow()
+        if verdict_changed:
+            notify.rating_saved(db, rating, actor_id, changed=True)
 
 
 def save_own_rating(db: Session, clip: Clip, coach_id: int, verdict: str, comment: str) -> Rating:
@@ -90,13 +94,15 @@ def save_own_rating(db: Session, clip: Clip, coach_id: int, verdict: str, commen
         db.add(rating)
         try:
             db.flush()
-            return rating
         except IntegrityError:
             db.rollback()
             rating = _own_rating(db, clip.id, coach_id)
             if rating is None:
                 raise
-    edit_rating(rating, verdict, comment)
+        else:
+            notify.rating_saved(db, rating, coach_id, changed=False)
+            return rating
+    edit_rating(db, rating, verdict, comment, coach_id)
     return rating
 
 

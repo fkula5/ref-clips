@@ -10,7 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app import config, permissions, sheet_elements
+from app import config, notify, permissions, sheet_elements
 from app.models import SHEET_DIFFICULTIES, Match, Sheet, SheetCell, SheetColumn, SheetRow, User
 from app.timeutil import utcnow
 
@@ -203,6 +203,7 @@ def save(db: Session, sheet: Sheet, posted: dict[str, str], *, publish: bool = F
     now = utcnow()
     if publish and not sheet.is_published:
         sheet.status, sheet.published_at, sheet.updated_at = "published", now, now
+        notify.sheet_published(db, sheet)
         return True
     if changed:
         sheet.updated_at = now
