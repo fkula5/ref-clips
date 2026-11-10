@@ -31,7 +31,7 @@ def clip_times(page):
     return page.locator("#clips-list tbody tr td[data-label='Czas w nagraniu']").all_inner_texts()
 
 
-def test_filtry_zakladki_klipow_przez_htmx(ui):
+def test_clips_tab_filters_via_htmx(ui):
     page, match_id, _, ids = setup_tab(ui)
     expect(page.locator("#clips-head h2")).to_have_text("Klipy (6, nieopisane: 2)")
     expect(rows(page)).to_have_count(6)
@@ -80,7 +80,7 @@ def test_filtry_zakladki_klipow_przez_htmx(ui):
     expect(page).to_have_url(re.compile(rf"/matches/{match_id}#klipy$"))
 
 
-def test_przycisk_wstecz_przywraca_poprzedni_filtr(ui):
+def test_back_button_restores_the_previous_filter(ui):
     page, match_id, _, _ = setup_tab(ui)
     page.locator("select[name=period]").select_option("Q2")
     expect(rows(page)).to_have_count(3)
@@ -91,7 +91,7 @@ def test_przycisk_wstecz_przywraca_poprzedni_filtr(ui):
     expect(rows(page)).to_have_count(3)
 
 
-def test_filtry_dzialaja_bez_javascriptu(ui):
+def test_filters_work_without_javascript(ui):
     _, match_id, _, _ = setup_tab(ui)
     page = ui.page("admin", java_script_enabled=False)
     page.goto(f"/matches/{match_id}")
@@ -105,7 +105,7 @@ def test_filtry_dzialaja_bez_javascriptu(ui):
     expect(page.locator("select[name=described] option:checked")).to_have_text("opisane")
 
 
-def test_zakladka_klipow_na_telefonie_to_karty_z_dzialajacymi_filtrami(ui):
+def test_clips_tab_on_a_phone_is_cards_with_working_filters(ui):
     page, match_id, _, _ = setup_tab(ui, mobile=True)
     assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth")
     first = rows(page).first
@@ -122,7 +122,7 @@ def test_zakladka_klipow_na_telefonie_to_karty_z_dzialajacymi_filtrami(ui):
     assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth")
 
 
-def test_nawigacja_poprzedni_nastepny_wg_filtrow_z_ktorych_przyszedl_uzytkownik(ui):
+def test_previous_next_navigation_follows_the_filters_the_user_came_from(ui):
     page, match_id, _, ids = setup_tab(ui)
     page.locator("select[name=described]").select_option(label="opisane")
     expect(rows(page)).to_have_count(4)
@@ -152,7 +152,7 @@ def test_nawigacja_poprzedni_nastepny_wg_filtrow_z_ktorych_przyszedl_uzytkownik(
     expect(page.locator("#next-clip")).to_contain_text("0:20")
 
 
-def test_strona_klipu_pokazuje_pelny_opis_oceny_i_link_do_nagrania(ui):
+def test_clip_page_shows_full_description_ratings_and_link_to_the_recording(ui):
     page, match_id, video_id, ids = setup_tab(ui)
     page.goto(f"/clips/{ids['t2']}")
     info = page.locator("#clip-info")
@@ -163,7 +163,7 @@ def test_strona_klipu_pokazuje_pelny_opis_oceny_i_link_do_nagrania(ui):
     expect(page).to_have_url(re.compile(rf"/videos/{video_id}\?t=45"))
 
 
-def test_klip_w_bledzie_ciecia_ma_wytnij_ponownie_i_usun(ui):
+def test_clip_with_a_cut_error_offers_recut_and_delete(ui):
     match_id = ui.server.make_match()
     video_id = ui.server.make_ready_video(match_id, content="Q1,Q2")
     ui.server.set_mark(video_id, "Q1", 5.0)
@@ -193,7 +193,7 @@ def test_klip_w_bledzie_ciecia_ma_wytnij_ponownie_i_usun(ui):
     assert download.value.suggested_filename == "II-liga.mp4"
 
 
-def test_nazwa_pobieranego_pliku_po_opisie_i_zmianie_kategorii(ui):
+def test_download_file_name_after_description_and_category_change(ui):
     match_id = ui.server.make_match()
     video_id = ui.server.make_ready_video(match_id, content="Q1,Q2")
     ui.server.set_mark(video_id, "Q1", 5.0)

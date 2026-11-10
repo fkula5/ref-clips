@@ -37,7 +37,7 @@ def wait_time(page: Page, seconds: float, tolerance: float = 0.2) -> None:
     page.wait_for_function(f"Math.abs({VIDEO}.currentTime - {seconds}) <= {tolerance}")
 
 
-def test_klawisz_q_ustawia_poczatki_kwart_i_baner_znika(ui):
+def test_q_key_sets_quarter_starts_and_the_banner_disappears(ui):
     ui.allow(r"status of 422")
     page, _, video_id = open_player(ui)
     banner = page.locator("#marks-banner")
@@ -74,7 +74,7 @@ def test_klawisz_q_ustawia_poczatki_kwart_i_baner_znika(ui):
     expect(q1.locator("a")).to_have_text("0:12")
 
 
-def test_zaznacz_podczas_odtwarzania_nie_zatrzymuje_wideo(ui):
+def test_mark_during_playback_does_not_stop_the_video(ui):
     page, _, video_id = open_player(ui)
     seek_to(page, 12)
     page.evaluate(f"{VIDEO}.play()")
@@ -101,7 +101,7 @@ def test_zaznacz_podczas_odtwarzania_nie_zatrzymuje_wideo(ui):
     expect(item.get_by_role("link", name="klip")).to_have_attribute("href", re.compile(r"/clips/\d+"))
 
 
-def test_podwojne_z_to_jeden_znacznik_a_backspace_cofa(ui):
+def test_double_z_is_one_marker_and_backspace_undoes(ui):
     page, _, video_id = open_player(ui)
     seek_to(page, 20)
     press_together(page, "z")  # two Z presses in one browser task: the gap does not depend on machine load
@@ -127,7 +127,7 @@ def test_podwojne_z_to_jeden_znacznik_a_backspace_cofa(ui):
     expect(page.locator("#toast")).to_contain_text("Nie masz nieopisanego znacznika")
 
 
-def test_przewijanie_klatki_tempo_i_pomoc(ui):
+def test_frame_step_speed_and_help(ui):
     page, _, _ = open_player(ui)
     page.evaluate(f"{VIDEO}.pause()")
     seek_to(page, 20)
@@ -182,7 +182,7 @@ def test_przewijanie_klatki_tempo_i_pomoc(ui):
     expect(help_box).to_be_hidden()
 
 
-def test_skroty_nie_dzialaja_przy_pisaniu_a_m_tworzy_znacznik_z_notatka(ui):
+def test_shortcuts_do_not_work_while_typing_and_m_creates_a_marker_with_a_note(ui):
     page, _, video_id = open_player(ui)
     seek_to(page, 25)
     page.evaluate(f"{VIDEO}.play()")
@@ -222,7 +222,7 @@ def test_skroty_nie_dzialaja_przy_pisaniu_a_m_tworzy_znacznik_z_notatka(ui):
     expect(page.locator("#help")).to_be_visible()
 
 
-def test_klikniecie_czasu_na_liscie_i_osi_przewija(ui):
+def test_clicking_a_time_in_the_list_and_on_the_timeline_seeks(ui):
     page, _, video_id = open_player(ui)
     ui.server.create_clip(video_id, 33.0)
     ui.server.set_mark(video_id, "Q1", 5.0)
@@ -240,7 +240,7 @@ def test_klikniecie_czasu_na_liscie_i_osi_przewija(ui):
     wait_time(page, duration / 2, 1.0)
 
 
-def test_pelny_ekran_klawiszem_f(ui):
+def test_fullscreen_with_the_f_key(ui):
     page, _, _ = open_player(ui)
     page.keyboard.press("f")
     # the video container (not <video> itself) goes fullscreen, so markers and the flash stay visible
@@ -253,7 +253,7 @@ def test_pelny_ekran_klawiszem_f(ui):
     page.wait_for_function("!document.fullscreenElement")
 
 
-def test_sedzia_spoza_obsady_widzi_nagranie_ale_nie_zaznacza(ui):
+def test_referee_outside_the_crew_sees_the_recording_but_cannot_mark(ui):
     match_id = ui.server.make_match()
     video_id = ui.server.make_ready_video(match_id, content="Q1,Q2")
     page = ui.page("outsider")
@@ -290,7 +290,7 @@ def test_sedzia_spoza_obsady_widzi_nagranie_ale_nie_zaznacza(ui):
     expect(page.locator("#decisions")).not_to_contain_text("naciśnij Z")
 
 
-def test_sedzia_z_obsady_i_trener_maja_przyciski(ui):
+def test_crew_referee_and_coach_have_the_buttons(ui):
     for role in ("referee", "coach"):
         page, _, _ = open_player(ui, role)
         expect(page.locator("#btn-z")).to_be_visible()
@@ -302,7 +302,7 @@ def test_sedzia_z_obsady_i_trener_maja_przyciski(ui):
     assert len(ui.server.clips_of(video_id)) == 1
 
 
-def test_odtwarzacz_na_telefonie_miesci_sie_w_ekranie(ui):
+def test_player_on_a_phone_fits_the_screen(ui):
     page, _, _ = open_player(ui, mobile=True)
     assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth")
     expect(page.locator("#btn-z")).to_be_visible()
@@ -312,7 +312,7 @@ def test_odtwarzacz_na_telefonie_miesci_sie_w_ekranie(ui):
     expect(page.locator(ROWS)).to_have_count(1)
 
 
-def test_strzalki_po_kliknieciu_w_pasek_odtwarzacza(ui):
+def test_arrow_keys_after_clicking_the_player_slider(ui):
     """A clicked browser slider took over the arrow keys (1% of the movie); they must stay 1 s and 5 s
     with Shift.
     """

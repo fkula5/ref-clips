@@ -39,7 +39,7 @@ def server_video(ui, match_id) -> Video | None:
         return db.scalar(select(Video).where(Video.match_id == match_id))
 
 
-def test_wgrywanie_z_deklaracja_notatkami_i_konwersja(ui):
+def test_upload_with_declaration_notes_and_conversion(ui):
     page, match_id = open_match(ui)
     expect(page.locator("#videos-panel")).to_contain_text("Brak nagrań")
 
@@ -99,7 +99,7 @@ def test_wgrywanie_z_deklaracja_notatkami_i_konwersja(ui):
     assert all(c.official_id and c.category_id and c.described_at is None for c in clips)
 
 
-def test_przerwanie_polaczenia_w_trakcie_i_automatyczne_wznowienie(ui):
+def test_connection_dropped_midway_and_automatic_resume(ui):
     ui.allow(r"ERR_CONNECTION_RESET")  # we drop the connection ourselves
     page, match_id = open_match(ui)
     state = {"patches": 0, "aborted": 0, "block": False}
@@ -139,7 +139,7 @@ def test_przerwanie_polaczenia_w_trakcie_i_automatyczne_wznowienie(ui):
     assert ui.server.sample.stat().st_size == video.size_bytes
 
 
-def test_odswiezenie_strony_w_trakcie_i_wznowienie_od_miejsca_przerwania(ui):
+def test_page_refresh_midway_and_resume_from_where_it_stopped(ui):
     ui.allow(r"ERR_CONNECTION_RESET")
     page, match_id = open_match(ui)
     dialogs = []
@@ -192,7 +192,7 @@ def test_odswiezenie_strony_w_trakcie_i_wznowienie_od_miejsca_przerwania(ui):
     expect(video_row.locator(".badge")).to_have_text("gotowe", timeout=90_000)
 
 
-def test_przycisk_przerwij_usuwa_wgrywanie(ui):
+def test_cancel_button_removes_the_upload(ui):
     ui.allow(r"ERR_CONNECTION_RESET")
     page, match_id = open_match(ui)
     state = {"patches": 0}
@@ -220,7 +220,7 @@ def _uploads_left(ui, match_id):
         return list(db.scalars(select(UploadSession).where(UploadSession.match_id == match_id)))
 
 
-def test_drugie_wgrywanie_tego_samego_uzytkownika_daje_komunikat_i_przerwanie_poprzedniego(ui, tmp_path):
+def test_second_upload_by_the_same_user_gives_a_message_and_cancels_the_previous_one(ui, tmp_path):
     ui.allow(r"ERR_CONNECTION_RESET|status of 409")
     first, match_id = open_match(ui)
     state = {"patches": 0}
@@ -250,7 +250,7 @@ def test_drugie_wgrywanie_tego_samego_uzytkownika_daje_komunikat_i_przerwanie_po
     assert not _uploads_left(ui, match_id)
 
 
-def test_dwa_pliki_naraz_z_osobnymi_deklaracjami(ui, tmp_path):
+def test_two_files_at_once_with_separate_declarations(ui, tmp_path):
     page, match_id = open_match(ui)
     second_file = tmp_path / "druga-kwarta.mp4"
     second_file.write_bytes(ui.server.sample.read_bytes())

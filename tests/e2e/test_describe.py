@@ -27,7 +27,7 @@ def current_id(page: Page) -> int:
     return int(page.locator("#describe").get_attribute("data-clip"))
 
 
-def test_opisanie_trzech_znacznikow_z_klawiatury(ui):
+def test_describing_three_markers_from_the_keyboard(ui):
     match_id, video_id, (c1, c2, c3) = setup_match(ui)
     page = open_describe(ui, match_id)
     expect(page.locator("#describe-position")).to_contain_text("Znacznik 1 z 3")
@@ -78,7 +78,7 @@ def test_opisanie_trzech_znacznikow_z_klawiatury(ui):
     expect(page.locator("#clip-info")).to_contain_text("kroki")
 
 
-def test_skroty_nie_dzialaja_w_polach_tekstowych(ui):
+def test_shortcuts_do_not_work_in_text_fields(ui):
     match_id, _, _ = setup_match(ui)
     page = open_describe(ui, match_id)
     page.get_by_label("Opis (opcjonalnie)").click()
@@ -94,7 +94,7 @@ def test_skroty_nie_dzialaja_w_polach_tekstowych(ui):
     expect(page.locator("input[name=official]:checked")).to_have_count(0)
 
 
-def test_propozycje_z_notatek_sa_widoczne_i_zatwierdzane(ui):
+def test_proposals_from_notes_are_visible_and_approved(ui):
     match_id, video_id, (c1, c2) = setup_match(ui, times=(20.0, 30.0), official="U1", category="kroki",
                                                description="0:20 Kasia kroki")
     page = open_describe(ui, match_id)
@@ -118,7 +118,7 @@ def test_propozycje_z_notatek_sa_widoczne_i_zatwierdzane(ui):
         assert db.get(Clip, c2).official.function == "U2"
 
 
-def test_kwarta_nieustalona_blokuje_opis_i_prowadzi_do_ustawienia_kwart(ui):
+def test_unknown_quarter_blocks_describing_and_leads_to_setting_quarters(ui):
     match_id, video_id, (c1,) = setup_match(ui, times=(20.0,), content="full", periods=())
     page = open_describe(ui, match_id)
     block = page.locator("#describe-block")
@@ -142,7 +142,7 @@ def test_kwarta_nieustalona_blokuje_opis_i_prowadzi_do_ustawienia_kwart(ui):
     expect(page.locator("#describe-block")).to_have_count(0)
 
 
-def test_walidacja_przegladarki_i_serwera_w_formularzu(ui):
+def test_browser_and_server_validation_in_the_form(ui):
     match_id, _, (c1, c2, c3) = setup_match(ui)
     page = open_describe(ui, match_id)
     page.keyboard.press("Enter")
@@ -180,7 +180,7 @@ def test_walidacja_przegladarki_i_serwera_w_formularzu(ui):
             db.commit()
 
 
-def test_pomin_nie_zapisuje_a_usun_znacznik_pyta_o_potwierdzenie(ui):
+def test_skip_does_not_save_and_delete_marker_asks_for_confirmation(ui):
     match_id, video_id, (c1, c2, c3) = setup_match(ui)
     page = open_describe(ui, match_id)
     page.get_by_role("link", name="Pomiń").click()
@@ -206,7 +206,7 @@ def test_pomin_nie_zapisuje_a_usun_znacznik_pyta_o_potwierdzenie(ui):
     assert current_id(page) == c1
 
 
-def test_podglad_z_wersji_roboczej_zatrzymuje_sie_na_koncu_klipu(ui):
+def test_draft_preview_stops_at_the_end_of_the_clip(ui):
     match_id, video_id, (c1, c2) = setup_match(ui, times=(20.0, 45.0))
     page = open_describe(ui, match_id, query=f"?clip={c1}")
     expect(page.locator("#draft-note")).to_contain_text("czeka na wycięcie")
@@ -226,7 +226,7 @@ def test_podglad_z_wersji_roboczej_zatrzymuje_sie_na_koncu_klipu(ui):
     page.wait_for_function(f"{PREVIEW}.currentTime < 20.2")
 
 
-def test_podglad_pliku_klipu_gdy_wyciety(ui):
+def test_clip_file_preview_when_cut(ui):
     match_id = ui.server.make_match()
     video_id = ui.server.make_ready_video(match_id, content="Q1,Q2")
     ui.server.set_mark(video_id, "Q1", 5.0)
@@ -239,7 +239,7 @@ def test_podglad_pliku_klipu_gdy_wyciety(ui):
     page.wait_for_function(f"{PREVIEW}.readyState >= 1 && {PREVIEW}.duration > 20")
 
 
-def test_blad_ciecia_na_ekranie_opisywania(ui):
+def test_cut_error_on_the_describe_screen(ui):
     match_id, video_id, (c1, c2) = setup_match(ui, times=(20.0, 30.0))
     ui.server.insert_clip(video_id, 45.0, status="error", error="Moment poza nagraniem: 9:00 (nagranie trwa 0:50)")
     page = open_describe(ui, match_id, query=f"?video_id={video_id}")
@@ -252,7 +252,7 @@ def test_blad_ciecia_na_ekranie_opisywania(ui):
     page.keyboard.press("Space")
 
 
-def test_wejscie_ze_strony_meczu(ui):
+def test_entering_from_the_match_page(ui):
     match_id, video_id, _ = setup_match(ui)
     page = ui.page("admin")
     page.goto(f"/matches/{match_id}")
@@ -270,7 +270,7 @@ def test_wejscie_ze_strony_meczu(ui):
     expect(other.get_by_role("heading", name="Brak dostępu")).to_be_visible()
 
 
-def test_wejscie_z_odtwarzacza_i_licznik_nieopisanych(ui):
+def test_entering_from_the_player_and_the_undescribed_counter(ui):
     match_id, video_id, _ = setup_match(ui, times=(), content="Q1,Q2")
     page = ui.page("admin")
     page.goto(f"/videos/{video_id}")
@@ -297,7 +297,7 @@ def test_wejscie_z_odtwarzacza_i_licznik_nieopisanych(ui):
     expect(page.locator("#undescribed-count")).to_have_text("1")
 
 
-def test_ekran_opisywania_na_telefonie(ui):
+def test_describe_screen_on_a_phone(ui):
     match_id, _, (c1, _c2, _c3) = setup_match(ui)
     page = open_describe(ui, match_id, mobile=True)
     assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth")

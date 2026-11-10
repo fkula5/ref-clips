@@ -3,7 +3,7 @@ from playwright.sync_api import expect
 from tests.e2e.support import PASSWORD
 
 
-def test_dodanie_konta_link_zaproszenia_i_logowanie_nowym_kontem(ui):
+def test_adding_an_account_invite_link_and_login_with_the_new_account(ui):
     admin = ui.page("admin")
     admin.goto("/admin/users")
     admin.get_by_label("Imię i nazwisko").first.fill("Nowy Sędzia")
@@ -52,7 +52,7 @@ def test_dodanie_konta_link_zaproszenia_i_logowanie_nowym_kontem(ui):
     expect(again.get_by_role("heading", name="Link nieważny")).to_be_visible()
 
 
-def test_niezgodne_hasla_pokazuja_blad_w_formularzu(ui):
+def test_mismatched_passwords_show_an_error_in_the_form(ui):
     ui.allow(r"status of 422")
     admin = ui.page("admin")
     admin.goto("/admin/users")

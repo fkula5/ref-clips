@@ -22,7 +22,7 @@ def wait_clip_ready(page: Page) -> None:
     page.wait_for_function(f"{CLIP_VIDEO}.readyState >= 1 && {CLIP_VIDEO}.duration > 0")
 
 
-def test_klip_odtwarza_plik_30_s_z_kwarta_i_czasem_od_poczatku_kwarty(ui):
+def test_clip_plays_a_30_s_file_with_the_quarter_and_time_since_quarter_start(ui):
     page, clip_id = cut_clip(ui, 30.0)  # clip 15-45 s; Q1 starts at 10 s
     page.evaluate("window.__bez_przeladowania = true")
     wait_clip_ready(page)
@@ -43,7 +43,7 @@ def test_klip_odtwarza_plik_30_s_z_kwarta_i_czasem_od_poczatku_kwarty(ui):
     page.wait_for_function("Math.abs(document.getElementById('player').currentTime - 30) < 0.5")
 
 
-def test_klip_przy_poczatku_nagrania_jest_krotszy(ui):
+def test_clip_near_the_recording_start_is_shorter(ui):
     page, _ = cut_clip(ui, 5.0, marks=())  # 0-20 s: the margin before is clipped to the recording start
     wait_clip_ready(page)
     duration = page.evaluate(f"{CLIP_VIDEO}.duration")
@@ -51,7 +51,7 @@ def test_klip_przy_poczatku_nagrania_jest_krotszy(ui):
     expect(page.locator("aside .card").first).to_contain_text("kwarta nieustalona")
 
 
-def test_komentarz_dodany_i_usuniety_przez_htmx_bez_przeladowania(ui):
+def test_comment_added_and_deleted_via_htmx_without_reload(ui):
     page, _ = cut_clip(ui, 30.0)
     expect(page.locator("#no-comments")).to_have_text("Brak komentarzy.")
     page.evaluate("window.__bez_przeladowania = true")
@@ -81,7 +81,7 @@ def test_komentarz_dodany_i_usuniety_przez_htmx_bez_przeladowania(ui):
     assert page.evaluate("window.__bez_przeladowania === true")
 
 
-def test_cudzego_komentarza_nie_mozna_usunac(ui):
+def test_someone_elses_comment_cannot_be_deleted(ui):
     page, clip_id = cut_clip(ui, 30.0)
     page.get_by_label("Nowy komentarz").fill("Komentarz admina")
     page.get_by_role("button", name="Dodaj komentarz").click()
@@ -97,7 +97,7 @@ def test_cudzego_komentarza_nie_mozna_usunac(ui):
     expect(other.get_by_role("button", name="Zapisz opis")).to_have_count(0)
 
 
-def test_opis_klipu_pole_wlasnej_kategorii(ui):
+def test_clip_description_custom_category_field(ui):
     page, _ = cut_clip(ui, 30.0)
     custom = page.locator("#custom-label")
     expect(custom).to_be_hidden()
@@ -115,7 +115,7 @@ def test_opis_klipu_pole_wlasnej_kategorii(ui):
     expect(page.locator("input[name=custom_category]")).to_have_value("ustawienie przy autach")
 
 
-def test_strona_klipu_na_telefonie(ui):
+def test_clip_page_on_a_phone(ui):
     page, _ = cut_clip(ui, 30.0, mobile=True)
     wait_clip_ready(page)
     assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth")
@@ -126,7 +126,7 @@ def test_strona_klipu_na_telefonie(ui):
     expect(page.locator("#comments .comment")).to_have_count(1)
 
 
-def test_uklad_strony_klipu_wideo_i_pierwsza_karta_w_jednej_linii_a_pasek_akcji_pod_wideo(ui):
+def test_clip_page_layout_video_and_first_card_in_one_line_and_action_bar_below_the_video(ui):
     page, _clip_id = cut_clip(ui, 30.0)
     wait_clip_ready(page)
     box = page.evaluate("""() => {
@@ -142,7 +142,7 @@ def test_uklad_strony_klipu_wideo_i_pierwsza_karta_w_jednej_linii_a_pasek_akcji_
     assert abs(box["barLeft"] - box["videoLeft"]) <= 1 and abs(box["barRight"] - box["videoRight"]) <= 1, box
 
 
-def test_strzalki_na_stronie_klipu_przewijaja_o_1_i_5_s(ui):
+def test_arrow_keys_on_the_clip_page_seek_by_1_and_5_s(ui):
     page, _ = cut_clip(ui, 25.0)
     wait_clip_ready(page)
     video = "document.getElementById('clip-video')"

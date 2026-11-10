@@ -47,7 +47,7 @@ def assert_no_scroll(page: Page, what: str) -> None:
     assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth"), f"{what}: przewija się w bok"
 
 
-def test_link_do_jednego_klipu_od_utworzenia_do_uniewaznienia(ui, server, shared):
+def test_single_clip_link_from_creation_to_revocation(ui, server, shared):
     ui.allow(r"status of 404")
     coach = ui.page("coach")
     coach.goto(f"/clips/{shared['a']}")
@@ -91,7 +91,7 @@ def test_link_do_jednego_klipu_od_utworzenia_do_uniewaznienia(ui, server, shared
     assert_code_not_in_server_log(server, url)
 
 
-def test_kilka_klipow_z_listy_zaznaczenie_przezywa_filtry_i_jeden_zip(ui, server, shared):
+def test_several_clips_from_the_list_selection_survives_filters_and_one_zip(ui, server, shared):
     coach = ui.page("coach")
     coach.goto(f"/clips?match_id={shared['match_id']}")
     checks = coach.locator("input.share-check")
@@ -131,7 +131,7 @@ def test_kilka_klipow_z_listy_zaznaczenie_przezywa_filtry_i_jeden_zip(ui, server
     assert_code_not_in_server_log(server, url)
 
 
-def test_widok_telefonu_390_px_bez_przewijania_poziomego(ui, server, shared):
+def test_phone_view_390_px_without_horizontal_scrolling(ui, server, shared):
     ui.allow(r"status of 404")
     coach = ui.page("coach", mobile=True)
     coach.goto(f"/clips?match_id={shared['match_id']}")

@@ -12,7 +12,7 @@ def fill_basics(page, level="Liga Formularzowa"):
     page.locator("input[name=team_b_color]").fill("niebieskie")
 
 
-def test_nowy_mecz_z_obsada_z_konta_i_wpisana(ui):
+def test_new_match_with_crew_from_an_account_and_a_typed_name(ui):
     ui.server.make_match(level="Liga Podpowiedziana")
     page = ui.page("admin")
     page.goto("/matches/new")
@@ -40,7 +40,7 @@ def test_nowy_mecz_z_obsada_z_konta_i_wpisana(ui):
     expect(officials.nth(2)).to_contain_text("U2 Ula Druga")
 
 
-def test_duplikat_osoby_blad_w_formularzu_z_zachowanymi_wartosciami(ui):
+def test_duplicate_person_form_error_with_values_kept(ui):
     ui.allow(r"status of 422")
     page = ui.page("admin")
     page.goto("/matches/new")
@@ -65,7 +65,7 @@ def test_duplikat_osoby_blad_w_formularzu_z_zachowanymi_wartosciami(ui):
     expect(page).to_have_url(re.compile(r"/matches/\d+$"))
 
 
-def test_duplikat_wpisanego_nazwiska_z_kontem_tej_samej_osoby(ui):
+def test_typed_name_duplicating_an_account_of_the_same_person(ui):
     ui.allow(r"status of 422")
     page = ui.page("admin")
     page.goto("/matches/new")
@@ -77,7 +77,7 @@ def test_duplikat_wpisanego_nazwiska_z_kontem_tej_samej_osoby(ui):
     assert page.locator("input[name=u1_name]").input_value() == "roman sedzia"
 
 
-def test_sedzia_zakladajacy_mecz_jest_w_obsadzie(ui):
+def test_referee_creating_a_match_is_in_the_crew(ui):
     page = ui.page("referee")
     page.goto("/matches/new")
     assert page.locator("select[name=cc_user] option:checked").inner_text() == "Roman Sędzia"
@@ -90,7 +90,7 @@ def test_sedzia_zakladajacy_mecz_jest_w_obsadzie(ui):
     expect(page.locator("#upload-form")).to_be_visible()
 
 
-def test_sedzia_nie_zapisze_meczu_bez_siebie_w_obsadzie(ui):
+def test_referee_cannot_save_a_match_without_themself_in_the_crew(ui):
     ui.allow(r"status of 403")
     page = ui.page("referee")
     page.goto("/matches/new")

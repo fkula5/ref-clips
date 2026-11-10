@@ -13,7 +13,7 @@ def open_form(page, match_id):
     expect(page.get_by_role("heading", name="Arkusz oceny sędziów")).to_be_visible()
 
 
-def test_trener_wypelnia_i_publikuje_a_sedzia_z_obsady_czyta(ui):
+def test_coach_fills_in_and_publishes_and_a_crew_referee_reads(ui):
     match_id = ui.server.make_match()  # CC = Roman Sędzia (account), U1 = Kasia Żółć (typed)
     coach = ui.page("coach")
     open_form(coach, match_id)
@@ -65,7 +65,7 @@ def test_trener_wypelnia_i_publikuje_a_sedzia_z_obsady_czyta(ui):
     expect(outsider.get_by_role("heading", name="Nie znaleziono")).to_be_visible()
 
 
-def test_uklad_na_telefonie_bez_przewijania_w_bok(ui):
+def test_phone_layout_without_sideways_scrolling(ui):
     match_id = ui.server.make_match()
     page = ui.page("coach", mobile=True)
     assert page.viewport_size["width"] == MOBILE["width"] == 390
@@ -80,7 +80,7 @@ def test_uklad_na_telefonie_bez_przewijania_w_bok(ui):
     assert no_horizontal_scroll(page)
 
 
-def test_arkusz_do_wydruku_bez_nawigacji_i_przyciskow(ui):
+def test_sheet_for_print_without_navigation_and_buttons(ui):
     match_id = ui.server.make_match()
     page = ui.page("coach")
     open_form(page, match_id)

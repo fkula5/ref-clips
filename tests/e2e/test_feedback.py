@@ -23,7 +23,7 @@ def no_horizontal_scroll(page: Page) -> bool:
     return page.evaluate("document.scrollingElement.scrollWidth <= document.scrollingElement.clientWidth")
 
 
-def test_szkoleniowiec_ocenia_i_zmienia_ocene(ui):
+def test_coach_rates_and_changes_the_rating(ui):
     _, _, clip_id = rated_setup(ui)
     page = ui.page("coach")
     page.goto(f"/clips/{clip_id}")
@@ -56,7 +56,7 @@ def test_szkoleniowiec_ocenia_i_zmienia_ocene(ui):
     expect(page.locator("#oceny .rating")).to_contain_text("zmieniona")
 
 
-def test_sedzia_widzi_ocene_bez_formularza_a_admin_zmienia_i_usuwa_cudza(ui):
+def test_referee_sees_a_rating_without_the_form_and_admin_changes_and_deletes_someone_elses(ui):
     _, _, clip_id = rated_setup(ui)
     coach = ui.page("coach")
     coach.goto(f"/clips/{clip_id}")
@@ -90,7 +90,7 @@ def test_sedzia_widzi_ocene_bez_formularza_a_admin_zmienia_i_usuwa_cudza(ui):
     expect(referee.locator("#oceny")).to_contain_text("Klip nie ma jeszcze ocen.")
 
 
-def test_inny_szkoleniowiec_nie_ma_przyciskow_przy_cudzej_ocenie(ui):
+def test_another_coach_has_no_buttons_on_someone_elses_rating(ui):
     _, _, clip_id = rated_setup(ui)
     coach = ui.page("coach")
     coach.goto(f"/clips/{clip_id}")
@@ -105,7 +105,7 @@ def test_inny_szkoleniowiec_nie_ma_przyciskow_przy_cudzej_ocenie(ui):
     expect(outsider.locator("#oceny").get_by_role("button")).to_have_count(0)
 
 
-def test_podsumowanie_ocen_i_filtr_w_tabeli_klipow(ui):
+def test_rating_summary_and_filter_in_the_clips_table(ui):
     match_id, video_id, rated = rated_setup(ui)
     plain = ui.server.insert_clip(video_id, 60.0, official="U1", category="aut", described=True)
     coach = ui.page("coach")
@@ -138,7 +138,7 @@ def test_podsumowanie_ocen_i_filtr_w_tabeli_klipow(ui):
     assert plain
 
 
-def test_blad_walidacji_oceny_i_komentarza_pokazuje_komunikat_i_zachowuje_tekst(ui):
+def test_rating_and_comment_validation_error_shows_a_message_and_keeps_the_text(ui):
     ui.allow(r"status of 422")
     _, _, clip_id = rated_setup(ui)
     page = ui.page("coach")
@@ -214,21 +214,21 @@ def comment_cycle(ui, page: Page, scope_name: str) -> None:
     expect(page.locator("#no-comments")).to_have_text("Brak komentarzy.")
 
 
-def test_komentarz_do_klipu_dodaj_edytuj_anuluj_usun(ui):
+def test_clip_comment_add_edit_cancel_delete(ui):
     _, _, clip_id = rated_setup(ui)
     page = ui.page("admin")
     page.goto(f"/clips/{clip_id}")
     comment_cycle(ui, page, "klip")
 
 
-def test_komentarz_do_meczu_dodaj_edytuj_anuluj_usun(ui):
+def test_match_comment_add_edit_cancel_delete(ui):
     match_id, _, _ = rated_setup(ui)
     page = ui.page("admin")
     page.goto(f"/matches/{match_id}")
     comment_cycle(ui, page, "mecz")
 
 
-def test_komentarze_uprawnienia_w_interfejsie(ui):
+def test_comments_permissions_in_the_interface(ui):
     ui.allow(r"status of 404|Error Code 404")
     match_id, _, _ = rated_setup(ui)
     author = ui.page("referee")
@@ -254,7 +254,7 @@ def test_komentarze_uprawnienia_w_interfejsie(ui):
     expect(author.locator(".toast.error")).to_contain_text("Nie ma takiego komentarza")
 
 
-def test_komentarze_bez_javascriptu_formularze_post_z_przekierowaniem(ui):
+def test_comments_without_javascript_post_forms_with_redirect(ui):
     ui.allow(r"status of 422")
     match_id, _, clip_id = rated_setup(ui)
     page = ui.page("admin", java_script_enabled=False)
@@ -290,7 +290,7 @@ def test_komentarze_bez_javascriptu_formularze_post_z_przekierowaniem(ui):
     expect(page2.locator("#comments .comment")).to_have_count(1)
 
 
-def test_odswiezanie_strony_meczu_nie_kasuje_wpisywanego_komentarza_ani_edycji(ui):
+def test_match_page_refresh_does_not_wipe_a_comment_being_typed_or_an_edit(ui):
     match_id, video_id, _ = rated_setup(ui)
     from app.models import Video
     with ui.server.db() as db:
@@ -349,7 +349,7 @@ def populate_feedback(ui, match_id, clip_id):
         db.commit()
 
 
-def test_widoki_mobilne_bez_poziomego_przewijania(ui):
+def test_mobile_views_without_horizontal_scrolling(ui):
     match_id, video_id, clip_id = rated_setup(ui)
     for t in (60.0, 90.0, 120.0):
         ui.server.insert_clip(video_id, t, official="U1", category="aut", described=True,

@@ -4,7 +4,7 @@ from tests.e2e.conftest import login
 from tests.e2e.support import USERS
 
 
-def test_zly_login_pokazuje_komunikat_i_zachowuje_email(ui):
+def test_wrong_login_shows_a_message_and_keeps_the_email(ui):
     ui.allow(r"status of 401")
     page = ui.page()
     login(page, "admin@example.com", "zle-haslo-12345")
@@ -14,7 +14,7 @@ def test_zly_login_pokazuje_komunikat_i_zachowuje_email(ui):
     expect(page.get_by_label("Hasło")).to_have_value("")
 
 
-def test_poprawne_logowanie_i_wylogowanie(ui):
+def test_successful_login_and_logout(ui):
     page = ui.page()
     login(page, USERS["coach"][0])
     expect(page).to_have_url(ui.server.base_url + "/")
@@ -27,7 +27,7 @@ def test_poprawne_logowanie_i_wylogowanie(ui):
     expect(page).to_have_url(ui.server.base_url + "/login?next=/")
 
 
-def test_przekierowanie_next_po_zalogowaniu(ui):
+def test_next_redirect_after_login(ui):
     page = ui.page()
     page.goto("/clips")
     expect(page).to_have_url(ui.server.base_url + "/login?next=/clips")
@@ -38,7 +38,7 @@ def test_przekierowanie_next_po_zalogowaniu(ui):
     expect(page.get_by_role("heading", name="Klipy")).to_be_visible()
 
 
-def test_next_nie_przekierowuje_na_obca_domene(ui):
+def test_next_does_not_redirect_to_a_foreign_domain(ui):
     page = ui.page()
     login(page, USERS["referee"][0], next_path="//evil.example.com/")
     expect(page).to_have_url(ui.server.base_url + "/")

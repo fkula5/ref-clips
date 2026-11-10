@@ -95,7 +95,7 @@ def server(tmp_path):
     "deploy v1.2.3; id", "deploy v1.2.3 && id", "deploy v1.2.3\nid", "deploy v1.2.3\n", "deploy $(id)", "deploy v1.2.3`id`",
     "deploy ../v1.2.3", "deploy v1.2.3|id", "status; id", "status extra", "STATUS", "deploy v" + "9" * 40,
 ])
-def test_niedozwolone_polecenia_sa_odrzucone_bez_skutkow(server, command):
+def test_disallowed_commands_are_rejected_without_effects(server, command):
     r = server.run(command)
     assert r.returncode == 2 and "Niedozwolone polecenie" in r.stderr
     assert server.calls() == ""
@@ -103,14 +103,14 @@ def test_niedozwolone_polecenia_sa_odrzucone_bez_skutkow(server, command):
     assert "STARE" in (server.dir / "compose.yaml").read_text()
 
 
-def test_status_nie_zmienia_niczego(server):
+def test_status_changes_nothing(server):
     r = server.run("status")
     assert r.returncode == 0
     assert "Wdrożona wersja" in r.stdout
     assert "up" not in server.calls().replace("docker info", "")
 
 
-def test_zajete_czeka_i_po_limicie_konczy_bez_zmian(server):
+def test_busy_waits_and_after_the_limit_ends_without_changes(server):
     r = server.run("deploy v1.2.3", busy=["busy"] * 10, wait_seconds=2)
     assert r.returncode == 3
     assert r.stdout.count("Czekam") >= 1 and "konwersja nagrania #1" in r.stdout
@@ -120,19 +120,19 @@ def test_zajete_czeka_i_po_limicie_konczy_bez_zmian(server):
     assert "docker pull" not in server.calls() and " up " not in server.calls()
 
 
-def test_blad_sprawdzenia_zajetosci_blokuje(server):
+def test_busy_check_failure_blocks(server):
     r = server.run("deploy v1.2.3", busy=["error"])
     assert r.returncode == 1 and "nie udało się sprawdzić" in r.stderr
     assert "STARE" in (server.dir / "compose.yaml").read_text()
 
 
-def test_nieznany_tag_konczy_sie_od_razu(server):
+def test_unknown_tag_fails_at_once(server):
     r = server.run("deploy v9.9.9")
     assert r.returncode == 1 and "nie udało się pobrać" in r.stderr
     assert "docker pull" not in server.calls()
 
 
-def test_sukces_czeka_na_wolne_podmienia_pliki_i_sprzata(server):
+def test_success_waits_for_idle_replaces_files_and_cleans_up(server):
     r = server.run("deploy v1.2.3", busy=["busy", "busy"])  # busy twice, then free (and free before the restart)
     assert r.returncode == 0, r.stderr
     assert r.stdout.count("Czekam") == 2 and "Gotowe: wdrożono v1.2.3" in r.stdout
@@ -150,7 +150,7 @@ def test_sukces_czeka_na_wolne_podmienia_pliki_i_sprzata(server):
 
 
 @pytest.mark.parametrize("bad", ["up", "health"])
-def test_nieudany_start_przywraca_poprzednia_wersje(server, bad):
+def test_failed_start_restores_the_previous_version(server, bad):
     r = server.run("deploy v1.2.3", bad=bad)
     assert r.returncode == 4, r.stderr
     assert "Wracam do poprzedniej wersji" in r.stderr and "serwer działa na poprzedniej wersji" in r.stderr

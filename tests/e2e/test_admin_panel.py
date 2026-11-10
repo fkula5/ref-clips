@@ -15,7 +15,7 @@ def category_row(page, name):
     return page.locator("tr[data-category]").filter(has=page.locator(f'input[name="name"][value="{name}"]'))
 
 
-def test_admin_dodaje_i_dezaktywuje_kategorie_a_formularz_opisu_ja_traci(ui):
+def test_admin_adds_and_deactivates_a_category_and_the_describe_form_loses_it(ui):
     match_id = ui.server.make_match()
     video_id = ui.server.make_ready_video(match_id, content="Q1")
     ui.server.set_mark(video_id, "Q1", 0.0)
@@ -72,7 +72,7 @@ def test_admin_dodaje_i_dezaktywuje_kategorie_a_formularz_opisu_ja_traci(ui):
     expect(page.locator("#category-select option", has_text="Faul w ataku")).to_have_count(1)
 
 
-def test_admin_zmienia_retention_days_z_walidacja_i_opcja_przeliczenia(ui):
+def test_admin_changes_retention_days_with_validation_and_the_recalculate_option(ui):
     match_id = ui.server.make_match()
     video_id = ui.server.make_ready_video(match_id)
     with ui.server.db() as db:
@@ -107,7 +107,7 @@ def test_admin_zmienia_retention_days_z_walidacja_i_opcja_przeliczenia(ui):
         assert video.expires_at == video.created_at + timedelta(days=14)
 
 
-def test_admin_widzi_dysk_i_usuwa_pelne_nagranie_wczesniej_a_klipy_graja(ui):
+def test_admin_sees_the_disk_and_removes_the_full_recording_early_while_clips_still_play(ui):
     match_id = ui.server.make_match(team_a="Zniknie", team_b="Nagranie")
     video_id = ui.server.make_ready_video(match_id, content="Q1")
     ui.server.set_mark(video_id, "Q1", 0.0)
@@ -156,7 +156,7 @@ def test_admin_widzi_dysk_i_usuwa_pelne_nagranie_wczesniej_a_klipy_graja(ui):
     expect(clip_page.get_by_role("link", name="pokaż w pełnym nagraniu")).to_have_count(0)
 
 
-def test_oznaczenie_dostepne_jeszcze_x_dni_na_liscie_i_stronie_meczu(ui):
+def test_available_for_x_more_days_note_on_the_list_and_the_match_page(ui):
     match_id = ui.server.make_match()
     video_id = ui.server.make_ready_video(match_id)
     with ui.server.db() as db:
@@ -170,7 +170,7 @@ def test_oznaczenie_dostepne_jeszcze_x_dni_na_liscie_i_stronie_meczu(ui):
         "pełne nagranie dostępne jeszcze 3 dni")
 
 
-def test_baner_o_odrzuconych_uploadach_z_braku_miejsca(ui):
+def test_banner_about_uploads_rejected_for_lack_of_space(ui):
     with ui.server.db() as db:
         db.add(UploadRejection(created_at=utcnow(), user_id=ui.server.users["coach"], filename="ogromny-mecz.mp4",
                                size_bytes=6 * 1024 ** 3, free_bytes=2 * 1024 ** 3))
@@ -185,7 +185,7 @@ def test_baner_o_odrzuconych_uploadach_z_braku_miejsca(ui):
     expect(admin.locator("#odrzucone")).to_contain_text(ui.server.user_name("coach"))
 
 
-def test_nie_administrator_nie_widzi_panelu(ui):
+def test_non_admin_does_not_see_the_panel(ui):
     for role in ("coach", "referee"):
         page = ui.page(role)
         page.goto("/")
@@ -199,7 +199,7 @@ def test_nie_administrator_nie_widzi_panelu(ui):
         expect(page.locator(".admin-tabs")).to_have_count(0)
 
 
-def test_komorki_wierszy_tabel_admina_maja_jedna_wysokosc(ui):
+def test_admin_table_row_cells_have_one_height(ui):
     """A cell with action buttons must not be a flex container (it broke the table row)."""
     admin = ui.page("admin")
     for path in ("/admin/categories", "/admin/users"):
@@ -214,7 +214,7 @@ def test_komorki_wierszy_tabel_admina_maja_jedna_wysokosc(ui):
         assert bad == 0, f"{path}: {bad} wierszy z nierównymi komórkami"
 
 
-def test_tabela_uzytkownikow_na_telefonie_to_karty_bez_przewijania_w_bok(ui):
+def test_users_table_on_a_phone_is_cards_without_sideways_scrolling(ui):
     with ui.server.db() as db:
         user = User(email="ktos.z.bardzo.dlugim.adresem.pocztowym@subdomena-firmowa.example.com",
                     name="Aleksandra Wiśniewska-Kowalczyk", is_active=True)

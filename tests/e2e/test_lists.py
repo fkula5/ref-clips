@@ -24,7 +24,7 @@ def rows(page):
     return page.locator("#matches-list tbody tr")
 
 
-def test_filtry_podmieniaja_liste_i_adres_bez_przeladowania(ui, many_matches):
+def test_filters_swap_the_list_and_url_without_reload(ui, many_matches):
     page = ui.page("admin")
     page.goto("/")
     page.evaluate("window.__bez_przeladowania = true")
@@ -53,7 +53,7 @@ def test_filtry_podmieniaja_liste_i_adres_bez_przeladowania(ui, many_matches):
     expect(rows(page)).to_have_count(25)
 
 
-def test_paginacja_i_przycisk_wstecz(ui, many_matches):
+def test_pagination_and_back_button(ui, many_matches):
     page = ui.page("admin")
     page.goto("/")
     page.evaluate("window.__bez_przeladowania = true")
@@ -87,7 +87,7 @@ def test_paginacja_i_przycisk_wstecz(ui, many_matches):
     expect(page.locator("select[name=level]")).to_have_value(PAGINATION_LEVEL)
 
 
-def test_widok_mobilny_pokazuje_karty_zamiast_tabeli(ui, many_matches):
+def test_mobile_view_shows_cards_instead_of_a_table(ui, many_matches):
     desktop = ui.page("admin")
     desktop.goto(f"/?level={FILTER_LEVEL}")
     head = desktop.locator("table.responsive thead")
@@ -115,7 +115,7 @@ def test_widok_mobilny_pokazuje_karty_zamiast_tabeli(ui, many_matches):
     assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth")
 
 
-def test_filtry_na_telefonie_dzialaja(ui, many_matches):
+def test_filters_work_on_a_phone(ui, many_matches):
     page = ui.page("admin", mobile=True)
     page.goto("/")
     page.locator("select[name=level]").select_option(FILTER_LEVEL)
@@ -123,7 +123,7 @@ def test_filtry_na_telefonie_dzialaja(ui, many_matches):
     assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth")
 
 
-def test_strona_404_z_przyciskiem_wroc(ui):
+def test_404_page_with_a_back_button(ui):
     ui.allow(r"status of 404")
     page = ui.page("admin")
     page.goto("/clips")
@@ -143,7 +143,7 @@ def test_strona_404_z_przyciskiem_wroc(ui):
     expect(page).to_have_url(ui.server.base_url + "/")
 
 
-def test_strona_403_dla_sedziego_w_panelu_admina(ui):
+def test_403_page_for_a_referee_in_the_admin_panel(ui):
     ui.allow(r"status of 403")
     page = ui.page("outsider")
     page.goto("/")
@@ -152,7 +152,7 @@ def test_strona_403_dla_sedziego_w_panelu_admina(ui):
     expect(page.get_by_role("link", name="← Wróć")).to_have_attribute("href", "/")
 
 
-def test_niezalogowany_widzi_link_do_logowania_na_stronie_bledu(ui):
+def test_logged_out_user_sees_a_login_link_on_the_error_page(ui):
     ui.allow(r"status of 404")
     page = ui.page()
     page.goto("/nie-ma-takiej-strony")
