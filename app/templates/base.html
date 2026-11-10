@@ -20,6 +20,7 @@
       {% if perm.can_manage_users(user) %}<a href="/admin/users">Administracja</a>{% endif %}
     </nav>
     <div class="who">
+      {% with bell_count = unread_count(user) %}{% include "_bell.html" %}{% endwith %}
       <span>{{ user.name }}</span>
       <form method="post" action="/logout" class="inline">{{ csrf_input() }}<button class="linklike">Wyloguj</button></form>
     </div>

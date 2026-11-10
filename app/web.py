@@ -9,8 +9,9 @@ from fastapi.templating import Jinja2Templates
 from jinja2 import pass_context
 from markupsafe import Markup, escape
 
-from app import clip_list, config, feedback, flash, retention, services, share
+from app import clip_list, config, feedback, flash, notify, retention, services, share
 from app.auth import set_anon_csrf_cookie
+from app.db import SessionLocal
 from app import models as m
 from app import permissions
 from app import video as vid
@@ -62,7 +63,14 @@ def csrf_input(context) -> Markup:
         escape(context.get("csrf_token", "")))
 
 
+def unread_count(user) -> int:
+    """The top bar is on every page, so it counts with its own short session instead of every route."""
+    with SessionLocal() as db:
+        return notify.unread_count(db, user.id)
+
+
 env.globals.update(
+    unread_count=unread_count, bell_label=notify.bell_label, NOTIFICATION_KINDS=m.NOTIFICATION_KINDS,
     ffmpeg_ok=vid.ffmpeg_available,
     app_version=config.VERSION,
     ffmpeg_message=config.FFMPEG_MISSING_MESSAGE,

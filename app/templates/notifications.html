@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block title %}Powiadomienia{% endblock %}
+{% macro what(n) %}
+  {%- set c = n.clip -%}
+  {{ NOTIFICATION_KINDS[n.kind] }}
+  {%- if c %} {{ period_short(c) if period_for(c) else c.time_sec|clock }}{% endif %}
+  {{ ' ' if n.kind == 'match_comment' else ' w meczu ' }}{{ n.match.teams }}
+{%- endmacro %}
+{% block content %}
+<div class="row between">
+  <h1>Powiadomienia</h1>
+  {% if unread %}
+  <form method="post" action="/notifications/read-all">{{ csrf_input() }}<button class="btn">Oznacz wszystkie jako przeczytane</button></form>
+  {% endif %}
+</div>
+{% if items %}
+<ul class="notif-list">
+  {% for n in items %}
+  <li class="notif{{ ' unread' if n.is_unread }}">
+    <form method="post" action="/notifications/{{ n.id }}/open">
+      {{ csrf_input() }}
+      <button class="notif-text"><strong>{{ n.actor.name if n.actor else 'Ktoś' }}</strong>: <span class="notif-what">{{ what(n) }}</span>
+        {%- if n.verdict %}: <span class="verdict {{ n.verdict }}">{{ RATING_VERDICTS[n.verdict] }}</span>{% endif %}</button>
+    </form>
+    <div class="notif-meta muted">
+      <span>{{ n.created_at|local }}</span>
+      {% if n.is_unread %}
+      <span class="chip warn">nowe</span>
+      <form class="inline" method="post" action="/notifications/{{ n.id }}/read">{{ csrf_input() }}<button class="inline-btn">Oznacz jako przeczytane</button></form>
+      {% endif %}
+    </div>
+  </li>
+  {% endfor %}
+</ul>
+{% if capped %}<p class="muted small-note">Pokazano {{ limit }} najnowszych powiadomień.</p>{% endif %}
+<p class="muted small-note">Przeczytane powiadomienia znikają po 30 dniach, nieprzeczytane po 90.</p>
+{% else %}
+<p class="card muted">Brak powiadomień. Pojawią się tu nowe oceny, komentarze i opublikowane arkusze, które Cię dotyczą.</p>
+{% endif %}
+{% endblock %}
