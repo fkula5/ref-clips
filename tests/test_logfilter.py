@@ -1,4 +1,3 @@
-"""Tokeny zaproszeń nie wyciekają do logów ani przez nagłówek Referer."""
 import logging
 
 from app import accounts, logfilter
@@ -10,13 +9,13 @@ def _invite_token(db):
     return accounts.create_invite(db, user, "activate", None)
 
 
-def test_redact_podmienia_tylko_token():
+def test_redact_replaces_only_the_token():
     assert logfilter.redact("GET /set-password/abc123_-XYZ HTTP/1.1") == "GET /set-password/[ukryty] HTTP/1.1"
     assert logfilter.redact('"/set-password/abc?x=1"') == '"/set-password/[ukryty]?x=1"'
     assert logfilter.redact("/login?next=/matches/1") == "/login?next=/matches/1"
 
 
-def test_redact_ukrywa_kod_linku_udostepniajacego_i_zachowuje_reszte_sciezki():
+def test_redact_hides_the_share_link_code_and_keeps_the_rest_of_the_path():
     code = "aB3_-" * 8 + "xyz"
     assert logfilter.redact(f"GET /s/{code} HTTP/1.1") == "GET /s/[ukryty] HTTP/1.1"
     assert logfilter.redact(f"/s/{code}/clips/2/file?x=1") == "/s/[ukryty]/clips/2/file?x=1"
@@ -24,9 +23,9 @@ def test_redact_ukrywa_kod_linku_udostepniajacego_i_zachowuje_reszte_sciezki():
     assert logfilter.redact("/static/app.css /clips/5/file /admin/users") == "/static/app.css /clips/5/file /admin/users"
 
 
-def test_dziennik_dostepu_uvicorna_ukrywa_token(caplog):
+def test_uvicorn_access_log_hides_the_token(caplog):
     logfilter.install()
-    logfilter.install()   # idempotentne
+    logfilter.install()
     access = logging.getLogger("uvicorn.access")
     assert sum(isinstance(f, logfilter.RedactTokens) for f in access.filters) == 1
     seen = []
@@ -46,7 +45,7 @@ def test_dziennik_dostepu_uvicorna_ukrywa_token(caplog):
     assert seen == ['172.18.0.5:41234 - "GET /set-password/[ukryty] HTTP/1.1" 200']
 
 
-def test_strona_ustawienia_hasla_nie_przekazuje_tokenu_dalej(anon_client, db):
+def test_set_password_page_does_not_pass_the_token_on(anon_client, db):
     token = _invite_token(db)
     for url, status in ((f"/set-password/{token}", 200), ("/set-password/zly-token", 410)):
         r = anon_client.get(url)

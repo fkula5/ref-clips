@@ -6,7 +6,7 @@
   {% if perm.can_create_match(user) %}<a class="btn primary" href="/matches/new">+ Nowy mecz</a>{% endif %}
 </div>
 
-{# Filtry to zwykły formularz GET (działa bez JS); HTMX tylko odświeża listę bez przeładowania strony. #}
+{# Plain GET form (works without JS); HTMX only refreshes the list without reloading the page. #}
 <form method="get" action="/" class="card row filters match-filters" data-clean-params
       hx-get="/" hx-target="#matches-list" hx-select="#matches-list" hx-swap="outerHTML"
       hx-trigger="change, submit" hx-push-url="true">

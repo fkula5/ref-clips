@@ -1,5 +1,3 @@
-"""Retencja pełnych nagrań (segment 7): ustawienie, zadanie workera, ręczne usunięcie, zachowanie
-interfejsu i tras po usunięciu, sprzątanie osieroconych klipów, oznaczenie „dostępne jeszcze X dni”."""
 import os
 import time
 from datetime import timedelta
@@ -15,7 +13,6 @@ from tests.helpers import make_match, make_ready_video, mark_periods
 
 
 def ready(db, *, expires_in_days=-1.0, match=None, **kw):
-    """Gotowe nagranie z terminem usunięcia za `expires_in_days` (ujemne = po terminie)."""
     video = make_ready_video(db, match or make_match(db))
     video.expires_at = utcnow() + timedelta(days=expires_in_days)
     for field, value in kw.items():
@@ -36,7 +33,6 @@ def fresh(db, model, id_):
     return db.get(model, id_)
 
 
-# --- ustawienie retention_days -------------------------------------------------------------
 def test_retention_page_shows_setting_and_default(client, db):
     page = client.get("/admin/retention").text
     assert 'name="days"' in page and 'value="30"' in page and "przelicz termin" in page
@@ -62,7 +58,6 @@ def test_changing_days_does_not_touch_existing_videos_by_default(client, db):
     assert r.status_code == 200 and "dotyczy nowych nagrań" in r.text
     assert fresh(db, Video, video.id).expires_at == before
     assert services.retention_days(db) == 5
-    # nowe nagranie dostaje nowy termin
     assert timedelta(days=4, hours=23) < services.video_expiry(db) - utcnow() <= timedelta(days=5)
 
 
@@ -77,15 +72,13 @@ def test_recalculate_sets_upload_date_plus_days(client, db):
     assert r.status_code == 200 and "Przeliczono termin 1 istniejących" in r.text
     old = fresh(db, Video, old.id)
     assert old.expires_at == old.created_at + timedelta(days=7)
-    assert fresh(db, Video, purged.id).expires_at == purged_expiry          # usuniętych nie ruszamy
-    # nowy termin w przeszłości: ostrzeżenie w komunikacie
+    assert fresh(db, Video, purged.id).expires_at == purged_expiry
     old.created_at = utcnow() - timedelta(days=40)
     db.commit()
     r = client.post("/admin/retention", data={"days": "7", "recalculate": "1"})
     assert "1 jest już po nowym terminie" in r.text
 
 
-# --- zadanie retencji w workerze ---------------------------------------------------------------
 def test_run_retention_removes_expired_draft_and_keeps_clips(db):
     video = ready(db, expires_in_days=-1)
     key = video.proxy_path
@@ -97,7 +90,7 @@ def test_run_retention_removes_expired_draft_and_keeps_clips(db):
     assert result.purged == [video.id] and not result.skipped
     video = fresh(db, Video, video.id)
     assert video.purged_at is not None and video.proxy_path is None and not storage.exists(key)
-    assert storage.exists(clip_key) and fresh(db, Clip, clip.id).clip_path == clip_key     # klipy zostają
+    assert storage.exists(clip_key) and fresh(db, Clip, clip.id).clip_path == clip_key
 
 
 def test_run_retention_leaves_videos_before_deadline_and_without_deadline(db):
@@ -126,7 +119,6 @@ def test_run_retention_skips_videos_in_conversion_and_with_pending_cuts(db):
     for video in (converting, queued_clip, new_clip):
         assert fresh(db, Video, video.id).purged_at is None
     assert storage.exists(queued_clip.proxy_path)
-    # po wycięciu klipu następny przebieg usuwa nagranie
     clip = db.query(Clip).filter_by(video_id=queued_clip.id).one()
     clip.status = "cut"
     db.commit()
@@ -163,12 +155,10 @@ def test_run_if_due_runs_once_per_interval_and_not_after_restart(db):
     first = retention.run_if_due(db, now)
     assert first is not None and first.purged == [video.id]
     assert db.get(Setting, retention.LAST_RUN_KEY).value == now.strftime(retention.TIME_FORMAT)
-    # „restart workera” godzinę później i tuż przed upływem doby: nie uruchamia ponownie
     late = ready(db, expires_in_days=-1)
     assert retention.run_if_due(db, now + timedelta(hours=1)) is None
     assert retention.run_if_due(db, now + timedelta(hours=23, minutes=59)) is None
     assert fresh(db, Video, late.id).purged_at is None
-    # po dobie znowu
     again = retention.run_if_due(db, now + timedelta(hours=24, seconds=1))
     assert again.purged == [late.id]
     when, summary = retention.last_run(db)
@@ -176,7 +166,6 @@ def test_run_if_due_runs_once_per_interval_and_not_after_restart(db):
 
 
 def test_run_if_due_is_atomic_between_two_workers(db):
-    """Drugi worker, który zobaczył ten sam stary czas, nie przejmuje zadania po tym, jak pierwszy je zapisał."""
     ready(db, expires_in_days=-1)
     now = utcnow()
     assert retention.run_if_due(db, now) is not None
@@ -187,7 +176,6 @@ def test_worker_maintenance_runs_retention_and_survives_failures(db, monkeypatch
     video = ready(db, expires_in_days=-1)
     worker.run_maintenance()
     assert fresh(db, Video, video.id).purged_at is not None
-    # błąd jednego kroku nie wstrzymuje pozostałych
     monkeypatch.setattr(worker.uploads, "cleanup_stale", lambda db: 1 / 0)
     other = ready(db, expires_in_days=-1)
     db.get(Setting, retention.LAST_RUN_KEY).value = ""
@@ -223,7 +211,7 @@ def test_purge_commit_failure_keeps_files_and_video_untouched(db, monkeypatch):
     with pytest.raises(OperationalError):
         retention.purge_video(db, video)
     monkeypatch.undo()
-    assert storage.exists(key)                                         # plik nietknięty
+    assert storage.exists(key)
     video = fresh(db, Video, video.id)
     assert video.purged_at is None and video.proxy_path == key and fresh(db, Clip, clip.id).status == "cut"
 
@@ -244,7 +232,7 @@ def test_run_retention_skips_video_when_commit_fails_and_retries_later(db, monke
     monkeypatch.undo()
     assert result.purged == [second.id] and [v for v, _ in result.skipped] == [first.id]
     assert storage.exists(first_key) and not storage.exists(second_key)
-    assert retention.run_retention(db).purged == [first.id]            # następny przebieg kończy robotę
+    assert retention.run_retention(db).purged == [first.id]
 
 
 def test_purge_file_delete_failure_is_only_a_warning_and_orphan_is_cleaned_later(db, monkeypatch, caplog):
@@ -257,14 +245,14 @@ def test_purge_file_delete_failure_is_only_a_warning_and_orphan_is_cleaned_later
 
     monkeypatch.setattr(storage, "delete", broken_delete)
     with caplog.at_level("WARNING", logger="retention"):
-        result = retention.run_retention(db)                           # brak wyjątku
+        result = retention.run_retention(db)
     monkeypatch.setattr(storage, "delete", real_delete)
     assert result.purged == [video.id] and not result.skipped
     assert any("Nie udało się usunąć pliku" in r.message for r in caplog.records)
     video = fresh(db, Video, video.id)
     assert video.purged_at is not None and video.proxy_path is None and video.proxy_bytes is None
-    assert storage.exists(key)                                         # plik-sierota został
-    # świeża sierota zostaje (może być w użyciu), stara znika
+    assert storage.exists(key)
+    # a fresh orphan stays (it may be in use), an old one goes
     assert retention.cleanup_orphan_videos(db) == 0
     old = time.time() - config.ORPHAN_MIN_AGE_SECONDS - 60
     os.utime(storage.local_path(key), (old, old))
@@ -279,7 +267,6 @@ def test_manual_purge_route_survives_file_delete_failure(client, db, monkeypatch
     assert fresh(db, Video, video.id).purged_at is not None
 
 
-# --- ręczne usunięcie pełnego nagrania ----------------------------------------------------------
 def test_manual_purge_removes_draft_and_keeps_clips(client, db):
     video = ready(db, expires_in_days=20)
     key = video.proxy_path
@@ -292,7 +279,6 @@ def test_manual_purge_removes_draft_and_keeps_clips(client, db):
     assert video.purged_at is not None and video.proxy_path is None and not storage.exists(key)
     assert fresh(db, Clip, clip.id) is not None
     assert f'action="/admin/videos/{video.id}/purge"' not in client.get("/admin/retention").text
-    # drugi raz: czytelny błąd, nie 500
     r = client.post(f"/admin/videos/{video.id}/purge")
     assert r.status_code == 409 and "już usunięte" in r.text
     assert client.post("/admin/videos/9999/purge").status_code == 404
@@ -320,19 +306,17 @@ def test_retention_admin_posts_redirect_and_flash_once(client, db):
     assert r.status_code == 303 and r.headers["location"] == "/admin/retention"
     page = client.get("/admin/retention").text
     assert 'id="admin-notice"' in page and "14 dni" in page
-    assert 'id="admin-notice"' not in client.get("/admin/retention").text       # komunikat tylko raz
+    assert 'id="admin-notice"' not in client.get("/admin/retention").text
     assert services.retention_days(db) == 14
     r = client.post(f"/admin/videos/{video.id}/purge", follow_redirects=False)
     assert r.status_code == 303 and r.headers["location"] == "/admin/retention"
     assert "Usunięto pełne nagranie" in client.get("/admin/retention").text
-    # błędy zostają stroną z kodem błędu i wartościami (bez przekierowania)
     r = client.post("/admin/retention", data={"days": "0"}, follow_redirects=False)
     assert r.status_code == 422 and 'value="0"' in r.text
     r = client.post(f"/admin/videos/{video.id}/purge", follow_redirects=False)
     assert r.status_code == 409
 
 
-# --- trasy zapisu na usuniętym nagraniu -----------------------------------------------------------
 def test_write_routes_on_purged_video_return_clear_errors(client, db):
     video = mark_periods(db, ready(db))
     mark = video.marks[0]
@@ -354,7 +338,6 @@ def test_write_routes_on_purged_video_return_clear_errors(client, db):
         assert r.status_code == 409, (r.request.method, r.request.url, r.status_code, r.text[:100])
         assert "usunięte" in r.text or "nie ma już" in r.text, r.text[:200]
     assert fresh(db, Clip, clip.id) is not None and len(fresh(db, Video, video.id).marks) == 4
-    # strony: odtwarzacz bez wideo, edycja nagrania zmienia tylko etykietę
     page = client.get(f"/videos/{video.id}").text
     assert 'id="purged-banner"' in page and "<video" not in page
     edit = client.get(f"/videos/{video.id}/edit").text
@@ -370,7 +353,7 @@ def test_clip_of_purged_video_still_plays_and_can_be_described(client, db):
     clip_key = "clips/1_v1.mp4"
     with storage.open_write(clip_key) as fh:
         fh.write(b"klip")
-    clip = clip_for(db, video, clip_path=clip_key, clip_version=1)       # kwarta nieustalona (brak znaczników)
+    clip = clip_for(db, video, clip_path=clip_key, clip_version=1)
     client.post(f"/admin/videos/{video.id}/purge")
     assert client.get(f"/clips/{clip.id}/file").status_code == 200
     page = client.get(f"/clips/{clip.id}").text
@@ -380,7 +363,6 @@ def test_clip_of_purged_video_still_plays_and_can_be_described(client, db):
     assert r.status_code == 303 and fresh(db, Clip, clip.id).is_described
 
 
-# --- osierocone pliki klipów ------------------------------------------------------------------------
 def write_clip_file(key, age_seconds=0):
     with storage.open_write(key) as fh:
         fh.write(b"x" * 10)
@@ -392,17 +374,17 @@ def write_clip_file(key, age_seconds=0):
 def test_orphan_clip_files_are_removed_only_when_old_and_unused(db):
     video = ready(db)
     used = clip_for(db, video, clip_path="clips/1_v2.mp4")
-    write_clip_file("clips/1_v2.mp4", age_seconds=7200)             # używany, stary: zostaje
-    write_clip_file("clips/1_v1.mp4", age_seconds=7200)             # stara wersja klipu, który ma już v2: osierocony
-    write_clip_file("clips/77_v1.mp4", age_seconds=7200)            # klip bez wiersza w bazie
-    write_clip_file("clips/5_v1.part.mp4", age_seconds=7200)        # niedokończone cięcie
-    write_clip_file("clips/88_v1.mp4", age_seconds=60)              # świeży (cięcie jeszcze zapisuje ścieżkę): zostaje
-    write_clip_file("clips/notatka.txt", age_seconds=7200)          # nie plik klipu: zostaje
+    write_clip_file("clips/1_v2.mp4", age_seconds=7200)  # used, old: stays
+    write_clip_file("clips/1_v1.mp4", age_seconds=7200)  # an old version of a clip that already has v2: orphan
+    write_clip_file("clips/77_v1.mp4", age_seconds=7200)  # a clip without a DB row
+    write_clip_file("clips/5_v1.part.mp4", age_seconds=7200)  # unfinished cut
+    write_clip_file("clips/88_v1.mp4", age_seconds=60)  # fresh (the cut is still writing the path): stays
+    write_clip_file("clips/notatka.txt", age_seconds=7200)  # not a clip file: stays
     assert retention.cleanup_orphan_clips(db) == 3
     assert storage.exists("clips/1_v2.mp4") and storage.exists("clips/88_v1.mp4") and storage.exists("clips/notatka.txt")
     assert not storage.exists("clips/1_v1.mp4") and not storage.exists("clips/77_v1.mp4")
     assert not storage.exists("clips/5_v1.part.mp4")
-    assert retention.cleanup_orphan_clips(db) == 0                                # idempotentne
+    assert retention.cleanup_orphan_clips(db) == 0
     assert fresh(db, Clip, used.id).clip_path == "clips/1_v2.mp4"
 
 
@@ -414,26 +396,26 @@ def test_maintenance_cleans_orphan_clip_files(db):
 
 def test_orphan_video_files_are_removed_only_when_old_unused_and_not_converting(db):
     old_age = config.ORPHAN_MIN_AGE_SECONDS + 600
-    ok = ready(db, original_path="uploads/1_zachowany.mp4")                  # pliki znane z bazy
+    ok = ready(db, original_path="uploads/1_zachowany.mp4")  # files known to the DB
     ok.proxy_path = "proxies/1.mp4"
     converting = ready(db, status="processing", original_path="uploads/2_w_konwersji.mp4")
     db.commit()
     for key in (ok.original_path, ok.proxy_path, converting.original_path):
         write_clip_file(key, age_seconds=old_age)
-    write_clip_file(f"proxies/{converting.id}.part.mp4", age_seconds=old_age)   # trwająca konwersja
-    write_clip_file("proxies/501.mp4", age_seconds=old_age)                     # nagranie usunięte: sierota
-    write_clip_file("proxies/502.part.mp4", age_seconds=old_age)                # sierota po przerwanej konwersji
-    write_clip_file("uploads/503_stary_oryginal.mp4", age_seconds=old_age)      # sierota
-    write_clip_file("proxies/504.mp4", age_seconds=60)                          # świeża: zostaje
-    write_clip_file("uploads/tus-abc.part", age_seconds=old_age)                # trwający upload: nie nasze
-    write_clip_file("uploads/notatka.txt", age_seconds=old_age)                 # obcy plik: zostaje
+    write_clip_file(f"proxies/{converting.id}.part.mp4", age_seconds=old_age)  # conversion in progress
+    write_clip_file("proxies/501.mp4", age_seconds=old_age)  # recording deleted: orphan
+    write_clip_file("proxies/502.part.mp4", age_seconds=old_age)  # orphan of an interrupted conversion
+    write_clip_file("uploads/503_stary_oryginal.mp4", age_seconds=old_age)  # orphan
+    write_clip_file("proxies/504.mp4", age_seconds=60)  # fresh: stays
+    write_clip_file("uploads/tus-abc.part", age_seconds=old_age)  # running upload: not ours
+    write_clip_file("uploads/notatka.txt", age_seconds=old_age)  # foreign file: stays
     assert retention.cleanup_orphan_videos(db) == 3
     for key in (ok.original_path, ok.proxy_path, converting.original_path, f"proxies/{converting.id}.part.mp4",
                 "proxies/504.mp4", "uploads/tus-abc.part", "uploads/notatka.txt"):
         assert storage.exists(key), key
     for key in ("proxies/501.mp4", "proxies/502.part.mp4", "uploads/503_stary_oryginal.mp4"):
         assert not storage.exists(key), key
-    assert retention.cleanup_orphan_videos(db) == 0                              # idempotentne
+    assert retention.cleanup_orphan_videos(db) == 0
 
 
 def test_maintenance_cleans_orphan_video_files(db):
@@ -442,7 +424,6 @@ def test_maintenance_cleans_orphan_video_files(db):
     assert not storage.exists("proxies/777.mp4")
 
 
-# --- oznaczenie „dostępne jeszcze X dni” ------------------------------------------------------------
 def test_days_left_and_note(db):
     now = utcnow()
     video = ready(db, expires_in_days=0)
@@ -454,7 +435,7 @@ def test_days_left_and_note(db):
     video.purged_at = now
     assert retention.expiry_note([video], now) is None
     video.purged_at, video.proxy_path = None, None
-    assert retention.expiry_note([video], now) is None          # w konwersji: nic jeszcze nie wygasa
+    assert retention.expiry_note([video], now) is None
 
 
 def test_expiry_note_in_match_list_match_page_panel_and_player(client, db):
@@ -463,12 +444,11 @@ def test_expiry_note_in_match_list_match_page_panel_and_player(client, db):
     assert "dostępne jeszcze 4 dni" in client.get("/").text
     page = client.get(f"/matches/{soon.match_id}").text
     assert 'id="expiry-note"' in page and "pełne nagranie dostępne jeszcze 4 dni" in page
-    assert "Pełne nagranie dostępne jeszcze 4 dni" in page            # także przy nagraniu w panelu
+    assert "Pełne nagranie dostępne jeszcze 4 dni" in page
     assert 'id="expiry-banner"' in client.get(f"/videos/{soon.id}").text
     far_page = client.get(f"/matches/{far.match_id}").text
     assert 'id="expiry-note"' not in far_page and "Pełne nagranie dostępne do" in far_page
     assert 'id="expiry-banner"' not in client.get(f"/videos/{far.id}").text
-    # po usunięciu: stan „pełne nagranie usunięte”, bez oznaczenia
     client.post(f"/admin/videos/{soon.id}/purge")
     after = client.get(f"/matches/{soon.match_id}").text
     assert 'id="expiry-note"' not in after and "pełne nagranie usunięte" in after

@@ -1,4 +1,3 @@
-"""Nagrania: panel i edycja, odtwarzacz, znaczniki kwart, notatki, szybkie klipy."""
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
@@ -19,13 +18,10 @@ from app.web import clip_json, file_response, mark_json, render
 
 router = APIRouter()
 
-# Wgrywanie, znaczniki kwart i klipy: administrator i szkoleniowiec w każdym meczu, sędzia
-# tylko w meczu, w którego obsadzie jest (po koncie).
 can_upload_video = via_match(permissions.can_upload_to_match)
 can_manage_video_clips = via_match(permissions.can_manage_clips)
 
 
-# --- nagrania meczu (wgrywanie: app/routers/uploads.py, protokół tus) ---------------------
 @router.get("/matches/{match_id}/videos-panel")
 def videos_panel(request: Request, match: Match = Depends(get_match),
                  user: User = require(permissions.can_view)):
@@ -33,7 +29,6 @@ def videos_panel(request: Request, match: Match = Depends(get_match),
     return render(request, "_videos_panel.html", match=match, busy=busy)
 
 
-# --- serwowanie wideo (Range) ---------------------------------------------------
 @router.get("/videos/{video_id}/stream")
 def stream_video(video: Video = Depends(get_video), user: User = require(permissions.can_view)):
     if video.purged_at is not None:
@@ -46,7 +41,7 @@ def stream_video(video: Video = Depends(get_video), user: User = require(permiss
 @router.post("/videos/{video_id}/retry")
 def retry_video(db: Session = Depends(get_db), video: Video = Depends(get_video),
                 user: User = require(can_upload_video, get_video)):
-    """Ponowienie konwersji — tylko dopóki istnieje oryginał (po udanej konwersji jest usuwany)."""
+    """only while the original exists (it is deleted after a successful conversion)"""
     if video.status != "error":
         raise HTTPException(409, "Konwersję można ponowić tylko po błędzie")
     if not video.original_path or not storage.exists(video.original_path):
@@ -69,10 +64,9 @@ def update_video(request: Request, label: str = Form(""), content_kind: str = Fo
                  periods: list[str] = Form([]), confirm_marks: str = Form(""),
                  db: Session = Depends(get_db), video: Video = Depends(get_video),
                  user: User = require(can_upload_video, get_video)):
-    """Etykieta i deklaracja zawartości pliku (cały mecz / kwarta / kilka kwart). Zmiana, która
-    usuwa lub przepisuje znaczniki kwart, wymaga potwierdzenia (formularz pokazuje które).
-    Po usunięciu pełnego nagrania zmienia się tylko etykieta: deklaracja i znaczniki kwart są
-    zamrożone (kwarty klipów mają zostać takie, jakie były)."""
+    """After the full recording is removed only the label changes: the declaration and quarter markers
+    are frozen (clip quarters must stay as they were).
+    """
     if video.purged_at is not None:
         video.label = label.strip()[:100]
         db.commit()
@@ -108,7 +102,6 @@ def delete_video(db: Session = Depends(get_db), video: Video = Depends(get_video
     return RedirectResponse(f"/matches/{match_id}", status_code=303)
 
 
-# --- odtwarzacz -----------------------------------------------------------------
 def _playable(video: Video) -> bool:
     return video.status == "ready" and video.purged_at is None and bool(video.proxy_path)
 
@@ -121,7 +114,6 @@ def _require_playable(video: Video) -> None:
 
 
 def _periods(video: Video) -> list[dict]:
-    """Kwarty z deklaracji zawartości ze znacznikiem (albo bez) — panel „Początki kwart”."""
     marks = {mk.period: mk for mk in video.marks}
     required = set(services.required_periods(video.content))
     return [{"period": p, "required": p in required, "mark": mark_json(marks[p]) if p in marks else None}
@@ -145,7 +137,6 @@ def _state(video: Video, user: User) -> dict:
 
 
 def _can_delete_marker(user: User, clip: Clip) -> bool:
-    """Usunięcie znacznika: reguła usuwania klipu i bycie w obsadzie (albo rola szkoleniowa/admin)."""
     return permissions.can_delete_clip(user, clip) and permissions.can_manage_clips(user, clip.match)
 
 
@@ -169,8 +160,6 @@ class MarkIn(BaseModel):
 @router.post("/api/videos/{video_id}/marks")
 def set_mark(body: MarkIn, db: Session = Depends(get_db), video: Video = Depends(get_video),
              user: User = require(can_upload_video, get_video)):
-    """Początek kwarty: domyślnie następnej brakującej (według deklaracji zawartości); znacznik
-    istniejącej kwarty jest przesuwany. Serwer pilnuje dozwolonych kwart i kolejności."""
     _require_playable(video)
     period = body.period or services.next_period(video.marks, video.content)
     if period is None:
@@ -195,7 +184,7 @@ def set_mark(body: MarkIn, db: Session = Depends(get_db), video: Video = Depends
 def delete_mark(db: Session = Depends(get_db), mark: PeriodMark = Depends(get_mark),
                 user: User = require(lambda u, mk: can_upload_video(u, mk.video), get_mark)):
     video = mark.video
-    _require_playable(video)  # po usunięciu pełnego nagrania znaczniki kwart są zamrożone
+    _require_playable(video)  # after the full recording is removed, quarter markers are frozen
     if services.allowed_periods(video.content) == [mark.period]:
         raise HTTPException(409, "Plik z jedną kwartą zawsze ma znacznik początku — przesuń go "
                                  "(Ustaw tutaj) zamiast usuwać.")
@@ -205,7 +194,6 @@ def delete_mark(db: Session = Depends(get_db), mark: PeriodMark = Depends(get_ma
     return _state(video, user)
 
 
-# --- znaczniki „Zaznacz” (klawisz Z) ----------------------------------------------
 class MarkerIn(BaseModel):
     time_sec: float
 
@@ -213,8 +201,9 @@ class MarkerIn(BaseModel):
 @router.post("/api/videos/{video_id}/markers")
 def add_marker(body: MarkerIn, db: Session = Depends(get_db), video: Video = Depends(get_video),
                user: User = require(can_manage_video_clips, get_video)):
-    """Znacznik w bieżącym czasie nagrania = nieopisany klip (margines 15/15, cięcie w kolejce).
-    Drugi znacznik tego samego autora w mniej niż sekundę jest ignorowany (`created: false`)."""
+    """A marker at the current time = an undescribed clip (15 s margin on each side, cut queued). A
+    second marker by the same author within a second is ignored (`created: false`).
+    """
     _require_playable(video)
     clip, created = services.add_marker(db, video, user, body.time_sec)
     db.refresh(video)
@@ -224,7 +213,6 @@ def add_marker(body: MarkerIn, db: Session = Depends(get_db), video: Video = Dep
 @router.post("/api/videos/{video_id}/markers/undo")
 def undo_marker(db: Session = Depends(get_db), video: Video = Depends(get_video),
                 user: User = require(can_manage_video_clips, get_video)):
-    """Cofnięcie ostatniego własnego nieopisanego znacznika (razem z plikiem klipu)."""
     _require_playable(video)
     clip = services.undo_marker(db, video, user)
     if clip is None:
@@ -236,8 +224,7 @@ def undo_marker(db: Session = Depends(get_db), video: Video = Depends(get_video)
 @router.delete("/api/clips/{clip_id}")
 def delete_marker(confirm: bool = False, db: Session = Depends(get_db), clip: Clip = Depends(get_clip),
                   user: User = require(_can_delete_marker, get_clip)):
-    """Usunięcie znacznika z listy przy odtwarzaczu (razem z plikiem klipu). Klip już opisany
-    wymaga potwierdzenia (`?confirm=true`)."""
+    """A described clip needs confirmation (`?confirm=true`)."""
     if clip.is_described and not confirm:
         raise HTTPException(409, "Klip jest już opisany — potwierdź usunięcie")
     video = clip.video
@@ -248,7 +235,6 @@ def delete_marker(confirm: bool = False, db: Session = Depends(get_db), clip: Cl
     return _state(video, user)
 
 
-# --- znacznik z notatką (klawisz M) -------------------------------------------------
 class QuickClipIn(BaseModel):
     time_sec: float
     text: str = ""
@@ -257,7 +243,6 @@ class QuickClipIn(BaseModel):
 @router.post("/api/videos/{video_id}/quick-clip")
 def quick_clip(body: QuickClipIn, db: Session = Depends(get_db), video: Video = Depends(get_video),
                user: User = require(can_manage_video_clips, get_video)):
-    """Znacznik z notatką: tekst jest parsowany jak linia notatek (sędzia, kategoria, opis = reszta)."""
     _require_playable(video)
     time_sec = services.clamp_time(body.time_sec, video.duration)
     clock = format_clock(time_sec)
@@ -267,12 +252,11 @@ def quick_clip(body: QuickClipIn, db: Session = Depends(get_db), video: Video = 
     clip = services.create_clip(
         db, video, user, time_sec=time_sec, official_id=line.referee_id,
         category_id=category.id if category else None,
-        description=line.description)  # tylko reszta: bez czasu, sędziego i kategorii (są w osobnych polach)
+        description=line.description)  # only the remainder: no time, referee or category (they are separate fields)
     db.commit()
     return {"clip": clip_json(clip), "warnings": line.warnings, **_state(video, user)}
 
 
-# --- notatki: wklejenie, podgląd, zapis -----------------------------------------
 def _notes_limit(text: str) -> None:
     try:
         services.clean_notes(text)
@@ -321,9 +305,9 @@ def notes_parse_api(payload: dict, db: Session = Depends(get_db), video: Video =
 @router.post("/api/matches/{match_id}/notes/parse")
 def match_notes_parse(payload: dict, db: Session = Depends(get_db), match: Match = Depends(get_match),
                       user: User = require(permissions.can_manage_clips, get_match)):
-    """Podgląd notatek przed wgraniem pliku (formularz wgrywania): obsada meczu i słownik
-    kategorii. Długości nagrania jeszcze nie znamy, więc „moment poza nagraniem” wychodzi dopiero
-    po konwersji."""
+    """The recording length is not known yet, so "moment outside the recording" only shows up after
+    conversion.
+    """
     text = str(payload.get("text", ""))
     _notes_limit(text)
     return _rows_json(services.parse_for_match(db, match, text))
@@ -333,7 +317,6 @@ def match_notes_parse(payload: dict, db: Session = Depends(get_db), match: Match
 async def notes_commit(request: Request, db: Session = Depends(get_db),
                        video: Video = Depends(get_video),
                        user: User = require(can_manage_video_clips, get_video)):
-    """Zapisuje (edytowane) wiersze podglądu jako klipy i zleca wycinanie."""
     _require_playable(video)
     form = await request.form()
     valid_officials = {o.id for o in video.match.officials}

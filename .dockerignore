@@ -1,4 +1,3 @@
-# Poza obrazem: środowisko lokalne, dane, repozytorium, testy i dokumentacja.
 .venv/
 data/
 .git/

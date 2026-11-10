@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Testy interfejsu w przeglądarce (Playwright + Chromium) na prawdziwym serwerze i workerze.
-# Użycie: scripts/e2e.sh [argumenty pytest, np. -k upload]   (E2E_KEEP=1 zostawia katalog danych)
-# Przy porażce zrzuty ekranu, log konsoli i logi serwera lądują w /tmp/refclips-e2e-artifacts/.
+# Browser UI tests (Playwright + Chromium) against a real server and worker.
+# Usage: scripts/e2e.sh [pytest args, e.g. -k upload]   (E2E_KEEP=1 keeps the data directory)
+# On failure screenshots, the console log and server logs go to /tmp/refclips-e2e-artifacts/.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 

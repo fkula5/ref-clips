@@ -1,6 +1,3 @@
-{# Wspólne części arkusza oceny (widok i formularz). #}
-{# Nagłówek z danych meczu i kolumn arkusza (obsada z chwili założenia). Przez {% call(field) head(...) %} formularz
-   podstawia własne pola dla "result" i "difficulty". #}
 {% macro head(sheet, match) %}
 <table class="sheet-head">
   <tr><th scope="row">Mecz</th><td>{{ match.team_a_name or '—' }} – {{ match.team_b_name or '—' }}</td>

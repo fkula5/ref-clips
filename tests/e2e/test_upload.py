@@ -1,4 +1,3 @@
-"""Scenariusze d) i e): wgrywanie przez interfejs (upload.js + tus-js-client), przerwanie i wznowienie."""
 import json
 import re
 
@@ -40,7 +39,7 @@ def server_video(ui, match_id) -> Video | None:
         return db.scalar(select(Video).where(Video.match_id == match_id))
 
 
-def test_wgrywanie_z_deklaracja_notatkami_i_konwersja(ui):
+def test_upload_with_declaration_notes_and_conversion(ui):
     page, match_id = open_match(ui)
     expect(page.locator("#videos-panel")).to_contain_text("Brak nagrań")
 
@@ -50,7 +49,6 @@ def test_wgrywanie_z_deklaracja_notatkami_i_konwersja(ui):
     row.locator(".content-periods input[value=Q1]").check()
     row.locator(".content-periods input[value=Q2]").check()
 
-    # notatki z podglądem przed wysłaniem
     row.locator("details.notes-block summary").click()
     row.locator(".notes-text").fill(NOTES)
     row.get_by_role("button", name="Podgląd").click()
@@ -61,27 +59,25 @@ def test_wgrywanie_z_deklaracja_notatkami_i_konwersja(ui):
     expect(rows.nth(0).locator("td").nth(1)).to_have_text("0:20")
     expect(rows.nth(0).locator("td").nth(2)).to_contain_text("Roman Sędzia")
     expect(rows.nth(0).locator("td").nth(3)).to_have_text("kroki")
-    expect(rows.nth(1).locator("td").nth(2)).to_contain_text("Kasia Żółć")  # U1 z obsady
+    expect(rows.nth(1).locator("td").nth(2)).to_contain_text("Kasia Żółć")
     expect(rows.nth(1).locator("td").nth(3)).to_have_text("blok / szarża")
-    expect(rows.nth(2)).to_have_class("bad")  # linia bez czasu
+    expect(rows.nth(2)).to_have_class("bad")
     expect(rows.nth(2).locator("td").nth(5)).not_to_be_empty()
     expect(row.locator(".notes-preview .small-note")).to_contain_text("2 z 3 linii zamieni się w klipy")
 
     page.get_by_role("button", name="Wgraj").click()
     expect(page.locator("#upload-progress .upload-row")).to_be_visible()
-    # po zakończeniu strona sama się odświeża i w panelu jest nagranie
     video_row = page.locator("#videos-panel .video-row")
     expect(video_row).to_have_count(1, timeout=30_000)
     expect(video_row).to_contain_text(ui.server.sample.name)
     expect(video_row).to_contain_text("zawiera: kwarty Q1, Q2")
 
     states = progress_states(page)
-    assert any(s.startswith("100|100%") for s in states), states   # pasek doszedł do 100%
+    assert any(s.startswith("100|100%") for s in states), states
     assert any("gotowe — konwersja w tle" in s for s in states), states
     values = [int(s.split("|")[0]) for s in states]
     assert values == sorted(values), "postęp nie powinien się cofać"
 
-    # Konwersja przez workera: panel HTMX odświeża się sam (bez przeładowania strony).
     page.evaluate("window.__bez_przeladowania = true")
     expect(video_row.locator(".badge")).to_have_text("gotowe", timeout=90_000)
     assert page.evaluate("window.__bez_przeladowania === true"), "panel nagrań przeładował całą stronę"
@@ -90,7 +86,6 @@ def test_wgrywanie_z_deklaracja_notatkami_i_konwersja(ui):
     expect(page.get_by_role("link", name="ustaw w odtwarzaczu")).to_be_visible()
     expect(page.locator(".match-head .badge")).to_have_text("brak znaczników kwart")
 
-    # klipy z notatek: lista na stronie meczu sama przechodzi z „w kolejce” do „wycięty”
     clips_table = page.locator("#clips-section table tbody tr")
     expect(clips_table).to_have_count(2)
     expect(clips_table.locator(".badge.cut")).to_have_count(2, timeout=60_000)
@@ -98,15 +93,14 @@ def test_wgrywanie_z_deklaracja_notatkami_i_konwersja(ui):
 
     video = server_video(ui, match_id)
     assert video.status == "ready" and video.content == "Q1,Q2" and video.original_path is None
-    # z notatek powstały dwa nieopisane klipy, z rozpoznanym sędzią i kategorią
     with ui.server.db() as db:
         clips = list(db.scalars(select(Clip).where(Clip.match_id == match_id).order_by(Clip.time_sec)))
     assert [c.time_sec for c in clips] == [20.0, 35.0]
     assert all(c.official_id and c.category_id and c.described_at is None for c in clips)
 
 
-def test_przerwanie_polaczenia_w_trakcie_i_automatyczne_wznowienie(ui):
-    ui.allow(r"ERR_CONNECTION_RESET")  # to my zrywamy połączenie
+def test_connection_dropped_midway_and_automatic_resume(ui):
+    ui.allow(r"ERR_CONNECTION_RESET")  # we drop the connection ourselves
     page, match_id = open_match(ui)
     state = {"patches": 0, "aborted": 0, "block": False}
 
@@ -125,7 +119,6 @@ def test_przerwanie_polaczenia_w_trakcie_i_automatyczne_wznowienie(ui):
     choose_file(page, ui)
     page.get_by_role("button", name="Wgraj").click()
 
-    # połączenie zerwane po trzech kawałkach; klient ponawia próby (z HEAD po offset)
     wait_until(page, lambda: state["aborted"] >= 2, message="klient nie ponowił próby po zerwaniu połączenia")
     pct = page.locator("#upload-progress .pct")
     expect(pct).not_to_contain_text("gotowe")
@@ -135,7 +128,7 @@ def test_przerwanie_polaczenia_w_trakcie_i_automatyczne_wznowienie(ui):
         assert 0 < up.offset_bytes < up.size_bytes
 
     state["block"] = False
-    state["patches"] = -10_000  # od teraz wszystko przechodzi
+    state["patches"] = -10_000  # from now on everything goes through
     video_row = page.locator("#videos-panel .video-row")
     expect(video_row).to_have_count(1, timeout=60_000)
     states = progress_states(page)
@@ -143,11 +136,10 @@ def test_przerwanie_polaczenia_w_trakcie_i_automatyczne_wznowienie(ui):
     video = server_video(ui, match_id)
     assert video.size_bytes == ui.server.sample.stat().st_size
     expect(video_row.locator(".badge")).to_have_text("gotowe", timeout=90_000)
-    # bajty na serwerze są identyczne (konwersja nie zmienia faktu, że upload był kompletny)
     assert ui.server.sample.stat().st_size == video.size_bytes
 
 
-def test_odswiezenie_strony_w_trakcie_i_wznowienie_od_miejsca_przerwania(ui):
+def test_page_refresh_midway_and_resume_from_where_it_stopped(ui):
     ui.allow(r"ERR_CONNECTION_RESET")
     page, match_id = open_match(ui)
     dialogs = []
@@ -172,14 +164,13 @@ def test_odswiezenie_strony_w_trakcie_i_wznowienie_od_miejsca_przerwania(ui):
         offset_before, size = up.offset_bytes, up.size_bytes
     assert 0 < offset_before < size
 
-    # odświeżenie w trakcie wgrywania: przeglądarka ostrzega (beforeunload), upload się zatrzymuje
-    page.reload()  # blokada PATCH trwa, więc ponowienia ze starej strony nie mogą nic dopisać
+    page.reload()  # the PATCH lock is held, so retries from the old page cannot append anything
     assert "beforeunload" in dialogs
     expect(page.locator("#upload-progress .upload-row")).to_have_count(0)
-    with ui.server.db() as db:  # zerwane połączenie nie kasuje części pliku
+    with ui.server.db() as db:
         assert db.scalar(select(UploadSession.offset_bytes).where(UploadSession.match_id == match_id)) == offset_before
 
-    state["block"], state["patches"] = False, -10_000  # po odświeżeniu połączenie działa
+    state["block"], state["patches"] = False, -10_000
     requests = []
     page.on("request", lambda r: requests.append(
         (r.method, r.url, r.headers.get("upload-offset")))
@@ -193,7 +184,6 @@ def test_odswiezenie_strony_w_trakcie_i_wznowienie_od_miejsca_przerwania(ui):
     patches = [r for r in requests if r[0] == "PATCH"]
     assert not creates, f"wznowienie nie powinno tworzyć nowego uploadu: {creates}"
     assert int(patches[0][2]) == offset_before, f"pierwszy PATCH po odświeżeniu: {patches[0]}"
-    # po odświeżeniu poszły tylko brakujące kawałki, każdy od kolejnego offsetu
     chunk = CHUNK_KB * 1024
     expected = list(range(offset_before, size, chunk))
     assert [int(p[2]) for p in patches] == expected, f"PATCH-e po odświeżeniu: {patches}"
@@ -202,7 +192,7 @@ def test_odswiezenie_strony_w_trakcie_i_wznowienie_od_miejsca_przerwania(ui):
     expect(video_row.locator(".badge")).to_have_text("gotowe", timeout=90_000)
 
 
-def test_przycisk_przerwij_usuwa_wgrywanie(ui):
+def test_cancel_button_removes_the_upload(ui):
     ui.allow(r"ERR_CONNECTION_RESET")
     page, match_id = open_match(ui)
     state = {"patches": 0}
@@ -219,7 +209,6 @@ def test_przycisk_przerwij_usuwa_wgrywanie(ui):
     wait_until(page, lambda: state["patches"] > 3, message="upload nie doszedł do zerwania")
     page.get_by_role("button", name="Przerwij").click()
     expect(page.locator("#upload-progress .pct")).to_have_text("przerwano")
-    # serwer usunął sesję i część pliku, a formularz da się znów użyć
     wait_until(page, lambda: not _uploads_left(ui, match_id), message="sesja uploadu nie została usunięta")
     expect(page.get_by_role("button", name="Wgraj")).to_be_enabled()
     assert server_video(ui, match_id) is None
@@ -231,7 +220,7 @@ def _uploads_left(ui, match_id):
         return list(db.scalars(select(UploadSession).where(UploadSession.match_id == match_id)))
 
 
-def test_drugie_wgrywanie_tego_samego_uzytkownika_daje_komunikat_i_przerwanie_poprzedniego(ui, tmp_path):
+def test_second_upload_by_the_same_user_gives_a_message_and_cancels_the_previous_one(ui, tmp_path):
     ui.allow(r"ERR_CONNECTION_RESET|status of 409")
     first, match_id = open_match(ui)
     state = {"patches": 0}
@@ -247,7 +236,6 @@ def test_drugie_wgrywanie_tego_samego_uzytkownika_daje_komunikat_i_przerwanie_po
     first.get_by_role("button", name="Wgraj").click()
     wait_until(first, lambda: state["patches"] > 3, message="upload nie doszedł do zerwania")
 
-    # ten sam użytkownik w drugiej karcie wgrywa inny plik
     other_file = tmp_path / "inny-plik.mp4"
     other_file.write_bytes(ui.server.sample.read_bytes()[:700_000])
     second = ui.page("admin")
@@ -262,7 +250,7 @@ def test_drugie_wgrywanie_tego_samego_uzytkownika_daje_komunikat_i_przerwanie_po
     assert not _uploads_left(ui, match_id)
 
 
-def test_dwa_pliki_naraz_z_osobnymi_deklaracjami(ui, tmp_path):
+def test_two_files_at_once_with_separate_declarations(ui, tmp_path):
     page, match_id = open_match(ui)
     second_file = tmp_path / "druga-kwarta.mp4"
     second_file.write_bytes(ui.server.sample.read_bytes())
@@ -280,6 +268,6 @@ def test_dwa_pliki_naraz_z_osobnymi_deklaracjami(ui, tmp_path):
     expect(panel_rows.nth(1)).to_contain_text("Mecz (druga-kwarta.mp4)")
     expect(panel_rows.nth(1)).to_contain_text("zawiera: kwarta Q2")
     expect(panel_rows.locator(".badge")).to_have_text(["gotowe", "gotowe"], timeout=120_000)
-    # każdy plik z jedną kwartą ma od razu znacznik początku (0:00), więc baner nie pojawia się
+    # every one-quarter file gets a start marker (0:00) at once, so the banner does not appear
     expect(page.locator("#marks-banner")).to_have_count(0)
     expect(page.locator(".match-head .badge")).to_have_text("gotowy")

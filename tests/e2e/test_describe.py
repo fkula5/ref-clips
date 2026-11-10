@@ -1,5 +1,3 @@
-"""Scenariusz k): ekran opisywania znaczników — kolejka, skróty klawiszowe, propozycje z notatek,
-kwarta nieustalona, podgląd klipu, pomiń/usuń, wejście z meczu i z odtwarzacza."""
 import re
 
 from playwright.sync_api import Page, expect
@@ -11,7 +9,6 @@ PREVIEW = "document.getElementById('preview')"
 
 def setup_match(ui, times=(20.0, 30.0, 40.0), *, content="Q1,Q2", periods=(("Q1", 5.0), ("Q2", 35.0)),
                 officials=(("CC", "referee"), ("U1", "Kasia Żółć"), ("U2", "second")), **clip_kwargs):
-    """Mecz z obsadą CC/U1/U2, nagraniem (50 s) ze znacznikami kwart i klipami bez zadań cięcia."""
     match_id = ui.server.make_match(officials=officials)
     video_id = ui.server.make_ready_video(match_id, content=content)
     for period, at in periods:
@@ -30,14 +27,14 @@ def current_id(page: Page) -> int:
     return int(page.locator("#describe").get_attribute("data-clip"))
 
 
-def test_opisanie_trzech_znacznikow_z_klawiatury(ui):
+def test_describing_three_markers_from_the_keyboard(ui):
     match_id, video_id, (c1, c2, c3) = setup_match(ui)
     page = open_describe(ui, match_id)
     expect(page.locator("#describe-position")).to_contain_text("Znacznik 1 z 3")
     expect(page.locator("#describe-list li")).to_have_count(3)
     assert current_id(page) == c1
 
-    # znacznik 1: 1 = CC, K + wpisanie nazwy kategorii, Enter = zapisz i dalej
+    # clip 1: 1 = CC, K + typing a category name, Enter = save and go on
     page.keyboard.press("1")
     expect(page.get_by_label("CC · Roman Sędzia")).to_be_checked()
     page.keyboard.press("k")
@@ -50,7 +47,7 @@ def test_opisanie_trzech_znacznikow_z_klawiatury(ui):
     first = ui.server.clip(c1)
     assert first.described_at is not None and first.official_id and first.category_id and not first.whole_team
 
-    # znacznik 2: 2 = U1; kategoria listą (grupy), potem Enter na stronie
+    # clip 2: 2 = U1; category from the list (groups), then Enter on the page
     page.keyboard.press("2")
     expect(page.get_by_label("U1 · Kasia Żółć")).to_be_checked()
     page.locator("#category-select").select_option(label="aut")
@@ -60,7 +57,8 @@ def test_opisanie_trzech_znacznikow_z_klawiatury(ui):
     assert current_id(page) == c3
     assert ui.server.clip(c2).described_at is not None
 
-    # znacznik 3: 0 = cały zespół, D = opis; cyfry w opisie nie zmieniają sędziego; Ctrl+Enter zapisuje
+    # clip 3: 0 = whole team, D = description; digits in the description do not change the referee;
+    # Ctrl+Enter saves
     page.keyboard.press("0")
     expect(page.get_by_label("cały zespół")).to_be_checked()
     page.keyboard.press("d")
@@ -75,20 +73,18 @@ def test_opisanie_trzech_znacznikow_z_klawiatury(ui):
     assert last.whole_team and last.official_id is None and last.description == "Zdarzenie 123 w 0 minucie"
     clips = {c.id: c for c in ui.server.clips_of(video_id)}
     assert all(c.described_at is not None for c in clips.values())
-    # wejście na stronę klipu pokazuje zapisane wartości
     page.goto(f"/clips/{c1}")
     expect(page.locator("#clip-info")).to_contain_text("CC · Roman Sędzia")
     expect(page.locator("#clip-info")).to_contain_text("kroki")
 
 
-def test_skroty_nie_dzialaja_w_polach_tekstowych(ui):
+def test_shortcuts_do_not_work_in_text_fields(ui):
     match_id, _, _ = setup_match(ui)
     page = open_describe(ui, match_id)
     page.get_by_label("Opis (opcjonalnie)").click()
     page.keyboard.type("1230 k d r")
     expect(page.locator("#description")).to_have_value("1230 k d r")
     expect(page.locator("input[name=official]:checked")).to_have_count(0)
-    # własna kategoria: pole nazwy jest widoczne i też przyjmuje cyfry
     page.locator("#category-select").select_option(label="własna")
     custom = page.locator("input[name=custom_category]")
     expect(custom).to_be_visible()
@@ -98,7 +94,7 @@ def test_skroty_nie_dzialaja_w_polach_tekstowych(ui):
     expect(page.locator("input[name=official]:checked")).to_have_count(0)
 
 
-def test_propozycje_z_notatek_sa_widoczne_i_zatwierdzane(ui):
+def test_proposals_from_notes_are_visible_and_approved(ui):
     match_id, video_id, (c1, c2) = setup_match(ui, times=(20.0, 30.0), official="U1", category="kroki",
                                                description="0:20 Kasia kroki")
     page = open_describe(ui, match_id)
@@ -107,12 +103,11 @@ def test_propozycje_z_notatek_sa_widoczne_i_zatwierdzane(ui):
     expect(page.locator("#category-select option:checked")).to_have_text("kroki")
     expect(page.locator("#description")).to_have_value("0:20 Kasia kroki")
     expect(page.locator("#describe-list li").first.locator(".chip", has_text="propozycja")).to_be_visible()
-    assert ui.server.clip(c1).described_at is None            # propozycja nie jest jeszcze opisem
-    page.keyboard.press("Enter")                                 # zatwierdzenie bez zmian
+    assert ui.server.clip(c1).described_at is None
+    page.keyboard.press("Enter")
     expect(page.locator("#describe-position")).to_contain_text("Znacznik 1 z 1")
     done = ui.server.clip(c1)
     assert done.described_at is not None and done.category_id and done.official_id
-    # poprawka propozycji przed zatwierdzeniem
     page.keyboard.press("3")
     page.keyboard.press("Enter")
     expect(page.locator("#all-described")).to_be_visible()
@@ -123,7 +118,7 @@ def test_propozycje_z_notatek_sa_widoczne_i_zatwierdzane(ui):
         assert db.get(Clip, c2).official.function == "U2"
 
 
-def test_kwarta_nieustalona_blokuje_opis_i_prowadzi_do_ustawienia_kwart(ui):
+def test_unknown_quarter_blocks_describing_and_leads_to_setting_quarters(ui):
     match_id, video_id, (c1,) = setup_match(ui, times=(20.0,), content="full", periods=())
     page = open_describe(ui, match_id)
     block = page.locator("#describe-block")
@@ -131,18 +126,15 @@ def test_kwarta_nieustalona_blokuje_opis_i_prowadzi_do_ustawienia_kwart(ui):
     expect(block).to_contain_text("brakuje: Q1, Q2, Q3, Q4")
     expect(page.locator("#clip-form")).to_have_count(0)
     expect(page.locator("#describe-list li").first).to_contain_text("kwarta nieustalona")
-    page.keyboard.press("Enter")                                   # skróty niczego nie zapisują
+    page.keyboard.press("Enter")
     page.keyboard.press("1")
     assert ui.server.clip(c1).described_at is None
-    # strona klipu też nie pozwala opisać
     page.goto(f"/clips/{c1}")
     expect(page.locator("#clip-edit #describe-block")).to_be_visible()
-    # link prowadzi do panelu „Początki kwart” w odtwarzaczu
     page.goto(f"/matches/{match_id}/describe")
     page.get_by_role("link", name="Ustaw początki kwart w odtwarzaczu").click()
     expect(page).to_have_url(re.compile(rf"/videos/{video_id}#poczatki-kwart$"))
     expect(page.locator("#poczatki-kwart")).to_be_visible()
-    # po ustawieniu kwart opisywanie działa
     for period, at in (("Q1", 5.0), ("Q2", 15.0), ("Q3", 30.0), ("Q4", 40.0)):
         ui.server.set_mark(video_id, period, at)
     page.goto(f"/matches/{match_id}/describe")
@@ -150,26 +142,24 @@ def test_kwarta_nieustalona_blokuje_opis_i_prowadzi_do_ustawienia_kwart(ui):
     expect(page.locator("#describe-block")).to_have_count(0)
 
 
-def test_walidacja_przegladarki_i_serwera_w_formularzu(ui):
+def test_browser_and_server_validation_in_the_form(ui):
     match_id, _, (c1, c2, c3) = setup_match(ui)
     page = open_describe(ui, match_id)
-    # brak wyboru: formularz się nie wysyła (required), nic się nie zapisuje
     page.keyboard.press("Enter")
     expect(page.locator("#describe-position")).to_contain_text("Znacznik 1 z 3")
     page.keyboard.press("2")
-    page.keyboard.press("Enter")                                  # nadal bez kategorii
+    page.keyboard.press("Enter")
     assert ui.server.clip(c1).described_at is None
     page.locator("#category-select").select_option(label="własna")
-    page.keyboard.press("Enter")                                  # kategoria własna bez nazwy
+    page.keyboard.press("Enter")
     expect(page.locator("#describe-position")).to_contain_text("Znacznik 1 z 3")
     assert ui.server.clip(c1).described_at is None
     page.locator("input[name=custom_category]").fill("ustawienie przy linii")
-    page.locator("input[name=custom_category]").press("Enter")    # Enter w polu nazwy zapisuje
+    page.locator("input[name=custom_category]").press("Enter")
     expect(page.locator("#describe-position")).to_contain_text("Znacznik 1 z 2")
     saved = ui.server.clip(c1)
     assert saved.custom_category == "ustawienie przy linii" and saved.described_at is not None
 
-    # serwer: kategoria nieaktywna odrzucona (formularz otwarty przed dezaktywacją)
     ui.allow(r"status of 422")
     page.keyboard.press("1")
     page.locator("#category-select").select_option(label="aut")
@@ -182,7 +172,7 @@ def test_walidacja_przegladarki_i_serwera_w_formularzu(ui):
         page.keyboard.press("Enter")
         error = page.locator("#form-error")
         expect(error).to_contain_text("Ta kategoria jest nieaktywna")
-        expect(page.get_by_label("CC · Roman Sędzia")).to_be_checked()      # wartości zachowane
+        expect(page.get_by_label("CC · Roman Sędzia")).to_be_checked()
         assert ui.server.clip(c2).described_at is None
     finally:
         with ui.server.db() as db:
@@ -190,7 +180,7 @@ def test_walidacja_przegladarki_i_serwera_w_formularzu(ui):
             db.commit()
 
 
-def test_pomin_nie_zapisuje_a_usun_znacznik_pyta_o_potwierdzenie(ui):
+def test_skip_does_not_save_and_delete_marker_asks_for_confirmation(ui):
     match_id, video_id, (c1, c2, c3) = setup_match(ui)
     page = open_describe(ui, match_id)
     page.get_by_role("link", name="Pomiń").click()
@@ -198,14 +188,12 @@ def test_pomin_nie_zapisuje_a_usun_znacznik_pyta_o_potwierdzenie(ui):
     assert current_id(page) == c2 and ui.server.clip(c1).described_at is None
     page.get_by_role("link", name="Pomiń").click()
     assert current_id(page) == c3
-    page.get_by_role("link", name="Pomiń").click()                  # po ostatnim wraca do pierwszego
+    page.get_by_role("link", name="Pomiń").click()
     assert current_id(page) == c1
 
-    # lista z boku też przełącza klipy
     page.locator("#describe-list li", has_text="0:40").get_by_role("link").click()
     assert current_id(page) == c3
 
-    # usunięcie: najpierw odmowa w oknie potwierdzenia, potem zgoda
     dialogs = []
     page.once("dialog", lambda d: (dialogs.append(d.message), d.dismiss()))
     page.get_by_role("button", name="Usuń znacznik").click()
@@ -215,35 +203,35 @@ def test_pomin_nie_zapisuje_a_usun_znacznik_pyta_o_potwierdzenie(ui):
     page.get_by_role("button", name="Usuń znacznik").click()
     expect(page.locator("#describe-list li")).to_have_count(2)
     assert ui.server.clip(c3) is None
-    assert current_id(page) == c1                                   # następny po usuniętym 0:40 (wraca do początku)
+    assert current_id(page) == c1
 
 
-def test_podglad_z_wersji_roboczej_zatrzymuje_sie_na_koncu_klipu(ui):
+def test_draft_preview_stops_at_the_end_of_the_clip(ui):
     match_id, video_id, (c1, c2) = setup_match(ui, times=(20.0, 45.0))
     page = open_describe(ui, match_id, query=f"?clip={c1}")
     expect(page.locator("#draft-note")).to_contain_text("czeka na wycięcie")
     page.wait_for_function(f"{PREVIEW}.readyState >= 1")
-    page.wait_for_function(f"Math.abs({PREVIEW}.currentTime - 19) < 0.3")      # start klipu = znacznik − margines (1 s)
+    page.wait_for_function(f"Math.abs({PREVIEW}.currentTime - 19) < 0.3")  # start = marker - 1 s margin
     assert page.evaluate(f"{PREVIEW}.paused")
-    page.keyboard.press(" ")                                                    # spacja = odtwórz
+    page.keyboard.press(" ")
     page.wait_for_function(f"!{PREVIEW}.paused")
-    page.keyboard.press(" ")                                                    # i pauza
+    page.keyboard.press(" ")
     page.wait_for_function(f"{PREVIEW}.paused")
     page.keyboard.press(" ")
-    page.wait_for_function(f"{PREVIEW}.paused && {PREVIEW}.currentTime >= 20.9", timeout=15_000)   # zatrzymanie na końcu
+    page.wait_for_function(f"{PREVIEW}.paused && {PREVIEW}.currentTime >= 20.9", timeout=15_000)
     assert page.evaluate(f"{PREVIEW}.currentTime") < 21.6, "podgląd poszedł za koniec klipu"
-    page.keyboard.press(" ")                                                    # ponowne odtwarzanie wraca na początek
+    page.keyboard.press(" ")
     page.wait_for_function(f"!{PREVIEW}.paused && {PREVIEW}.currentTime < 20.5")
     page.keyboard.press("r")
     page.wait_for_function(f"{PREVIEW}.currentTime < 20.2")
 
 
-def test_podglad_pliku_klipu_gdy_wyciety(ui):
+def test_clip_file_preview_when_cut(ui):
     match_id = ui.server.make_match()
     video_id = ui.server.make_ready_video(match_id, content="Q1,Q2")
     ui.server.set_mark(video_id, "Q1", 5.0)
     ui.server.set_mark(video_id, "Q2", 40.0)
-    clip_id = ui.server.create_clip(video_id, 25.0)                              # prawdziwe cięcie przez workera
+    clip_id = ui.server.create_clip(video_id, 25.0)
     page = ui.page("admin")
     wait_until(page, lambda: ui.server.clip(clip_id).status == "cut", timeout=60, message="worker nie wyciął klipu")
     page.goto(f"/matches/{match_id}/describe?clip={clip_id}")
@@ -251,7 +239,7 @@ def test_podglad_pliku_klipu_gdy_wyciety(ui):
     page.wait_for_function(f"{PREVIEW}.readyState >= 1 && {PREVIEW}.duration > 20")
 
 
-def test_blad_ciecia_na_ekranie_opisywania(ui):
+def test_cut_error_on_the_describe_screen(ui):
     match_id, video_id, (c1, c2) = setup_match(ui, times=(20.0, 30.0))
     ui.server.insert_clip(video_id, 45.0, status="error", error="Moment poza nagraniem: 9:00 (nagranie trwa 0:50)")
     page = open_describe(ui, match_id, query=f"?video_id={video_id}")
@@ -261,10 +249,10 @@ def test_blad_ciecia_na_ekranie_opisywania(ui):
     expect(page.get_by_role("button", name="Wytnij ponownie")).to_have_count(0)
     expect(page.get_by_role("button", name="Usuń znacznik")).to_be_visible()
     expect(page.locator("#preview")).to_have_count(0)
-    page.keyboard.press("Space")                                                 # bez podglądu skrót nic nie psuje
+    page.keyboard.press("Space")
 
 
-def test_wejscie_ze_strony_meczu(ui):
+def test_entering_from_the_match_page(ui):
     match_id, video_id, _ = setup_match(ui)
     page = ui.page("admin")
     page.goto(f"/matches/{match_id}")
@@ -273,7 +261,6 @@ def test_wejscie_ze_strony_meczu(ui):
     button.click()
     expect(page).to_have_url(re.compile(rf"/matches/{match_id}/describe$"))
     expect(page.locator("#describe-position")).to_contain_text("Znacznik 1 z 3")
-    # sędzia spoza obsady nie ma przycisku, a bezpośredni adres daje 403
     ui.allow(r"status of 403")
     other = ui.page("outsider")
     other.goto(f"/matches/{match_id}")
@@ -283,7 +270,7 @@ def test_wejscie_ze_strony_meczu(ui):
     expect(other.get_by_role("heading", name="Brak dostępu")).to_be_visible()
 
 
-def test_wejscie_z_odtwarzacza_i_licznik_nieopisanych(ui):
+def test_entering_from_the_player_and_the_undescribed_counter(ui):
     match_id, video_id, _ = setup_match(ui, times=(), content="Q1,Q2")
     page = ui.page("admin")
     page.goto(f"/videos/{video_id}")
@@ -294,14 +281,13 @@ def test_wejscie_z_odtwarzacza_i_licznik_nieopisanych(ui):
     page.wait_for_function("document.getElementById('player').currentTime > 11.5")
     page.keyboard.press("z")
     expect(counter).to_have_text("1")
-    ui.server.wait_marker_window_over(page, video_id)  # drugi znacznik dopiero po oknie ochrony przed podwójnym Z
+    ui.server.wait_marker_window_over(page, video_id)
     page.keyboard.press("z")
     expect(counter).to_have_text("2")
     page.get_by_role("link", name=re.compile(r"Opisz znaczniki \(2\)")).click()
     expect(page).to_have_url(re.compile(rf"/matches/{match_id}/describe\?video_id={video_id}$"))
     expect(page.locator("#describe-list li")).to_have_count(2)
     expect(page.locator("h1")).to_have_text("Opisywanie znaczników")
-    # opisanie jednego zmniejsza licznik po powrocie do odtwarzacza
     page.keyboard.press("0")
     page.locator("#category-select").select_option(label="inne")
     page.keyboard.press("Enter")
@@ -311,7 +297,7 @@ def test_wejscie_z_odtwarzacza_i_licznik_nieopisanych(ui):
     expect(page.locator("#undescribed-count")).to_have_text("1")
 
 
-def test_ekran_opisywania_na_telefonie(ui):
+def test_describe_screen_on_a_phone(ui):
     match_id, _, (c1, _c2, _c3) = setup_match(ui)
     page = open_describe(ui, match_id, mobile=True)
     assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth")

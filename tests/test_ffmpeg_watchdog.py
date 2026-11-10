@@ -1,5 +1,4 @@
-"""Czuwanie nad ffmpeg: zawieszona konwersja jest zabijana, zadanie kończy się błędem, kolejka rusza dalej.
-Prawdziwego ffmpeg nie potrzeba — udaje go skrypt powłoki, który wypisuje postęp i milknie."""
+"""The fake ffmpeg is a shell script that prints progress and goes silent; no real ffmpeg is needed."""
 import os
 import signal
 import subprocess
@@ -15,8 +14,8 @@ from app.models import Clip, Job, Video
 from app.storage import storage
 from tests.helpers import make_match, make_ready_video
 
-# Zachowanie skryptu wybiera zmienna FAKE_MODE (dziedziczona przez nice -> ffmpeg).
-# Potomek `sleep` zapisuje pid, żeby test sprawdził, że po zabiciu nic nie zostało w tle.
+# FAKE_MODE selects the script's behaviour (inherited by nice -> ffmpeg). The `sleep` child writes its
+# pid so the test can check that nothing is left in the background after the kill.
 FAKE_FFMPEG = r"""#!/bin/sh
 for a; do last=$a; done
 sleep 600 & echo $! > "$FAKE_PIDFILE"
@@ -67,7 +66,6 @@ def fake(tmp_path, monkeypatch):
             return None
 
     yield Fake
-    # sprzątanie na wypadek błędu testu: nic nie może zostać w tle
     vid.terminate_active()
     if pidfile.exists() and pidfile.read_text().strip():
         try:
@@ -106,17 +104,15 @@ def transcode(tmp_path, **kw):
     return dst, error, time.monotonic() - started
 
 
-# --- konwersja: zawieszenia ------------------------------------------------------------------
 @pytest.mark.parametrize("mode", ["stuck", "silent", "spinning"])
 def test_stalled_transcode_is_killed_with_clear_error(fake, tmp_path, mode):
-    """Postęp i cisza, brak jakiegokolwiek wyjścia oraz ffmpeg wypisujący wciąż ten sam `out_time`."""
     fake.mode(mode)
     dst, error, elapsed = transcode(tmp_path, stall_seconds=1.0)
     assert isinstance(error, vid.FFmpegStalled)
     assert "nie zgłosił postępu" in str(error) and "można ponowić" in str(error)
-    assert 0.9 < elapsed < 8, elapsed                      # nie przedwcześnie i nie w nieskończoność
+    assert 0.9 < elapsed < 8, elapsed
     assert not dst.exists()
-    assert not list(dst.parent.glob("*.part*"))            # plik tymczasowy posprzątany
+    assert not list(dst.parent.glob("*.part*"))
     pid = fake.child_pid()
     assert pid is not None and wait_dead(pid), "po zabiciu został proces-sierota"
     assert not vid._active
@@ -130,7 +126,7 @@ def test_default_stall_threshold_comes_from_config(fake, tmp_path, monkeypatch):
 
 
 def test_normal_slow_transcode_is_not_a_false_alarm(fake, tmp_path):
-    """Postęp rusza co 0,3 s przez ok. 2,5 s: dłużej niż próg 1 s, ale wciąż się zmienia."""
+    """Progress every 0.3 s for about 2.5 s: longer than the 1 s threshold, but still changing."""
     fake.mode("slow_ok")
     seen = []
     dst, error, elapsed = transcode(tmp_path, stall_seconds=1.0, on_progress=seen.append)
@@ -152,7 +148,6 @@ def test_ordinary_ffmpeg_failure_still_reports_stderr(fake, tmp_path):
     assert not dst.exists() and not vid._active
 
 
-# --- cięcie: zwykły limit czasu --------------------------------------------------------------
 def test_cut_timeout_scales_with_clip_length():
     assert vid.cut_timeout(10) == config.CUT_TIMEOUT_MIN_SECONDS
     assert vid.cut_timeout(100) == 100 * config.CUT_TIMEOUT_PER_CLIP_SECOND
@@ -172,7 +167,6 @@ def test_hanging_cut_is_killed_after_timeout(fake, tmp_path):
     assert pid is not None and wait_dead(pid)
 
 
-# --- zatrzymanie workera ---------------------------------------------------------------------
 def test_terminate_active_kills_running_ffmpeg(fake, tmp_path):
     fake.mode("silent")
     import threading
@@ -192,7 +186,6 @@ def test_terminate_active_kills_running_ffmpeg(fake, tmp_path):
 
 
 def test_sigterm_to_worker_kills_ffmpeg(fake, tmp_path):
-    """Prawdziwy SIGTERM do procesu z handlerem workera: ffmpeg i jego potomek znikają."""
     fake.mode("silent")
     data = tmp_path / "data"
     data.mkdir()
@@ -218,7 +211,6 @@ def test_sigterm_to_worker_kills_ffmpeg(fake, tmp_path):
             proc.kill()
 
 
-# --- worker: błąd zadania i kolejne zadanie ----------------------------------------------------
 def _queue_transcode(db, match, name):
     key = f"uploads/{name}.mp4"
     storage.local_path(key).parent.mkdir(parents=True, exist_ok=True)
@@ -246,15 +238,15 @@ def test_worker_records_stall_error_and_takes_next_job(db, fake, stubbed_probe, 
     hung = _queue_transcode(db, match, "hang")
     good = _queue_transcode(db, match, "good")
 
-    assert worker.run_once() is True                       # pierwsze zadanie: zawieszone
+    assert worker.run_once() is True
     db.expire_all()
     assert hung.status == "error" and "nie zgłosił postępu" in hung.error
     job = db.scalars(select(Job).where(Job.video_id == hung.id)).one()
     assert job.status == "error" and job.error == hung.error and job.finished_at is not None
     assert not list(storage.local_path("proxies").glob("*.part*"))
-    assert good.status == "queued"                         # drugie jeszcze czeka
+    assert good.status == "queued"
 
-    assert worker.run_once() is True                       # worker wziął kolejne zadanie
+    assert worker.run_once() is True
     db.expire_all()
     assert good.status == "ready" and good.proxy_path
     assert hung.status == "error" and not vid._active

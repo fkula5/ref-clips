@@ -1,6 +1,5 @@
-{# Karta „Arkusz oceny” na stronie meczu: pokazuje tylko to, co wolno widzieć bieżącemu użytkownikowi
-   (własny szkic, opublikowane arkusze z nazwiskiem kwalifikatora). Dla kogoś, kto nic nie widzi i nie może
-   założyć arkusza, nie ma jej wcale — nic nie zdradza istnienia arkusza. Zmienne: match, match_sheets. #}
+{# Shows only what the current user may see. For someone who sees nothing and cannot start a sheet there
+   is no card at all, so nothing hints at a sheet. #}
 {% set own_sheet = match_sheets|selectattr('coach_id', 'equalto', user.id)|first %}
 {% if match_sheets or perm.can_create_sheet(user) or perm.is_official(user, match) %}
 <h2 id="arkusz">Arkusz oceny</h2>

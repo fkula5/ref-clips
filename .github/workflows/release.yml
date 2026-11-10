@@ -1,12 +1,12 @@
-# Wydania i wdrożenie ref-clips (opis całości: docs/ci-cd.md).
+# Releases and deployment (overview: docs/ci-cd.md).
 #
-#   push do main ──► release-please: PR „wydanie vX.Y.Z” (lista zmian z Conventional Commits)
-#                    └ po merge'u tego PR-a: tag + GitHub Release ──► build obrazu (GHCR) ──► wdrożenie (ssh)
-#   Run workflow  ──► (tag) pomija release-please, buduje obraz tylko jeśli go brak i wdraża podany tag
-#                     (ponowienie po błędzie albo powrót do starszej wersji).
+#   push to main -> release-please: release PR (changelog from Conventional Commits)
+#                   after that PR is merged: tag + GitHub Release -> image build (GHCR) -> deploy (ssh)
+#   Run workflow  -> (tag) skips release-please, builds the image only if missing,
+#                   deploys the given tag (retry after a failure or rollback).
 #
-# Tag utworzony przez GITHUB_TOKEN nie uruchamia innych workflow, dlatego build i wdrożenie są kolejnymi
-# jobami TEGO workflow, a nie osobnymi plikami reagującymi na tag.
+# A tag created by GITHUB_TOKEN does not trigger other workflows, so build and deploy are further jobs
+# of THIS workflow, not separate files reacting to the tag.
 name: Release
 
 on:
@@ -19,7 +19,6 @@ on:
         required: true
         type: string
 
-# Domyślnie tylko odczyt; mocniejsze uprawnienia dopiero w jobach, które ich potrzebują.
 permissions:
   contents: read
 
@@ -27,16 +26,15 @@ env:
   IMAGE: ghcr.io/fkula5/ref-clips
 
 jobs:
-  # 1. release-please (push) albo sprawdzenie podanego tagu (ręczne uruchomienie). Wynik: tag do zbudowania i wdrożenia.
   release:
     name: Release
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
-      contents: write        # tag i GitHub Release, gałąź PR-a wydania
-      pull-requests: write   # PR wydania i jego etykiety
-      issues: write          # etykiety („autorelease: pending/tagged”) są przez API zgłoszeń
-      actions: write         # uruchomienie ci.yml na gałęzi PR-a wydania (workflow_dispatch)
+      contents: write
+      pull-requests: write
+      issues: write  # labels ("autorelease: pending/tagged") go through the issues API
+      actions: write  # runs ci.yml on the release PR branch (workflow_dispatch)
     concurrency:
       group: release-please
       cancel-in-progress: false
@@ -73,8 +71,9 @@ jobs:
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
 
-      # PR utworzony lub zaktualizowany przez GITHUB_TOKEN nie uruchamia zdarzenia pull_request, więc testy
-      # odpalamy sami (workflow_dispatch tworzy przebieg także dla GITHUB_TOKEN). Wynik trafia na ten sam commit.
+      # A PR created or updated by GITHUB_TOKEN does not trigger pull_request, so the tests are started
+      # manually (workflow_dispatch creates a run for GITHUB_TOKEN too). The result goes on the same
+      # commit.
       - name: Run tests on the release PR branch
         if: ${{ github.event_name == 'push' && steps.rp.outputs.prs_created == 'true' && steps.rp.outputs.release_created != 'true' }}
         continue-on-error: true   # a failure here must never block building and deploying a release
@@ -101,7 +100,6 @@ jobs:
             echo "No new release in this run (the release PR was created or updated, or there is nothing to release)." >> "$GITHUB_STEP_SUMMARY"
           fi
 
-  # 2. Obraz Dockera w GHCR: ghcr.io/fkula5/ref-clips:vX.Y.Z oraz :sha-xxxxxxx. Istniejącego obrazu nie nadpisujemy.
   build:
     name: Docker image
     needs: release
@@ -110,7 +108,7 @@ jobs:
     timeout-minutes: 45
     permissions:
       contents: read
-      packages: write        # tylko ten job publikuje w GHCR
+      packages: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -148,7 +146,7 @@ jobs:
           context: .
           push: true
           platforms: linux/amd64
-          provenance: false   # jeden zwykły manifest (bez dodatkowych wpisów atestacji w pakiecie)
+          provenance: false  # one plain manifest (no extra attestation entries in the package)
           tags: |
             ${{ env.IMAGE }}:${{ needs.release.outputs.tag }}
             ${{ env.IMAGE }}:${{ steps.exists.outputs.sha_tag }}
@@ -162,13 +160,12 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-  # 3. Wdrożenie: jedno polecenie ssh, które na serwerze trafia do wymuszonego skryptu deploy/ci-entry.sh.
   deploy:
     name: Deploy
     needs: [release, build]
     if: ${{ needs.release.outputs.tag != '' }}
     runs-on: ubuntu-24.04
-    timeout-minutes: 150     # do 2 h czekania, aż nic nie trwa na serwerze, plus pobranie i start
+    timeout-minutes: 150  # up to 2 h of waiting for an idle server, plus pull and start
     environment: production
     concurrency:
       group: deploy-production
@@ -202,7 +199,8 @@ jobs:
             echo "::error::DEPLOY_SSH_KEY is not a valid private key (the whole file, including the BEGIN/END lines)."
             exit 1
           fi
-          # Host key serwera przypięty w repozytorium; StrictHostKeyChecking=yes, bez zgadywania przy pierwszym połączeniu.
+          # Server host key pinned in the repository; StrictHostKeyChecking=yes, no guessing on the
+          # first connection.
           cp deploy/known_hosts "$HOME/.ssh/ref_clips_known_hosts"
 
       - name: Deploy to the server

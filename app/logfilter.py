@@ -1,9 +1,6 @@
-"""Filtr logów: tokeny z linków zaproszeń (`/set-password/<token>`) i kody linków udostępniających klipy
-(`/s/<kod>`) nie trafiają do dziennika dostępu.
-
-Token w adresie pozwala ustawić hasło do cudzego konta, a kod linku otwiera klipy bez logowania, więc
-nie powinny zostawać w logach (uvicorn zapisuje pełny adres każdego żądania). Reszta ścieżki zostaje:
-`/s/[ukryty]/clips/1/file`. Odpowiednik dla Caddy jest w `deploy/Caddyfile`.
+"""A token in the URL lets someone set another account's password and a share code opens clips without
+login, so neither may stay in logs (uvicorn logs the full URL). The rest of the path stays:
+/s/[ukryty]/clips/1/file. The Caddy counterpart is in deploy/Caddyfile.
 """
 from __future__ import annotations
 
@@ -19,7 +16,7 @@ def redact(text: str) -> str:
 
 
 class RedactTokens(logging.Filter):
-    """Podmienia token w komunikacie i jego argumentach (uvicorn.access podaje adres jako argument)."""
+    """uvicorn.access passes the URL as a log argument, so the arguments are rewritten too."""
 
     def filter(self, record: logging.LogRecord) -> bool:
         if isinstance(record.msg, str):
@@ -32,7 +29,6 @@ class RedactTokens(logging.Filter):
 
 
 def install() -> None:
-    """Dołącza filtr do dziennika dostępu uvicorna (idempotentne)."""
     access = logging.getLogger("uvicorn.access")
     if not any(isinstance(f, RedactTokens) for f in access.filters):
         access.addFilter(RedactTokens())

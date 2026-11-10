@@ -1,4 +1,3 @@
-"""Logowanie, wylogowanie i ustawienie hasła z linku (zaproszenie / reset)."""
 from __future__ import annotations
 
 from urllib.parse import urlsplit
@@ -12,9 +11,7 @@ from app.db import get_db
 from app.models import INVITE_PURPOSES
 from app.web import render
 
-# Bez logowania: formularz logowania i ustawienie hasła (CSRF przez ciasteczko).
 public_router = APIRouter()
-# Wylogowanie wymaga sesji.
 router = APIRouter()
 
 THROTTLE_MESSAGE = (f"Zbyt wiele nieudanych prób logowania. Spróbuj ponownie za "
@@ -22,10 +19,9 @@ THROTTLE_MESSAGE = (f"Zbyt wiele nieudanych prób logowania. Spróbuj ponownie z
 
 
 def safe_next(target: str) -> str:
-    """Dopuszcza tylko adresy lokalne (bez przekierowania na obcą domenę).
-
-    Odrzuca znaki kontrolne, białe znaki i backslash (przeglądarki usuwają tab/CR/LF z adresu,
-    więc „/\\t/evil.com” stałoby się „//evil.com”) oraz wszystko z hostem lub schematem."""
+    """Only local paths. Rejects control characters, whitespace and backslash (browsers strip tab/CR/LF
+    from URLs, so "/<TAB>/evil.com" would become "//evil.com") and anything with a host or scheme.
+    """
     if any(ch.isspace() or ord(ch) < 32 or ord(ch) == 127 or ch == "\\" for ch in target):
         return "/"
     if not target.startswith("/") or target.startswith("//"):
@@ -69,8 +65,9 @@ def logout(request: Request, db: Session = Depends(get_db)):
 
 
 def _token_page(request: Request, **context):
-    """Strona z tokenem w adresie: nie przekazuje go dalej w nagłówku Referer (żadnym linkiem ani
-    zasobem) i nie trafia do pamięci podręcznej."""
+    """A page with a token in the URL: it must not leak via Referer (no link or resource) and must not
+    be cached.
+    """
     response = render(request, "set_password.html", **context)
     response.headers["Referrer-Policy"] = "no-referrer"
     response.headers["Cache-Control"] = "no-store"

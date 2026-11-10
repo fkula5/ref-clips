@@ -1,8 +1,5 @@
-"""Wgrywanie wznawialne: protokół tus 1.0.0 (core + creation, termination, expiration).
-
-Upload tworzy POST /uploads/ (Upload-Length, Upload-Metadata: filename, match_id, content,
-label), HEAD zwraca Upload-Offset, PATCH dopisuje bajty od offsetu, DELETE anuluje.
-Każdy upload jest dostępny tylko dla właściciela. Plik jest zapisywany strumieniowo na dysk.
+"""tus 1.0.0 (core + creation, termination, expiration). Upload-Metadata keys: filename, match_id,
+content, label.
 """
 from __future__ import annotations
 
@@ -33,7 +30,6 @@ EXTENSIONS = "creation,termination,expiration"
 OFFSET_TYPE = "application/offset+octet-stream"
 FLUSH_BYTES = 4 * 1024 * 1024
 
-# Wgrywać może każdy, kto może założyć mecz; do konkretnego meczu — reguła z permissions.
 uploader = require(permissions.can_create_match)
 
 
@@ -56,15 +52,15 @@ def _upload_headers(up: UploadSession) -> dict[str, str]:
 
 
 def tus_version(request: Request) -> None:
-    """Klient musi znać wersję protokołu (nagłówek Tus-Resumable)."""
     if request.headers.get("tus-resumable") != TUS_VERSION:
         raise HTTPException(412, "Nieobsługiwana wersja protokołu tus",
                             headers={"Tus-Resumable": TUS_VERSION, "Tus-Version": TUS_VERSION})
 
 
 def _own_upload(db: Session, user: User, upload_id: str) -> UploadSession:
-    """Upload właściciela. Cudzy i nieistniejący wyglądają tak samo (404); nieaktywny > 24 h
-    jest usuwany i zwraca 410."""
+    """Someone else's and nonexistent uploads look the same (404); one inactive for more than 24 h is
+    deleted and returns 410.
+    """
     up = db.get(UploadSession, upload_id)
     if up is None or up.user_id != user.id:
         raise _fail(UploadError(404, "Nie ma takiego wgrywania"))
@@ -127,15 +123,14 @@ class NotesIn(BaseModel):
 
 
 def notes_size_guard(request: Request) -> None:
-    """Zbyt duże żądanie z notatkami odpada przed walidacją treści (limit znaków × 4 bajty UTF-8)."""
+    """A too large request is rejected before the text is validated (character limit x 4 UTF-8 bytes)."""
     if int(request.headers.get("content-length") or 0) > 4 * config.NOTES_MAX_CHARS + 100:
         raise _fail(UploadError(413, "Notatki są za długie"))
 
 
 @router.post("/uploads/{upload_id}/notes", dependencies=[Depends(notes_size_guard)])
 def upload_notes(body: NotesIn, upload_id: str, db: Session = Depends(get_db), user: User = uploader):
-    """Notatki do wgrywanego pliku (jedna linia = jeden moment). Klipy powstają po zakończeniu
-    wgrywania; ponowne wysłanie przed końcem zastępuje poprzedni tekst."""
+    """Resending before the end replaces the previous text."""
     up = _own_upload(db, user, upload_id)
     match = _match_of(db, user, up)
     if not permissions.can_manage_clips(user, match):
@@ -152,7 +147,7 @@ def upload_offset(upload_id: str, db: Session = Depends(get_db), user: User = up
     up = _own_upload(db, user, upload_id)
     if uploads.is_complete(up):
         try:
-            uploads.finish(db, up)  # na wypadek przerwania tuż po ostatnim bajcie
+            uploads.finish(db, up)  # in case of an interruption right after the last byte
         except UploadError as exc:
             raise _fail(exc) from None
     return Response(status_code=200, headers=_upload_headers(up))
@@ -192,15 +187,15 @@ async def append_upload(upload_id: str, request: Request, db: Session = Depends(
     fh = storage.open_update(uploads.part_key(up.id))
     try:
         try:
-            fcntl.flock(fh, fcntl.LOCK_EX | fcntl.LOCK_NB)  # jeden PATCH naraz dla uploadu
+            fcntl.flock(fh, fcntl.LOCK_EX | fcntl.LOCK_NB)  # one PATCH at a time per upload
         except OSError:
             raise _fail(UploadError(409, "To wgrywanie jest właśnie dopisywane innym żądaniem")) from None
-        try:  # równoległy PATCH mógł się skończyć tuż przed uzyskaniem blokady
+        try:  # a parallel PATCH may have finished just before the lock was acquired
             db.refresh(up)
-        except InvalidRequestError:  # wiersz usunięty (anulowanie / usunięcie meczu)
-            storage.delete(uploads.part_key(up.id))  # open_update mógł założyć pusty plik
+        except InvalidRequestError:  # row deleted (cancel / match deletion)
+            storage.delete(uploads.part_key(up.id))  # open_update may have created an empty file
             raise _fail(UploadError(404, "Wgrywanie zostało przerwane")) from None
-        if uploads.is_complete(up):  # drugi PATCH dokończył upload (plik już przeniesiony)
+        if uploads.is_complete(up):  # a second PATCH completed the upload (file already moved)
             storage.delete(uploads.part_key(up.id))
             raise _fail(UploadError(409, "Wgrywanie jest już zakończone", {"Upload-Offset": str(up.offset_bytes)}))
         if int(offset) != up.offset_bytes:
@@ -208,7 +203,7 @@ async def append_upload(upload_id: str, request: Request, db: Session = Depends(
                                     {"Upload-Offset": str(up.offset_bytes)}))
         if declared.isdigit() and int(declared) > up.size_bytes - up.offset_bytes:
             raise _fail(UploadError(413, "Dane przekraczają zadeklarowany rozmiar pliku"))
-        fh.truncate(up.offset_bytes)  # odrzuca ewentualne resztki po przerwanym zapisie
+        fh.truncate(up.offset_bytes)  # drops leftovers from an interrupted write
         fh.seek(up.offset_bytes)
         overflow = disconnected = False
         buffer = bytearray()
@@ -224,11 +219,11 @@ async def append_upload(upload_id: str, request: Request, db: Session = Depends(
         except ClientDisconnect:
             disconnected = True
         finally:
-            if buffer:  # zachowujemy też to, co już dotarło (wznowienie ruszy od tego miejsca)
+            if buffer:  # also keep what already arrived (resume starts from there)
                 _append(db, up, fh, bytes(buffer))
     except OSError:
         raise _fail(UploadError(507, uploads.NO_SPACE_MESSAGE)) from None
-    except StaleDataError:  # upload anulowany (DELETE) w trakcie dopisywania
+    except StaleDataError:  # upload cancelled (DELETE) while appending
         db.rollback()
         raise _fail(UploadError(404, "Wgrywanie zostało przerwane")) from None
     finally:
@@ -246,7 +241,7 @@ async def append_upload(upload_id: str, request: Request, db: Session = Depends(
 
 
 def _append(db: Session, up: UploadSession, fh, data: bytes) -> None:
-    """Dopisuje dane na koniec pliku i zapisuje nowy offset (HEAD po zerwaniu zwróci prawdę)."""
+    """Appends and stores the new offset (so HEAD after a drop tells the truth)."""
     try:
         fh.write(data)
         fh.flush()

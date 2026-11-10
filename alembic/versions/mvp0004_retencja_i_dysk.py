@@ -1,12 +1,4 @@
-"""Retencja i panel dysku (segment 7): rozmiar wersji roboczej oraz odrzucone uploady.
-
-Wyłącznie addytywna: nowa kolumna `videos.proxy_bytes` (puste dla istniejących wierszy — panel
-uzupełnia ją leniwie z rozmiaru pliku) i nowa tabela `upload_rejections`.
-
-Revision ID: mvp0004
-Revises: mvp0003
-Create Date: 2026-11-02 14:00:00.000000
-"""
+"""Draft size and rejected uploads."""
 from alembic import op
 import sqlalchemy as sa
 

@@ -1,44 +1,44 @@
-# ref-clips w Dockerze (testy lokalne). Start: docker compose up -d --build
-# Ustawienia: skopiuj .env.example do .env i dostosuj (bez .env działają wartości domyślne).
+# Local testing. Start: docker compose up -d --build
 name: ref-clips
 
 x-aplikacja: &aplikacja
   image: ${REFCLIPS_IMAGE:-ref-clips:local}
   build: .
   env_file:
-    - path: .env          # opcjonalny — bez pliku .env używane są wartości domyślne
+    - path: .env
       required: false
   environment:
-    # Dane zawsze na wspólnym woluminie, niezależnie od .env.
+    # Data always on the shared volume, regardless of .env.
     REFCLIPS_DATA_DIR: /data
   volumes:
     - dane:/data
-  init: true               # poprawne zamykanie procesów (SIGTERM) i sprzątanie po ffmpeg
+  init: true  # reaps ffmpeg children and forwards SIGTERM
   stop_grace_period: 30s
 
 services:
-  # Jednorazowo przed resztą: migracje bazy i dane początkowe. Dzięki temu app i worker
-  # nigdy nie wystartują na niezmigrowanej bazie.
+  # One-off before the rest: DB migrations and seed data, so app and worker never start on an unmigrated
+  # database.
   init:
     <<: *aplikacja
     command: ["python", "-m", "app.initdb"]
     restart: "no"
     healthcheck:
-      disable: true        # HEALTHCHECK z obrazu dotyczy serwera WWW
+      disable: true  # the image HEALTHCHECK is for the web server
 
   app:
     <<: *aplikacja
     command: ["python", "-m", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
     ports:
-      # Domyślnie tylko ten komputer (127.0.0.1); zmiana REFCLIPS_BIND otwiera aplikację w sieci.
+      # Local only by default (127.0.0.1); changing REFCLIPS_BIND exposes the app on the network.
       - "${REFCLIPS_BIND:-127.0.0.1}:${REFCLIPS_PORT:-8000}:8000"
     restart: unless-stopped
     depends_on:
       init:
         condition: service_completed_successfully
-    # Celowo /login, a nie /health: /health zgłasza 503 także przy braku workera lub miejsca na dysku,
-    # a tego restart ani „unhealthy” aplikacji nie naprawi — blokowałoby to tylko wdrożenie (`up --wait`)
-    # i start Caddy (depends_on). /health służy zewnętrznemu monitoringowi i sprawdzeniu po wdrożeniu.
+    # Deliberately /login, not /health: /health returns 503 also when the worker is missing or the disk
+    # is low, which neither a restart nor "unhealthy" fixes; it would only block the deploy (`up
+    # --wait`) and the Caddy start (depends_on). /health is for external monitoring and the post-deploy
+    # check.
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/login', timeout=4).status == 200 else 1)"]
       interval: 15s
@@ -50,9 +50,10 @@ services:
     <<: *aplikacja
     command: ["python", "-m", "app.worker"]
     restart: unless-stopped
-    # Worker nie ma portu: zdrowy, jeśli w ostatnich minutach odnowił znacznik życia w bazie (wątek
-    # co 30 s, także podczas długiej konwersji) — to samo sprawdza /health. Kontener nie restartuje
-    # się sam po „unhealthy” (restart dotyczy tylko zakończenia procesu); stan widać w `docker compose ps`.
+    # The worker has no port: healthy if it renewed its heartbeat in the DB within the last minutes (a
+    # thread every 30 s, also during a long conversion); /health checks the same. The container does not
+    # restart itself on "unhealthy" (a restart only follows the process exiting); the state shows in
+    # `docker compose ps`.
     healthcheck:
       test: ["CMD", "python", "-m", "app.health", "worker"]
       interval: 30s

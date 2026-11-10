@@ -1,11 +1,5 @@
-"""Uprawnienia: jedno miejsce z regułami (czyste funkcje, bez dostępu do bazy).
-
-Każda funkcja odpowiada wierszowi tabeli „Role i uprawnienia” ze specyfikacji. Role sumują się:
-wystarczy, że jedna z ról użytkownika daje prawo. Trasy wywołują te funkcje przez
-`auth.require(...)` (serwer zawsze sprawdza), a szablony tylko ukrywają niedostępne przyciski.
-
-`user` to obiekt z polami `id`, `is_active` i `roles` (zbiór nazw ról); obiekty meczów, klipów
-itd. to modele z `app.models`.
+"""Roles add up: one role granting the right is enough. Routes enforce these via `auth.require(...)`;
+templates only hide unavailable buttons.
 """
 from __future__ import annotations
 
@@ -19,68 +13,51 @@ def _has(user, *roles: str) -> bool:
 
 
 def is_official(user, match) -> bool:
-    """Czy użytkownik jest w obsadzie meczu: liczy się wyłącznie pozycja powiązana z kontem."""
+    """Only a slot linked to an account counts."""
     return user is not None and any(o.user_id == user.id for o in match.officials)
 
 
 def _staff_or_official(user, match) -> bool:
-    """Administrator i szkoleniowiec: każdy mecz; sędzia: tylko mecz, w którym jest w obsadzie."""
     return _has(user, ADMIN, COACH) or (_has(user, REFEREE) and is_official(user, match))
 
 
-# --- zarządzanie ----------------------------------------------------------------
 def can_manage_users(user) -> bool:
-    """Zarządzanie kontami i przypisywanie ról."""
     return _has(user, ADMIN)
 
 
 def can_manage_categories(user) -> bool:
-    """Zarządzanie słownikiem kategorii."""
     return _has(user, ADMIN)
 
 
 def can_manage_sheet_elements(user) -> bool:
-    """Admin-editable list of assessment sheet elements."""
     return _has(user, ADMIN)
 
 
 def can_manage_retention(user) -> bool:
-    """Retencja i dysk: ustawienie liczby dni, zajętość dysku, ręczne usunięcie pełnego nagrania."""
     return _has(user, ADMIN)
 
 
-# --- przeglądanie i komentowanie ------------------------------------------------
 def can_view(user) -> bool:
-    """Przeglądanie wszystkich meczów i klipów: każdy zalogowany, aktywny użytkownik."""
     return user is not None and bool(user.is_active)
 
 
 def can_comment(user) -> bool:
-    """Komentowanie meczów i klipów: wszyscy zalogowani."""
     return can_view(user)
 
 
 def can_edit_comment(user, comment) -> bool:
-    """Edycja komentarza: tylko autor."""
     return can_view(user) and comment.author_id == user.id
 
 
 def can_delete_comment(user, comment) -> bool:
-    """Usunięcie komentarza: autor albo administrator."""
     return can_view(user) and (_has(user, ADMIN) or comment.author_id == user.id)
 
 
-# --- mecze i nagrania -----------------------------------------------------------
 def can_create_match(user) -> bool:
-    """Wgrywanie meczów i wpisanie obsady (wejście do formularza): każda z trzech ról.
-
-    Sędzia może zapisać tylko mecz ze sobą w obsadzie, patrz `can_save_match`."""
     return _has(user, ADMIN, COACH, REFEREE)
 
 
 def can_save_match(user, official_user_ids: Iterable[int | None]) -> bool:
-    """Zapis meczu z daną obsadą (id kont na pozycjach). Użytkownik, który jest tylko
-    sędzią, musi sam być w obsadzie."""
     if not can_create_match(user):
         return False
     if _has(user, ADMIN, COACH):
@@ -89,33 +66,29 @@ def can_save_match(user, official_user_ids: Iterable[int | None]) -> bool:
 
 
 def can_upload_to_match(user, match) -> bool:
-    """Wgrywanie nagrań, znaczniki kwart i obsada istniejącego meczu."""
     return _staff_or_official(user, match)
 
 
 def can_edit_match(user, match) -> bool:
-    """Edycja i usuwanie meczu: administrator wszystko, pozostali tylko własne mecze."""
     return _has(user, ADMIN) or (_has(user, COACH, REFEREE) and match.created_by == user.id)
 
 
 def can_delete_match(user, match) -> bool:
-    """Like editing, but a published assessment sheet goes with the match, so only an admin may remove such a match:
-    otherwise a referee who created the match could erase the assessment of their own work."""
+    """A published sheet goes with the match, so only an admin may remove such a match; otherwise a
+    referee who created it could erase the assessment of their own work.
+    """
     if _has(user, ADMIN):
         return True
     return can_edit_match(user, match) and not any(sheet.is_published for sheet in match.sheets)
 
 
 def can_delete_video(user, video) -> bool:
-    """Usunięcie nagrania: administrator, właściciel meczu albo osoba, która je wgrała."""
     if _has(user, ADMIN):
         return True
     return _has(user, COACH, REFEREE) and user.id in (video.created_by, video.match.created_by)
 
 
-# --- klipy ----------------------------------------------------------------------
 def can_manage_clips(user, match) -> bool:
-    """Tworzenie i opisywanie klipów w meczu."""
     return _staff_or_official(user, match)
 
 
@@ -124,29 +97,23 @@ def can_describe_clip(user, clip) -> bool:
 
 
 def can_delete_clip(user, clip) -> bool:
-    """Usunięcie klipu: administrator wszystkie, szkoleniowiec i sędzia tylko własne."""
     return _has(user, ADMIN) or (_has(user, COACH, REFEREE) and clip.author_id == user.id)
 
 
-# --- udostępnianie linkiem -----------------------------------------------------------
 def can_share_clip(user, clip) -> bool:
-    """Link do klipu dla osób bez konta: administrator, szkoleniowiec oraz autor znacznika (sędzia)."""
     return can_view(user) and (_has(user, ADMIN, COACH) or (_has(user, REFEREE) and clip.author_id == user.id))
 
 
 def can_revoke_share(user, link) -> bool:
-    """Unieważnienie linku: jego twórca albo administrator."""
     return can_view(user) and (_has(user, ADMIN) or link.created_by == user.id)
 
 
-# --- oceny ----------------------------------------------------------------------
 def can_rate(user) -> bool:
-    """Ocena klipu: tylko rola szkoleniowca (sama rola administratora nie wystarcza)."""
+    """Coach role only (the admin role alone is not enough)."""
     return _has(user, COACH)
 
 
 def can_edit_rating(user, rating) -> bool:
-    """Zmiana lub usunięcie oceny: jej autor (szkoleniowiec) albo administrator."""
     return _has(user, ADMIN) or (_has(user, COACH) and rating.coach_id == user.id)
 
 
@@ -154,15 +121,15 @@ def can_delete_rating(user, rating) -> bool:
     return can_edit_rating(user, rating)
 
 
-# --- qualifier assessment sheet ---------------------------------------------------
 def can_create_sheet(user) -> bool:
-    """Starting a sheet: the coach role only (the admin role alone is not enough, as with ratings).
-    One sheet per (match, coach) is enforced by the database; opening it again edits the existing one."""
+    """Coach role only (the admin role alone is not enough, as with ratings).
+    One sheet per (match, coach) is enforced by the database; opening it again edits the existing
+    one.
+    """
     return _has(user, COACH)
 
 
 def can_edit_sheet(user, sheet) -> bool:
-    """Editing a sheet, also after publishing: its author only."""
     return can_view(user) and sheet.coach_id == user.id
 
 
@@ -171,13 +138,11 @@ def can_publish_sheet(user, sheet) -> bool:
 
 
 def can_delete_sheet(user, sheet) -> bool:
-    """Deleting: the author while the sheet is a draft, an admin at any time."""
     return can_view(user) and (_has(user, ADMIN) or (sheet.coach_id == user.id and sheet.status == "draft"))
 
 
 def can_view_sheet(user, sheet) -> bool:
-    """A draft only by its author. A published sheet by its author, the match's officials who have accounts,
-    coaches and admins. Everybody else (including a referee outside the crew) must not learn it exists."""
+    """Everybody else (including a referee outside the crew) must not learn it exists."""
     if not can_view(user):
         return False
     if sheet.coach_id == user.id:

@@ -11,7 +11,7 @@ PASSWORD = "correct-horse-battery"
 
 @lru_cache(maxsize=1)
 def password_hash() -> str:
-    """Jeden hash argon2 na cały przebieg testów (hashowanie jest celowo wolne)."""
+    """One argon2 hash for the whole test run (hashing is deliberately slow)."""
     return security.hash_password(PASSWORD)
 
 
@@ -26,7 +26,6 @@ def make_user(db, roles=("referee",), email="user@example.com", name="Użytkowni
 
 
 def make_match(db, officials=(("CC", "Filip Kowalski"), ("U1", "Kasia Żółć")), created_by=None):
-    """Mecz z obsadą: pozycja to (funkcja, User) albo (funkcja, wpisane imię i nazwisko)."""
     match = Match(date=date(2026, 10, 28), level="II liga", team_a_name="Legia", team_a_color="białe",
                   team_b_name="Wisła", team_b_color="ciemne",
                   created_by=created_by.id if created_by else None)
@@ -41,7 +40,7 @@ def make_match(db, officials=(("CC", "Filip Kowalski"), ("U1", "Kasia Żółć")
 
 
 def make_ready_video(db, match, duration=600.0, content=b"fakevideo"):
-    """Nagranie już po konwersji (bez ffmpeg): plik 'wersji roboczej' to zwykłe bajty."""
+    """The "draft" file is plain bytes (no ffmpeg)."""
     video = Video(match_id=match.id, label="Całość", status="ready", duration=duration, fps=25)
     db.add(video)
     db.commit()
@@ -53,17 +52,14 @@ def make_ready_video(db, match, duration=600.0, content=b"fakevideo"):
     return video
 
 
-# --- klient tus ---------------------------------------------------------------------
 TUS = {"Tus-Resumable": "1.0.0"}
 
 
 def tus_metadata(**values) -> str:
-    """Nagłówek Upload-Metadata: klucz + base64(wartość)."""
     return ",".join(f"{k} {base64.b64encode(str(v).encode()).decode()}" for k, v in values.items())
 
 
 def tus_create(client, match_id, size, filename="mecz.mp4", **meta):
-    """POST tworzący upload (odpowiedź, bez sprawdzania statusu)."""
     return client.post("/uploads/", headers={**TUS, "Upload-Length": str(size),
                                              "Upload-Metadata": tus_metadata(filename=filename, match_id=match_id, **meta)})
 
@@ -74,7 +70,6 @@ def tus_patch(client, url, offset, data):
 
 
 def tus_upload(client, match_id, data: bytes, filename="mecz.mp4", chunk=None, **meta) -> str:
-    """Pełne wgranie pliku protokołem tus (opcjonalnie w kawałkach). Zwraca adres uploadu."""
     r = tus_create(client, match_id, len(data), filename, **meta)
     assert r.status_code == 201, r.text
     url = r.headers["Location"]
@@ -88,7 +83,9 @@ def tus_upload(client, match_id, data: bytes, filename="mecz.mp4", chunk=None, *
 
 
 def mark_periods(db, video, times=(0.0, 150.0, 300.0, 450.0), periods=("Q1", "Q2", "Q3", "Q4")):
-    """Początki kwart w nagraniu (domyślnie Q1–Q4 co 150 s) — bez nich klipów nie da się opisać."""
+    """Quarter starts of a recording (default Q1-Q4 every 150 s); clips cannot be described without
+    them.
+    """
     for period, at in zip(periods, times):
         db.add(PeriodMark(video_id=video.id, period=period, time_sec=at))
     db.commit()
@@ -105,7 +102,9 @@ SHEET_ELEMENT_NAMES = ["Obowiązki przedmeczowe", "Przygotowanie fizyczne", "Mec
 
 
 def seed_sheet_elements(db, names=SHEET_ELEMENT_NAMES):
-    """The elements that migration mvp0006 seeds (tests build the schema with create_all, so they are added here)."""
+    """The elements that migration mvp0006 seeds (tests build the schema with create_all, so they are
+    added here).
+    """
     for index, name in enumerate(names, start=1):
         db.add(SheetElement(name=name, sort=index * 10))
     db.commit()

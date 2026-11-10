@@ -1,4 +1,3 @@
-"""Silnik SQLAlchemy, sesje i klasa bazowa modeli."""
 from collections.abc import Iterator
 
 from sqlalchemy import create_engine, event
@@ -27,7 +26,7 @@ if _is_sqlite:
 SessionLocal = sessionmaker(engine, expire_on_commit=False)
 
 
-# Nazwane ograniczenia: potrzebne SQLite do późniejszych migracji (batch).
+# Named constraints: SQLite needs them for later (batch) migrations.
 NAMING_CONVENTION = {
     "ix": "ix_%(column_0_label)s",
     "uq": "uq_%(table_name)s_%(column_0_name)s",

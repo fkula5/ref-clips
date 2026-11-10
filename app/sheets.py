@@ -1,9 +1,5 @@
-"""Qualifier assessment sheet: creating a sheet (with snapshots), validating and saving the form, publishing,
-the crew refresh of a draft, and helpers for the views. Access rules live in `permissions`, routes in
-`routers/sheets.py`.
-
-Snapshots. When a sheet is created the element names (rows) and the officials' function and display name
-(columns) are copied into the sheet, so later changes of the dictionary or of the match crew never change it.
+"""Snapshots: when a sheet is created, element names (rows) and the officials' function and display name
+(columns) are copied into it, so later changes to the dictionary or the crew never change it.
 Posted form fields that are missing are left untouched, so a stale form can never wipe stored text.
 """
 from __future__ import annotations
@@ -22,7 +18,6 @@ FUNCTION_ORDER = {"CC": 0, "U1": 1, "U2": 2}
 
 
 class SheetError(Exception):
-    """Invalid sheet operation. `errors` are Polish messages for the form (HTTP 422)."""
     status_code = 422
 
     def __init__(self, *errors: str):
@@ -30,7 +25,6 @@ class SheetError(Exception):
         self.errors = list(errors)
 
 
-# --- form field names ---------------------------------------------------------------
 def cell_key(row: SheetRow, column: SheetColumn) -> str:
     return f"cell_{row.id}_{column.id}"
 
@@ -43,15 +37,12 @@ def recommendation_key(column: SheetColumn) -> str:
     return f"recommendation_{column.id}"
 
 
-# --- reading ---------------------------------------------------------------------------
 def visible_to(user: User, match: Match) -> list[Sheet]:
-    """Sheets of the match that the user may see: their own first, then by publication time."""
     found = [s for s in match.sheets if permissions.can_view_sheet(user, s)]
     return sorted(found, key=lambda s: (s.coach_id != user.id, s.published_at or s.created_at, s.id))
 
 
 def grid(sheet: Sheet) -> list[tuple[SheetRow, list[SheetCell]]]:
-    """Rows with their cells in column order (a missing cell is an empty one)."""
     rows = []
     for row in sheet.rows:
         by_column = {cell.column_id: cell for cell in row.cells}
@@ -61,7 +52,6 @@ def grid(sheet: Sheet) -> list[tuple[SheetRow, list[SheetCell]]]:
 
 
 def form_values(sheet: Sheet) -> dict[str, str]:
-    """Stored contents as form field values (the keys are the form field names)."""
     values = {"result": sheet.result, "difficulty": sheet.difficulty or "", "crew_note": sheet.crew_note}
     for column in sheet.columns:
         values[overall_key(column)] = column.overall
@@ -73,7 +63,6 @@ def form_values(sheet: Sheet) -> dict[str, str]:
 
 
 def texts(sheet: Sheet) -> Iterator[str]:
-    """Every free-text field of the sheet (the ones the empty-field count refers to)."""
     for row, cells in grid(sheet):
         for cell in cells:
             yield cell.text
@@ -84,18 +73,15 @@ def texts(sheet: Sheet) -> Iterator[str]:
 
 
 def empty_count(sheet: Sheet) -> tuple[int, int]:
-    """(empty, total) over the free-text fields."""
     all_texts = list(texts(sheet))
     return sum(1 for t in all_texts if not t.strip()), len(all_texts)
 
 
 def _crew(match: Match) -> list[tuple[str, str]]:
-    """(function, display name) of the match crew in CC, U1, U2 order."""
     return sorted(((o.function, o.display_name) for o in match.officials), key=lambda p: FUNCTION_ORDER[p[0]])
 
 
 def crew_changes(sheet: Sheet) -> list[str]:
-    """Polish descriptions of how the current match crew differs from the sheet's columns (empty if it does not)."""
     crew = {name: function for function, name in _crew(sheet.match)}
     columns = {c.official_name: c for c in sheet.columns}
     changes = [f"nowy w obsadzie: {function} · {name}" for name, function in crew.items() if name not in columns]
@@ -105,7 +91,6 @@ def crew_changes(sheet: Sheet) -> list[str]:
     return changes
 
 
-# --- creating --------------------------------------------------------------------------
 def _own(db: Session, match_id: int, coach_id: int) -> Sheet | None:
     return db.scalar(select(Sheet).where(Sheet.match_id == match_id, Sheet.coach_id == coach_id))
 
@@ -115,9 +100,9 @@ def _new_cells(db: Session, rows: list[SheetRow], columns: list[SheetColumn]) ->
 
 
 def create(db: Session, match: Match, coach: User) -> tuple[Sheet, bool]:
-    """The coach's sheet of the match: the existing one, or a new draft with snapshots of the current crew and of
-    the active elements. Returns (sheet, created). The unique constraint (match, coach) decides a race of
-    two requests: the loser gets the winner's sheet."""
+    """The unique constraint (match, coach) decides a race of two requests: the loser gets the winner's
+    sheet.
+    """
     existing = _own(db, match.id, coach.id)
     if existing is not None:
         return existing, False
@@ -143,9 +128,8 @@ def create(db: Session, match: Match, coach: User) -> tuple[Sheet, bool]:
     return sheet, True
 
 
-# --- saving ----------------------------------------------------------------------------
 def _text(raw: str | None, label: str, limit: int, errors: list[str]) -> str | None:
-    """Cleaned text (None when the field was not posted). The limit is counted after normalising line ends."""
+    """The limit is counted after normalising line endings."""
     if raw is None:
         return None
     text = raw.replace("\r\n", "\n").replace("\r", "\n").strip()
@@ -155,7 +139,7 @@ def _text(raw: str | None, label: str, limit: int, errors: list[str]) -> str | N
 
 
 def _validate(sheet: Sheet, posted: dict[str, str], publish: bool) -> dict[str, str]:
-    """Cleaned values by form field name; raises SheetError listing every problem (nothing is changed)."""
+    """Raises SheetError listing every problem (nothing is changed)."""
     errors: list[str] = []
     clean: dict[str, str] = {}
     limit = config.TEXT_MAX_CHARS
@@ -185,7 +169,6 @@ def _validate(sheet: Sheet, posted: dict[str, str], publish: bool) -> dict[str, 
 
 
 def _apply(sheet: Sheet, clean: dict[str, str]) -> bool:
-    """Writes the cleaned values; returns whether anything changed."""
     changed = False
 
     def set_attr(obj, attr: str, value: str | None) -> None:
@@ -214,9 +197,7 @@ def _apply(sheet: Sheet, clean: dict[str, str]) -> bool:
 
 
 def save(db: Session, sheet: Sheet, posted: dict[str, str], *, publish: bool = False) -> bool:
-    """Validates and stores the posted form. With `publish` a draft becomes published (needs a difficulty).
-    `updated_at` moves only when the content changed, because "changed <date>" is shown from it.
-    Returns whether the sheet was published by this call."""
+    """`updated_at` moves only when the content changed, because "changed <date>" is shown from it."""
     clean = _validate(sheet, posted, publish)
     changed = _apply(sheet, clean)
     now = utcnow()
@@ -228,7 +209,6 @@ def save(db: Session, sheet: Sheet, posted: dict[str, str], *, publish: bool = F
     return False
 
 
-# --- crew refresh of a draft ---------------------------------------------------------------
 def _has_text(sheet: Sheet, column: SheetColumn) -> bool:
     if column.overall.strip() or column.recommendation.strip():
         return True
@@ -236,9 +216,9 @@ def _has_text(sheet: Sheet, column: SheetColumn) -> bool:
 
 
 def refresh_crew(db: Session, sheet: Sheet) -> list[str]:
-    """Brings the columns of a draft in line with the current crew: new officials get empty columns, a changed
-    function is updated, and a column of someone who left the crew is removed only if it holds no text.
-    Returns Polish notes about columns that were kept because they hold text. Never drops written text."""
+    """A column of someone who left the crew is removed only if it holds no text; written text is never
+    dropped.
+    """
     notes: list[str] = []
     crew = {name: function for function, name in _crew(sheet.match)}
     columns = {c.official_name: c for c in sheet.columns}

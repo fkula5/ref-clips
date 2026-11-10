@@ -6,7 +6,6 @@
 {% if created is not none %}
   <div class="banner ok">Dodano {{ created }} klipów do wycięcia{% if skipped %} (pominięto {{ skipped }} z niepoprawnym czasem){% endif %}.</div>
 {% endif %}
-{# Te same filtry co w zakładce „Klipy” meczu; działają w adresie, a HTMX odświeża tylko listę. #}
 {{ clip_filters(f, "/clips", people, categories, matches) }}
 
 {{ share_bar(shareable) }}

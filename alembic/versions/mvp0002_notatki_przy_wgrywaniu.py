@@ -1,9 +1,4 @@
-"""Notatki przy wgrywaniu: kolumna upload_sessions.notes (segment 4).
-
-Revision ID: mvp0002
-Revises: mvp0001
-Create Date: 2026-11-01 23:10:00.000000
-"""
+"""Upload notes: upload_sessions.notes column."""
 from alembic import op
 import sqlalchemy as sa
 

@@ -1,4 +1,3 @@
-"""Edycja obsady: klipy zostają przy tej samej OSOBIE, nie przy pozycji."""
 from sqlalchemy import select
 
 from app.models import Clip, MatchOfficial
@@ -21,7 +20,6 @@ def edit(client, db, match, **crew):
 
 
 def who(db, clip_id):
-    """(funkcja, osoba) przypisana do klipu albo None."""
     clip = db.get(Clip, clip_id)
     return (clip.official.function, clip.official.display_name) if clip.official else None
 
@@ -58,17 +56,17 @@ def test_replacing_a_person_unassigns_their_clips(client, db):
     video = make_ready_video(db, match)
     c_adam = clip_for(db, video, match.official("CC"))
     c_ewa = clip_for(db, video, match.official("U1"))
-    edit(client, db, match, cc_user=str(k.id), u1_name="Ewa Druga")  # na CC zamiast Adama jest Kasia
-    assert who(db, c_adam) is None                      # nie przechodzi na Kasię
+    edit(client, db, match, cc_user=str(k.id), u1_name="Ewa Druga")
+    assert who(db, c_adam) is None
     assert who(db, c_ewa) == ("U1", "Ewa Druga")
-    assert db.get(Clip, c_adam) is not None             # sam klip zostaje
+    assert db.get(Clip, c_adam) is not None
 
 
 def test_typed_names_are_matched_ignoring_case_spacing_and_diacritics(client, db):
     match = make_match(db, officials=(("CC", "Łukasz Żółć"), ("U1", "Ewa Druga")))
     video = make_ready_video(db, match)
     c_lukasz = clip_for(db, video, match.official("CC"))
-    edit(client, db, match, cc_name="Ewa  Druga", u1_name="lukasz zolc")  # zamiana i inna pisownia
+    edit(client, db, match, cc_name="Ewa  Druga", u1_name="lukasz zolc")
     assert who(db, c_lukasz) == ("U1", "lukasz zolc")
 
 
@@ -91,17 +89,16 @@ def test_removing_u2_unassigns_only_their_clips(client, db):
     assert who(db, c_jan) == ("CC", "Jan Pierwszy") and who(db, c_kuba) is None
 
 
-# --- duplikaty w formularzu ---------------------------------------------------------------
 def post_new(client, **crew):
     return client.post("/matches", data={**BASE, **crew}, follow_redirects=False)
 
 
 def test_form_rejects_same_typed_name_on_two_positions(client, db):
     from app.models import Match
-    r = post_new(client, cc_name="Łukasz  Żółć", u1_name="lukasz zolc")  # inna pisownia, ta sama osoba
+    r = post_new(client, cc_name="Łukasz  Żółć", u1_name="lukasz zolc")
     assert r.status_code == 422
     assert "ta sama osoba" in r.text and "CC i U1" in r.text
-    assert 'value="Łukasz  Żółć"' in r.text and 'value="lukasz zolc"' in r.text   # wpisane wartości zostają w formularzu
+    assert 'value="Łukasz  Żółć"' in r.text and 'value="lukasz zolc"' in r.text
     assert db.query(Match).count() == 0
 
 
@@ -118,15 +115,14 @@ def test_form_rejects_same_account_twice(client, db):
 
 def test_form_rejects_account_and_typed_name_of_same_person(client, db):
     a = make_user(db, ["referee"], email="a@example.com", name="Adam Sędzia")
-    for crew in (dict(cc_user=str(a.id), u1_name="adam  sedzia"),    # konto, potem nazwisko
-                 dict(cc_name="Adam Sędzia", u1_user=str(a.id))):    # nazwisko, potem konto
+    for crew in (dict(cc_user=str(a.id), u1_name="adam  sedzia"),
+                 dict(cc_name="Adam Sędzia", u1_user=str(a.id))):
         r = post_new(client, **crew)
         assert r.status_code == 422 and "ta sama osoba" in r.text, crew
-    assert f'<option value="{a.id}" selected>' in r.text   # wybór konta zachowany
+    assert f'<option value="{a.id}" selected>' in r.text
 
 
 def test_form_allows_typed_name_equal_to_ambiguous_accounts(client, db):
-    """Dwa konta o tym samym imieniu i nazwisku: wpisane nazwisko nie jest żadnym z nich."""
     a = make_user(db, ["referee"], email="a@example.com", name="Jan Dubel")
     make_user(db, ["referee"], email="b@example.com", name="Jan Dubel")
     r = post_new(client, cc_user=str(a.id), u1_name="Jan Dubel")
@@ -142,7 +138,6 @@ def test_edit_form_rejects_duplicate_and_keeps_old_crew(client, db):
         "CC": "Jan Pierwszy", "U1": "Ewa Druga"}
 
 
-# --- ta sama osoba: wpisane nazwisko i konto -------------------------------------------------
 def test_typed_name_replaced_by_the_persons_account_keeps_clips(client, db):
     kasia = make_user(db, ["referee"], email="k@example.com", name="Kasia Żółć")
     match = make_match(db, officials=(("CC", "Filip Kowalski"), ("U1", "kasia zolc")))
@@ -152,7 +147,7 @@ def test_typed_name_replaced_by_the_persons_account_keeps_clips(client, db):
     old_id = match.official("U1").id
     edit(client, db, match, cc_name="Filip Kowalski", u1_user=str(kasia.id))
     after = db.get(type(match), match.id).official("U1")
-    assert after.user_id == kasia.id and after.name is None and after.id == old_id  # ta sama pozycja
+    assert after.user_id == kasia.id and after.name is None and after.id == old_id
     assert who(db, c_kasia) == ("U1", "Kasia Żółć")
     assert who(db, c_filip) == ("CC", "Filip Kowalski")
 
@@ -162,13 +157,12 @@ def test_typed_name_replaced_by_account_on_another_position_keeps_clips(client, 
     match = make_match(db, officials=(("CC", "Filip Kowalski"), ("U1", "Kasia Żółć")))
     video = make_ready_video(db, match)
     c_kasia = clip_for(db, video, match.official("U1"))
-    edit(client, db, match, cc_user=str(kasia.id), u1_name="Filip Kowalski")  # zamiana funkcji + konto
+    edit(client, db, match, cc_user=str(kasia.id), u1_name="Filip Kowalski")
     assert who(db, c_kasia) == ("CC", "Kasia Żółć")
     assert db.get(type(match), match.id).official("CC").user_id == kasia.id
 
 
 def test_account_replaced_by_typed_name_of_same_person_keeps_clips(client, db):
-    """W drugą stronę: konto zamienione na wpisane nazwisko tej samej osoby."""
     kasia = make_user(db, ["referee"], email="k@example.com", name="Kasia Żółć")
     match = make_match(db, officials=(("CC", kasia), ("U1", "Ewa Druga")))
     video = make_ready_video(db, match)
@@ -179,14 +173,13 @@ def test_account_replaced_by_typed_name_of_same_person_keeps_clips(client, db):
 
 
 def test_ambiguous_account_name_is_not_merged_with_typed_name(client, db):
-    """Dwa konta o tym samym imieniu i nazwisku: wpisane nazwisko to inna osoba niż konto."""
     first = make_user(db, ["referee"], email="a@example.com", name="Jan Dubel")
     make_user(db, ["referee"], email="b@example.com", name="Jan Dubel")
     match = make_match(db, officials=(("CC", "Jan Dubel"), ("U1", "Ewa Druga")))
     video = make_ready_video(db, match)
     c_jan = clip_for(db, video, match.official("CC"))
     edit(client, db, match, cc_user=str(first.id), u1_name="Ewa Druga")
-    assert who(db, c_jan) is None                          # nie łączymy: klip traci przypisanie
+    assert who(db, c_jan) is None
     assert db.get(type(match), match.id).official("CC").user_id == first.id
 
 

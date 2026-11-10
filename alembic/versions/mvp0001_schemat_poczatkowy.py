@@ -1,9 +1,4 @@
-"""Schemat początkowy MVP (plan techniczny, rozdz. 4).
-
-Revision ID: mvp0001
-Revises: 
-Create Date: 2026-11-01 21:27:02.029380
-"""
+"""Initial MVP schema."""
 from alembic import op
 import sqlalchemy as sa
 

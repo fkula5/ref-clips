@@ -1,4 +1,3 @@
-"""Konta, logowanie, sesje i zaproszenia (logika bez FastAPI)."""
 from __future__ import annotations
 
 import re
@@ -15,7 +14,7 @@ _EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
 
 class AccountError(ValueError):
-    """Błąd walidacji widoczny dla administratora (komunikat po polsku)."""
+    pass
 
 
 class InvalidCredentials(Exception):
@@ -38,9 +37,7 @@ def validate_password(password: str) -> str | None:
     return None
 
 
-# --- logowanie z limitem prób -----------------------------------------------------
 def is_throttled(db: Session, email: str, ip: str) -> bool:
-    """Limit nieudanych prób w oknie czasowym — osobno na konto i na adres IP."""
     since = utcnow() - timedelta(minutes=config.LOGIN_WINDOW_MINUTES)
     for column, value in ((LoginAttempt.email, email), (LoginAttempt.ip, ip)):
         count = db.scalar(select(func.count()).select_from(LoginAttempt)
@@ -58,7 +55,7 @@ def authenticate(db: Session, email: str, password: str, ip: str) -> User:
     if user is not None and user.password_hash and user.is_active:
         ok = security.verify_password(user.password_hash, password)
     else:
-        security.verify_password(security.dummy_hash(), password)  # wyrównanie czasu odpowiedzi
+        security.verify_password(security.dummy_hash(), password)  # equalise response time
         ok = False
     if not ok:
         now = utcnow()
@@ -67,7 +64,7 @@ def authenticate(db: Session, email: str, password: str, ip: str) -> User:
         db.add(LoginAttempt(email=email, ip=ip, attempted_at=now))
         db.commit()
         raise InvalidCredentials
-    # udane logowanie zeruje licznik błędów tego konta (licznik adresu IP zostaje)
+    # success resets the account's counter, not the IP's
     db.execute(delete(LoginAttempt).where(LoginAttempt.email == email))
     db.commit()
     if security.needs_rehash(user.password_hash):
@@ -76,9 +73,7 @@ def authenticate(db: Session, email: str, password: str, ip: str) -> User:
     return user
 
 
-# --- sesje ------------------------------------------------------------------------
 def create_session(db: Session, user: User) -> str:
-    """Zakłada sesję i zwraca token do ciasteczka (w bazie zostaje tylko jego hash)."""
     now = utcnow()
     db.execute(delete(AuthSession).where(AuthSession.expires_at < now))
     token = security.new_token()
@@ -90,7 +85,6 @@ def create_session(db: Session, user: User) -> str:
 
 
 def get_session(db: Session, token: str | None) -> AuthSession | None:
-    """Ważna sesja aktywnego użytkownika albo None."""
     if not token:
         return None
     session = db.scalar(select(AuthSession).where(
@@ -101,7 +95,7 @@ def get_session(db: Session, token: str | None) -> AuthSession | None:
 
 
 def refresh_session(db: Session, session: AuthSession) -> bool:
-    """Przedłuża sesję do pełnych 30 dni (najwyżej raz na dobę). True, gdy przedłużono."""
+    """Extends to a full 30 days at most once a day; True if extended."""
     now = utcnow()
     if session.expires_at - now > timedelta(days=config.SESSION_DAYS) - timedelta(days=1):
         return False
@@ -120,9 +114,8 @@ def end_all_sessions(db: Session, user_id: int) -> None:
     db.execute(delete(AuthSession).where(AuthSession.user_id == user_id))
 
 
-# --- zaproszenia i reset hasła ------------------------------------------------------
 def create_invite(db: Session, user: User, purpose: str, created_by: User | None) -> str:
-    """Nowy jednorazowy link (ważny 7 dni). Wcześniejsze niewykorzystane linki tracą ważność."""
+    """Invalidates the account's earlier unused links."""
     now = utcnow()
     for old in db.scalars(select(Invite).where(Invite.user_id == user.id, Invite.used_at.is_(None))):
         old.used_at = now
@@ -135,7 +128,6 @@ def create_invite(db: Session, user: User, purpose: str, created_by: User | None
 
 
 def find_invite(db: Session, token: str) -> Invite | None:
-    """Link ważny: istnieje, nie był użyty, nie wygasł, konto jest aktywne."""
     invite = db.scalar(select(Invite).where(Invite.token_hash == security.hash_token(token)))
     if (invite is None or invite.used_at is not None or invite.expires_at <= utcnow()
             or not invite.user.is_active):
@@ -144,7 +136,7 @@ def find_invite(db: Session, token: str) -> Invite | None:
 
 
 def redeem_invite(db: Session, invite: Invite, password: str) -> None:
-    """Ustawia hasło z linku, zużywa link i wylogowuje konto ze starych sesji."""
+    """Also revokes the account's existing sessions."""
     error = validate_password(password)
     if error:
         raise AccountError(error)
@@ -155,7 +147,6 @@ def redeem_invite(db: Session, invite: Invite, password: str) -> None:
     db.commit()
 
 
-# --- zarządzanie kontami (administrator) --------------------------------------------
 def _clean_roles(roles) -> set[str]:
     wanted = set(roles)
     if not wanted:
@@ -207,8 +198,6 @@ def set_active(db: Session, user: User, active: bool) -> None:
 
 
 def ensure_admin(db: Session, *, email: str, name: str, password: str) -> tuple[User, bool]:
-    """Dla polecenia create_admin: zakłada administratora albo nadaje rolę istniejącemu
-    kontu i ustawia hasło. Zwraca (konto, czy nowe)."""
     error = validate_password(password)
     if error:
         raise AccountError(error)

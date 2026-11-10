@@ -45,7 +45,7 @@ def test_migration_downgrade_and_seed(tmp_path):
     engine = create_engine(url)
     with Session(engine) as db:
         seed(db)
-        seed(db)  # powtórne uruchomienie niczego nie dubluje
+        seed(db)
         assert db.get(Setting, "retention_days").value == "30"
         names = [c.name for c in db.query(Category).order_by(Category.sort)]
         assert len(names) == len(set(names))
@@ -54,7 +54,6 @@ def test_migration_downgrade_and_seed(tmp_path):
 
 
 def test_notes_column_migration_keeps_existing_uploads(tmp_path):
-    """Migracja mvp0002 dodaje upload_sessions.notes do istniejącej bazy bez utraty danych."""
     from sqlalchemy import text
 
     url = f"sqlite:///{tmp_path / 'm.db'}"
@@ -77,7 +76,6 @@ def test_notes_column_migration_keeps_existing_uploads(tmp_path):
 
 
 def test_comment_indexes_migration_is_additive(tmp_path):
-    """Migracja mvp0003 dodaje tylko indeksy komentarzy; dane zostają, a schemat zgadza się z modelami."""
     from sqlalchemy import text
 
     url = f"sqlite:///{tmp_path / 'm.db'}"
@@ -100,8 +98,6 @@ def test_comment_indexes_migration_is_additive(tmp_path):
 
 
 def test_retention_migration_is_additive(tmp_path):
-    """Migracja mvp0004 dodaje videos.proxy_bytes i tabelę upload_rejections; dane zostają, a schemat
-    zgadza się z modelami. Rozmiar wersji roboczej starych nagrań jest pusty (uzupełnia go panel)."""
     from sqlalchemy import text
 
     url = f"sqlite:///{tmp_path / 'm.db'}"
@@ -129,8 +125,6 @@ def test_retention_migration_is_additive(tmp_path):
 
 
 def test_share_links_migration_is_additive(tmp_path):
-    """Migracja mvp0005 dodaje tylko tabele linków; schemat zgadza się z modelami, a usunięcie klipu albo
-    linku kasuje powiązania (ON DELETE CASCADE), ale nie sam link ani klip."""
     from sqlalchemy import text
 
     url = f"sqlite:///{tmp_path / 'm.db'}"
@@ -154,7 +148,7 @@ def test_share_links_migration_is_additive(tmp_path):
         assert conn.execute(text("SELECT view_count FROM share_links")).scalar() == 0
         conn.execute(text("DELETE FROM clips WHERE id = 2"))
         assert conn.execute(text("SELECT clip_id FROM share_link_clips")).scalars().all() == [1]
-        conn.execute(text("DELETE FROM users WHERE id = 1"))  # twórca znika, link zostaje
+        conn.execute(text("DELETE FROM users WHERE id = 1"))
         assert conn.execute(text("SELECT created_by FROM share_links")).one()[0] is None
         conn.execute(text("DELETE FROM share_links"))
         assert conn.execute(text("SELECT count(*) FROM share_link_clips")).scalar() == 0
@@ -165,8 +159,6 @@ def test_share_links_migration_is_additive(tmp_path):
 
 
 def test_sheet_migration_seeds_elements_and_cascades(tmp_path):
-    """mvp0006 seeds the ten standard elements in order, enforces one sheet per (match, coach) and a difficulty on
-    published sheets, cascades from the match down to the cells, and keeps the author FK without cascade."""
     from sqlalchemy import text
 
     url = f"sqlite:///{tmp_path / 'm.db'}"
@@ -188,10 +180,10 @@ def test_sheet_migration_seeds_elements_and_cascades(tmp_path):
         conn.execute(text("INSERT INTO sheet_rows (id, sheet_id, position, name) VALUES (1, 1, 0, 'Mechanika')"))
         conn.execute(text("INSERT INTO sheet_cells (row_id, column_id, text) VALUES (1, 1, 'ok')"))
         assert compare_metadata(MigrationContext.configure(conn), Base.metadata) == []
-    for sql in ("INSERT INTO sheets (match_id, coach_id) VALUES (1, 1)",                          # second sheet
-                "UPDATE sheets SET status = 'published'",                                         # no difficulty
+    for sql in ("INSERT INTO sheets (match_id, coach_id) VALUES (1, 1)",  # second sheet
+                "UPDATE sheets SET status = 'published'",  # no difficulty
                 "UPDATE sheets SET difficulty = 'bardzo'",
-                "DELETE FROM users WHERE id = 1"):                                                # author FK: no cascade
+                "DELETE FROM users WHERE id = 1"):  # author FK: no cascade
         with engine.begin() as conn, pytest.raises(Exception):
             conn.execute(text("PRAGMA foreign_keys=ON"))
             conn.execute(text(sql))

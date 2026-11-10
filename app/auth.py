@@ -1,4 +1,3 @@
-"""Warstwa FastAPI dla logowania: aktualny użytkownik, CSRF, `require(...)`, ciasteczka."""
 from __future__ import annotations
 
 import ipaddress
@@ -15,12 +14,10 @@ SAFE_METHODS = {"GET", "HEAD", "OPTIONS"}
 FORM_TYPES = ("application/x-www-form-urlencoded", "multipart/form-data")
 
 
-# --- adres klienta i ciasteczka ---------------------------------------------------
 def client_ip(request: Request) -> str:
-    """Adres klienta do limitu prób logowania.
-
-    Za jednym zaufanym proxy (Caddy) liczy się OSTATNI wpis X-Forwarded-For: dopisuje go proxy,
-    a wpisy po lewej mógł podstawić klient. Wpis, który nie jest adresem IP, ignorujemy."""
+    """Last X-Forwarded-For entry: the trusted proxy (Caddy) appends it, entries to the left may be
+    forged by the client. Non-IP entries are ignored.
+    """
     if config.TRUST_PROXY:
         last = request.headers.get("x-forwarded-for", "").rsplit(",", 1)[-1].strip()
         try:
@@ -49,8 +46,7 @@ def set_anon_csrf_cookie(response: Response, token: str) -> None:
 
 
 class SessionRefreshMiddleware:
-    """Dokłada ciasteczko sesji z nową ważnością, gdy `current_user` przedłużył sesję.
-    (Nagłówka nie da się ustawić w zależności, gdy trasa zwraca własną odpowiedź.)"""
+    """A dependency cannot set headers on a response a route builds itself, hence this."""
 
     def __init__(self, app):
         self.app = app
@@ -73,9 +69,7 @@ class SessionRefreshMiddleware:
         await self.app(scope, receive, send_with_cookie)
 
 
-# --- aktualny użytkownik ------------------------------------------------------------
 def current_user(request: Request, db: Session = Depends(get_db)) -> User:
-    """Zalogowany, aktywny użytkownik z ważnej sesji; inaczej 401."""
     token = request.cookies.get(config.SESSION_COOKIE)
     session = accounts.get_session(db, token)
     if session is None:
@@ -87,10 +81,8 @@ def current_user(request: Request, db: Session = Depends(get_db)) -> User:
     return session.user
 
 
-# --- CSRF ---------------------------------------------------------------------------
 async def _supplied_csrf(request: Request) -> str | None:
-    """Token z nagłówka (HTMX, fetch) albo z pola formularza. Treść żądania czytamy tylko
-    dla formularzy — surowe wgrywanie pliku musi iść z nagłówkiem."""
+    """The body is read only for forms, so raw file uploads must send the header."""
     supplied = request.headers.get("x-csrf-token")
     if supplied:
         return supplied
@@ -101,7 +93,6 @@ async def _supplied_csrf(request: Request) -> str | None:
 
 
 async def csrf_protect(request: Request, _user: User = Depends(current_user)) -> None:
-    """Żądania zmieniające dane muszą nieść token CSRF związany z sesją."""
     if request.method in SAFE_METHODS:
         return
     supplied = await _supplied_csrf(request)
@@ -110,8 +101,7 @@ async def csrf_protect(request: Request, _user: User = Depends(current_user)) ->
 
 
 async def csrf_anonymous(request: Request) -> None:
-    """Formularze bez sesji (logowanie, ustawienie hasła): token z ciasteczka musi zgadzać się
-    z polem formularza (double submit)."""
+    """Double-submit cookie for forms without a session (login, set-password)."""
     if request.method in SAFE_METHODS:
         return
     cookie = request.cookies.get(config.CSRF_COOKIE)
@@ -120,19 +110,14 @@ async def csrf_anonymous(request: Request) -> None:
         raise HTTPException(403, "Nieprawidłowy token CSRF — odśwież stronę i spróbuj ponownie")
 
 
-# Wszystkie trasy poza logowaniem i ustawieniem hasła są dołączane z tymi zależnościami.
 PROTECTED = [Depends(csrf_protect)]
 PUBLIC = [Depends(csrf_anonymous)]
 
 
-# --- require(...) ---------------------------------------------------------------------
 def require(check: Callable[..., bool], loader: Callable | None = None):
-    """Zależność tras: zalogowany użytkownik, który spełnia regułę z `app.permissions`.
-
-    `require(can_x)` wywołuje `can_x(user)`; `require(can_x, get_match)` ładuje obiekt
-    (zależność FastAPI, np. po `match_id` ze ścieżki) i wywołuje `can_x(user, obiekt)`.
-    Zwraca użytkownika, więc można go podać jako wartość domyślną parametru:
-    `user: User = require(permissions.can_manage_users)`. Brak uprawnień to 403.
+    """`require(can_x)` calls `can_x(user)`; `require(can_x, get_match)` loads the object and calls
+    `can_x(user, obj)`.
+    Returns the user, so it can be a parameter default. Denied -> 403.
     """
     def _deny() -> None:
         raise HTTPException(403, "Brak uprawnień do tej operacji")
@@ -151,5 +136,4 @@ def require(check: Callable[..., bool], loader: Callable | None = None):
 
 
 def via_match(check: Callable[..., bool]) -> Callable[..., bool]:
-    """Adapter: reguła dla meczu zastosowana do obiektu z polem `match` (nagranie, klip)."""
     return lambda user, obj: check(user, obj.match)

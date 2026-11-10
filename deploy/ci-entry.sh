@@ -1,33 +1,8 @@
 #!/usr/bin/env bash
-# Wejście dla klucza CI (GitHub Actions) — jedyna rzecz, którą ten klucz może uruchomić na serwerze.
-#
-# Instalacja (raz, root; plik poza katalogiem aplikacji, żeby klucz CI nie mógł go zmienić):
-#   sudo install -o root -g root -m 755 /opt/ref-clips/deploy/ci-entry.sh /usr/local/bin/ref-clips-ci-entry
-# oraz wymuszone polecenie w ~ubuntu/.ssh/authorized_keys (opis: docs/ci-cd.md):
-#   command="/usr/local/bin/ref-clips-ci-entry",restrict ssh-ed25519 AAAA... ref-clips-ci
-# Po zmianie tego pliku w repozytorium zainstaluj go ponownie ręcznie (po przejrzeniu zmian).
-#
-# Akceptuje WYŁĄCZNIE (SSH_ORIGINAL_COMMAND, ścisłe wyrażenia, bez eval, bez przekazywania argumentów dalej):
-#   deploy vX.Y.Z   wdrożenie wersji z obrazu ghcr.io/fkula5/ref-clips:vX.Y.Z
-#   status          wypisuje wdrożoną wersję i stan usług
-#
-# deploy — kolejność kroków (do chwili „zajęte → wolne” nic na serwerze się nie zmienia):
-#   1. blokada flock (.deploy.lock — ta sama co w deploy.sh) na czas całości,
-#   2. pobranie plików wersji po HTTPS z publicznego repo (codeload.github.com) do katalogu tymczasowego
-#      (serwer pobiera sam; klucz CI nie ma kanału zapisu) — zły tag wychodzi od razu, nie po 2 h czekania,
-#   3. czekanie, aż nic nie trwa (app/busy.py jak w deploy.sh; limit 120 min, potem kod 3),
-#   4. pobranie obrazu (docker pull), ponowne sprawdzenie zajętości tuż przed zmianą,
-#   5. podmiana compose.yaml, compose.prod.yaml i deploy/ (kopia poprzednich w .rollback/), zapis
-#      REFCLIPS_IMAGE w .env (atomowo, jedna linia; .env nie jest wypisywany),
-#   6. docker compose up -d --no-build --remove-orphans --wait; restart Caddy tylko po zmianie Caddyfile,
-#   7. kontrola /health przez Caddy; gdy nowa wersja nie wstanie — powrót do poprzednich plików i obrazu,
-#   8. zapis wersji w .deploy-commit, usunięcie starych obrazów ref-clips (zostaje 3 ostatnie + bieżący i poprzedni).
-#
-# Kody wyjścia: 0 ok; 1 błąd (nic nie zmienione albo zmiany cofnięte przed startem); 2 niedozwolone polecenie;
-#   3 przez cały limit coś trwało (nic nie zmienione); 4 nowa wersja nie wstała, przywrócono poprzednią;
-#   5 nowa wersja nie wstała i powrót się nie udał — potrzebna ręczna interwencja.
-#
-# Zmienne REFCLIPS_CI_* służą wyłącznie testom lokalnym (klient ssh ich nie ustawi: `restrict`).
+# Forced command of the CI key: the only thing that key can run. Installed outside the app directory so
+# the key cannot change it; after editing, reinstall by hand (docs/ci-cd.md).
+# Accepts only "deploy vX.Y.Z" and "status".
+# Exit codes: 0 ok, 1 error, 2 command not allowed, 3 still busy at the time limit, 4 rolled back, 5 rollback failed.
 set -euo pipefail
 
 export PATH="${REFCLIPS_CI_PATH_PREFIX:+$REFCLIPS_CI_PATH_PREFIX:}/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
@@ -36,7 +11,7 @@ unset REFCLIPS_IMAGE COMPOSE_FILE COMPOSE_PROJECT_NAME DOCKER_HOST
 DIR="${REFCLIPS_CI_DIR:-/opt/ref-clips}"
 REPO="fkula5/ref-clips"
 IMAGE_REPO="ghcr.io/${REPO}"
-WAIT_SECONDS="${REFCLIPS_CI_WAIT_SECONDS:-7200}"   # limit czekania: 120 min
+WAIT_SECONDS="${REFCLIPS_CI_WAIT_SECONDS:-7200}"
 WAIT_INTERVAL="${REFCLIPS_CI_WAIT_INTERVAL:-60}"
 HEALTH_TRIES="${REFCLIPS_CI_HEALTH_TRIES:-30}"
 HEALTH_SLEEP="${REFCLIPS_CI_HEALTH_SLEEP:-5}"
@@ -47,7 +22,6 @@ err() { printf '[%s] BŁĄD: %s\n' "$(date +%H:%M:%S)" "$*" >&2; }
 audit() { command -v logger >/dev/null 2>&1 && logger -t ref-clips-ci -- "$*" || true; }
 die() { err "$*"; audit "błąd: $*"; exit 1; }
 
-# --- polecenie z klienta: ścisłe dopasowanie, nic nie jest wykonywane ani rozwijane -------------------
 cmd="${SSH_ORIGINAL_COMMAND:-}"
 TAG=""
 if [ "${#cmd}" -le 40 ] && [[ "$cmd" != *$'\n'* ]] && [[ "$cmd" == "status" ]]; then
@@ -65,7 +39,6 @@ DOCKER=(docker)
 docker info >/dev/null 2>&1 || DOCKER=(sudo -n docker)
 dc() { (cd "$DIR" && "${DOCKER[@]}" compose -f compose.yaml -f compose.prod.yaml "$@"); }
 
-# --- status -----------------------------------------------------------------------------------------
 if [ "$ACTION" = status ]; then
   if [ -f "$DIR/.deploy-commit" ]; then
     read -r version stamp _ < "$DIR/.deploy-commit" || true
@@ -77,7 +50,6 @@ if [ "$ACTION" = status ]; then
   exit 0
 fi
 
-# --- deploy -----------------------------------------------------------------------------------------
 [ -d "$DIR" ] || die "brak katalogu $DIR na serwerze"
 cd "$DIR"
 exec 9>.deploy.lock
@@ -89,7 +61,6 @@ STAGE=""
 cleanup() { [ -z "$STAGE" ] || rm -rf "$STAGE"; }
 trap cleanup EXIT
 
-# Stan sprzed zmian — do powrotu.
 was_running=0
 if [ -f compose.yaml ] && [ -f .env ]; then
   services="$(dc ps --status running --services 2>/dev/null || true)"
@@ -99,7 +70,8 @@ prev_line=""
 if [ -f .env ]; then prev_line="$(grep -E '^REFCLIPS_IMAGE=' .env | tail -n1 || true)"; fi
 prev_tag="${prev_line#REFCLIPS_IMAGE=}"; prev_tag="${prev_tag##*:}"
 
-# Zapis (albo usunięcie, gdy $1 puste) linii REFCLIPS_IMAGE w .env: nowy plik obok, potem rename; reszta .env bez zmian.
+# Writes (or removes, when $1 is empty) the REFCLIPS_IMAGE line in .env: new file alongside, then
+# rename; the rest of .env unchanged.
 set_env_line() {
   local line="$1" tmp
   [ -f .env ] || die "brak pliku .env w $DIR — patrz docs/wdrozenie.md"
@@ -110,7 +82,8 @@ set_env_line() {
   mv -f "$tmp" .env
 }
 
-# 0 = wolne (albo stos nie działa), 1 = zajęte, 2 = nie udało się sprawdzić. Jak check_busy w deploy.sh, ale lokalnie.
+# 0 = idle (or the stack is not running), 1 = busy, 2 = check failed. Like check_busy in deploy.sh, but
+# local.
 check_busy() {
   local running out rc=0
   [ -f compose.yaml ] && [ -f .env ] || { log "Stos jeszcze nie był uruchamiany — nic nie trwa."; return 0; }
@@ -145,7 +118,6 @@ wait_until_free() {
   done
 }
 
-# 2. Pliki wersji z publicznego repo.
 STAGE="$(mktemp -d "$DIR/.ci-incoming.XXXXXX")"
 log "Pobieram pliki wersji $TAG z GitHuba..."
 curl -fsSL --proto '=https' --proto-redir '=https' --tlsv1.2 --retry 2 --max-time 180 \
@@ -159,19 +131,17 @@ for f in compose.yaml compose.prod.yaml deploy/Caddyfile deploy/backup.sh app/bu
 done
 [ -z "$(find "$STAGE/deploy" -type l)" ] || die "katalog deploy/ w $TAG zawiera dowiązania symboliczne — odmawiam"
 
-# 3. Czekanie, aż będzie wolne.
 log "Sprawdzam, czy na serwerze coś trwa (limit czekania $(( WAIT_SECONDS / 60 )) min)..."
 wait_until_free
 
-# 4. Obraz (przed jakąkolwiek zmianą), potem ostatnie sprawdzenie zajętości — pobieranie mogło potrwać.
+# The pull may have taken a while: check busy again right before the change.
 log "Pobieram obraz $IMAGE..."
 "${DOCKER[@]}" pull --quiet "$IMAGE" >/dev/null \
   || die "nie udało się pobrać obrazu $IMAGE (czy build się udał, a pakiet GHCR jest publiczny? docs/ci-cd.md)"
 log "Ostatnie sprawdzenie zajętości tuż przed restartem..."
 wait_until_free
 
-# 5. Podmiana plików (z kopią do powrotu) i zapis obrazu w .env.
-install_tree() {   # $1 = katalog źródłowy z compose.yaml, compose.prod.yaml i deploy/
+install_tree() {
   local src="$1" f
   for f in compose.yaml compose.prod.yaml; do
     cp "$src/$f" ".$f.new" && mv -f ".$f.new" "$f"
@@ -188,7 +158,7 @@ log "Podmieniam compose.yaml, compose.prod.yaml i deploy/ (kopia poprzednich: $D
 install_tree "$STAGE"
 set_env_line "REFCLIPS_IMAGE=$IMAGE"
 
-caddy_refresh() {   # Caddyfile jest montowany jako pojedynczy plik: po zmianie trzeba zrestartować Caddy (jak w deploy.sh)
+caddy_refresh() {  # The Caddyfile is mounted as a single file: after a change Caddy must be restarted (as in deploy.sh).
   local services current
   services="$(dc ps --status running --services 2>/dev/null || true)"
   grep -qx caddy <<<"$services" || return 0
@@ -200,7 +170,7 @@ caddy_refresh() {   # Caddyfile jest montowany jako pojedynczy plik: po zmianie 
 }
 
 HEALTH_BODY=""
-health_ok() {   # 0 = /health zwraca 200; treść ostatniej odpowiedzi w HEALTH_BODY
+health_ok() {  # 0 = /health returns 200; the body of the last response is in HEALTH_BODY
   local site code body
   site="$(sed -n 's/^REFCLIPS_SITE=//p' .env | tail -n1 | tr -d "\"' \r")"
   [ -n "$site" ] || { HEALTH_BODY="brak REFCLIPS_SITE w .env"; return 1; }
@@ -210,7 +180,6 @@ health_ok() {   # 0 = /health zwraca 200; treść ostatniej odpowiedzi w HEALTH_
   [ "$code" = 200 ]
 }
 
-# 7 (powrót): poprzednie pliki i poprzednia linia REFCLIPS_IMAGE.
 rollback() {
   err "Wracam do poprzedniej wersji (${prev_tag:-ref-clips:local})."
   [ -d .rollback ] || { err "brak katalogu .rollback — nie ma do czego wracać"; return 1; }
@@ -228,7 +197,7 @@ rollback() {
   return 1
 }
 
-fail_and_rollback() {   # $1 = powód
+fail_and_rollback() {
   err "$1"
   err "--- logi usług (ostatnie linie):"
   dc logs --tail 30 app worker init 2>&1 | sed 's/^/    /' >&2 || true
@@ -241,14 +210,13 @@ fail_and_rollback() {   # $1 = powód
   exit 5
 }
 
-# 6. Start.
 log "Uruchamiam $TAG (docker compose up --wait)..."
 if ! dc up -d --no-build --remove-orphans --wait --wait-timeout 300; then
   fail_and_rollback "docker compose up nie zakończył się powodzeniem"
 fi
 caddy_refresh || fail_and_rollback "restart Caddy nie powiódł się"
 
-# 7. /health przez Caddy. Sam brak miejsca na dysku nie jest winą nowej wersji i nie uzasadnia powrotu.
+# Missing disk space alone is not the new version's fault and does not justify a rollback.
 log "Sprawdzam /health (do $(( HEALTH_TRIES * HEALTH_SLEEP )) s)..."
 healthy=0
 for _ in $(seq 1 "$HEALTH_TRIES"); do
@@ -263,7 +231,6 @@ if [ "$healthy" != 1 ]; then
   fi
 fi
 
-# 8. Zapis wersji i sprzątanie starych obrazów.
 printf '%s %s\n' "$TAG" "$(date -u +%FT%TZ)" > .deploy-commit.new && mv -f .deploy-commit.new .deploy-commit
 rm -rf .rollback
 

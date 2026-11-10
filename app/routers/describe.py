@@ -1,6 +1,6 @@
-"""Ekran opisywania znaczników: kolejka nieopisanych klipów meczu (albo jednego nagrania),
-podgląd klipu i pola opisu. Zapis opisu: `POST /clips/{id}/update?context=describe`
-(app/routers/clips.py), który wraca tu przez `render_screen`."""
+"""Saving a description is `POST /clips/{id}/update?context=describe` (app/routers/clips.py), which
+returns here via `render_screen`.
+"""
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Request
@@ -21,12 +21,10 @@ PROPOSAL_NOTE = "Wartości wstępne pochodzą z notatek — sprawdź je i zatwie
 
 
 def scope_video(match: Match, video_id: int | None):
-    """Nagranie z adresu, jeśli należy do meczu (inaczej ekran obejmuje cały mecz)."""
     return next((v for v in match.videos if v.id == video_id), None)
 
 
 def form_values(clip: Clip) -> dict[str, str]:
-    """Wartości pól opisu: zapisane w klipie albo wstępne (propozycja z notatek)."""
     return {"official": "team" if clip.whole_team else str(clip.official_id or ""),
             "category_id": str(clip.category_id or ""),
             "custom_category": clip.custom_category or "",
@@ -34,8 +32,9 @@ def form_values(clip: Clip) -> dict[str, str]:
 
 
 def preview_of(clip: Clip) -> dict:
-    """Podgląd: plik klipu, gdy wycięty; gdy czeka w kolejce — wersja robocza od startu do końca
-    klipu (zatrzymanie na końcu robi describe.js); inaczej brak podglądu."""
+    """While the clip is queued, previews the draft from start to clip end (describe.js stops it at the
+    end).
+    """
     if clip.status == "cut" and clip.clip_path and storage.exists(clip.clip_path):
         return {"kind": "file", "src": f"/clips/{clip.id}/file?v={clip.clip_version}"}
     video = clip.video
@@ -47,7 +46,6 @@ def preview_of(clip: Clip) -> dict:
 
 
 def cut_problem(clip: Clip) -> dict | None:
-    """Stan błędu cięcia: komunikat i czy ma sens „Wytnij ponownie”."""
     if clip.status != "error":
         return None
     video = clip.video
@@ -66,7 +64,7 @@ def render_screen(request: Request, db: Session, match: Match, *, clip_id: int |
     video = scope_video(match, video_id)
     queue = services.undescribed_queue(db, match.id, video.id if video else None)
     current = next((c for c in queue if c.id == clip_id), None)
-    if current is None and clip_id is not None:  # klip spoza kolejki (np. już opisany) — pokazujemy go wprost
+    if current is None and clip_id is not None:
         extra = db.get(Clip, clip_id)
         current = extra if extra is not None and extra.match_id == match.id else None
     if current is None and queue:

@@ -1,7 +1,5 @@
-"""Model danych (rozdział 4 planu technicznego).
-
-Wartości słownikowe (role, funkcje, statusy) są zwykłymi napisami; spójność pilnują
-ograniczenia CHECK w bazie.
+"""Value dictionaries (roles, functions, statuses) are plain strings; consistency is enforced by CHECK
+constraints.
 """
 from __future__ import annotations
 
@@ -14,7 +12,6 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db import Base
 
-# --- słowniki wartości --------------------------------------------------------
 USER_ROLES = {"admin": "administrator", "coach": "szkoleniowiec", "referee": "sędzia"}
 OFFICIAL_FUNCTIONS = {"CC": "CC (pierwszy)", "U1": "U1 (drugi)", "U2": "U2 (trzeci)"}
 INVITE_PURPOSES = {"activate": "aktywacja konta", "reset": "reset hasła"}
@@ -36,14 +33,13 @@ def _in(column: str, values) -> str:
     return f"{column} IN ({', '.join(repr(v) for v in values)})"
 
 
-# --- konta --------------------------------------------------------------------
 class User(Base):
     __tablename__ = "users"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    email: Mapped[str] = mapped_column(String(255), unique=True)  # zawsze małymi literami
+    email: Mapped[str] = mapped_column(String(255), unique=True)  # always lowercase
     name: Mapped[str] = mapped_column(String(100))
-    password_hash: Mapped[str | None] = mapped_column(String(255))  # None do czasu aktywacji
+    password_hash: Mapped[str | None] = mapped_column(String(255))  # None until activation
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
@@ -70,7 +66,7 @@ class UserRole(Base):
 
 
 class AuthSession(Base):
-    """Sesja logowania; w bazie tylko hash tokenu z ciasteczka."""
+    """Only the hash of the cookie token is stored."""
     __tablename__ = "sessions"
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -84,7 +80,6 @@ class AuthSession(Base):
 
 
 class Invite(Base):
-    """Jednorazowy link ustawienia hasła (aktywacja konta albo reset)."""
     __tablename__ = "invites"
     __table_args__ = (CheckConstraint(_in("purpose", INVITE_PURPOSES), name="purpose_valid"),)
 
@@ -101,7 +96,6 @@ class Invite(Base):
 
 
 class LoginAttempt(Base):
-    """Nieudane próby logowania (limit 5 / 15 min na konto i na adres IP)."""
     __tablename__ = "login_attempts"
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -110,7 +104,6 @@ class LoginAttempt(Base):
     attempted_at: Mapped[datetime] = mapped_column(DateTime, index=True)
 
 
-# --- mecze --------------------------------------------------------------------
 class Match(Base):
     __tablename__ = "matches"
 
@@ -147,7 +140,7 @@ class Match(Base):
 
 
 class MatchOfficial(Base):
-    """Pozycja w obsadzie: konto (user_id) albo wpisane imię i nazwisko (name)."""
+    """Crew slot: an account (user_id) or a typed name (name)."""
     __tablename__ = "match_officials"
     __table_args__ = (
         UniqueConstraint("match_id", "function"),
@@ -175,7 +168,6 @@ class MatchOfficial(Base):
         return f"{self.function} · {self.display_name}"
 
 
-# --- nagrania -----------------------------------------------------------------
 class Video(Base):
     __tablename__ = "videos"
 
@@ -183,22 +175,22 @@ class Video(Base):
     match_id: Mapped[int] = mapped_column(ForeignKey("matches.id", ondelete="CASCADE"))
     label: Mapped[str] = mapped_column(String(100), default="")
     original_filename: Mapped[str] = mapped_column(String(255), default="")
-    original_path: Mapped[str | None] = mapped_column(String(500))  # względem DATA_DIR
-    proxy_path: Mapped[str | None] = mapped_column(String(500))     # względem DATA_DIR
-    size_bytes: Mapped[int] = mapped_column(BigInteger, default=0)  # rozmiar wgranego oryginału
-    # Rozmiar wersji roboczej (ustawiany po konwersji; dla starszych wierszy uzupełniany leniwie
-    # w panelu dysku), żeby panel admina nie sprawdzał rozmiarów plików przy każdym żądaniu.
+    original_path: Mapped[str | None] = mapped_column(String(500))  # relative to DATA_DIR
+    proxy_path: Mapped[str | None] = mapped_column(String(500))  # relative to DATA_DIR
+    size_bytes: Mapped[int] = mapped_column(BigInteger, default=0)
+    # Draft size, set after conversion (lazily backfilled for older rows) so the admin panel does not
+    # stat files on every request.
     proxy_bytes: Mapped[int | None] = mapped_column(BigInteger)
     duration: Mapped[float | None] = mapped_column(Float)
     fps: Mapped[float | None] = mapped_column(Float)
-    # Zawartość pliku: "full" (cały mecz) albo kwarty po przecinku, np. "Q1" lub "Q1,Q2".
+    # File contents: "full" (whole match) or comma-separated quarters, e.g. "Q1,Q2".
     content: Mapped[str] = mapped_column(String(50), default="full")
     status: Mapped[str] = mapped_column(String(20), default="uploading")
     error: Mapped[str | None] = mapped_column(Text)
     created_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
-    expires_at: Mapped[datetime | None] = mapped_column(DateTime)  # koniec retencji pełnego nagrania
-    purged_at: Mapped[datetime | None] = mapped_column(DateTime)   # kiedy usunięto pełne nagranie
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime)
+    purged_at: Mapped[datetime | None] = mapped_column(DateTime)
 
     match: Mapped[Match] = relationship(back_populates="videos")
     marks: Mapped[list[PeriodMark]] = relationship(
@@ -219,7 +211,6 @@ class Video(Base):
 
 
 class UploadSession(Base):
-    """Wznawialne wgrywanie (tus) — używane od segmentu 3."""
     __tablename__ = "upload_sessions"
 
     id: Mapped[str] = mapped_column(String(64), primary_key=True)
@@ -230,28 +221,26 @@ class UploadSession(Base):
     offset_bytes: Mapped[int] = mapped_column(BigInteger, default=0)
     reserved_bytes: Mapped[int] = mapped_column(BigInteger, default=0)
     metadata_json: Mapped[str] = mapped_column(Text, default="{}")
-    # Notatki do pliku (jedna linia = jeden moment); zamieniane na klipy po zakończeniu wgrywania.
+    # Notes for the file (one line = one moment); turned into clips when the upload finishes.
     notes: Mapped[str] = mapped_column(Text, default="", server_default="")
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())
 
 
 class UploadRejection(Base):
-    """Upload odrzucony z braku miejsca na dysku (plan 6.1) — ostrzeżenie w panelu admina."""
     __tablename__ = "upload_rejections"
 
     id: Mapped[int] = mapped_column(primary_key=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, index=True)
     user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
     filename: Mapped[str] = mapped_column(String(255), default="")
-    size_bytes: Mapped[int] = mapped_column(BigInteger)   # rozmiar odrzuconego pliku
-    free_bytes: Mapped[int] = mapped_column(BigInteger)   # wolne miejsce w chwili odrzucenia
+    size_bytes: Mapped[int] = mapped_column(BigInteger)
+    free_bytes: Mapped[int] = mapped_column(BigInteger)
 
     user: Mapped[User | None] = relationship()
 
 
 class PeriodMark(Base):
-    """Początek kwarty (Q1..Q4, OT*) w czasie nagrania."""
     __tablename__ = "period_marks"
     __table_args__ = (UniqueConstraint("video_id", "period"),)
 
@@ -263,9 +252,8 @@ class PeriodMark(Base):
     video: Mapped[Video] = relationship(back_populates="marks")
 
 
-# --- słownik kategorii, klipy, oceny, komentarze -------------------------------
 class Category(Base):
-    """Kategoria klipu z grupą; aliasy (po przecinku) czyta parser notatek."""
+    """Aliases (comma-separated) are read by the notes parser."""
     __tablename__ = "categories"
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -273,7 +261,7 @@ class Category(Base):
     name: Mapped[str] = mapped_column(String(100), unique=True)
     aliases: Mapped[str] = mapped_column(Text, default="")
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
-    is_custom: Mapped[bool] = mapped_column(Boolean, default=False)  # „własna”: nazwa wpisywana ręcznie
+    is_custom: Mapped[bool] = mapped_column(Boolean, default=False)
     sort: Mapped[int] = mapped_column(Integer, default=100)
 
     @property
@@ -282,7 +270,7 @@ class Category(Base):
 
 
 class Clip(Base):
-    """Klip wycinany ze znacznika. `described_at = None` oznacza klip nieopisany."""
+    """`described_at = None` means undescribed."""
     __tablename__ = "clips"
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -290,16 +278,16 @@ class Clip(Base):
     video_id: Mapped[int] = mapped_column(ForeignKey("videos.id", ondelete="CASCADE"))
     author_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
     official_id: Mapped[int | None] = mapped_column(ForeignKey("match_officials.id", ondelete="SET NULL"))
-    whole_team: Mapped[bool] = mapped_column(Boolean, default=False)  # „cały zespół”
+    whole_team: Mapped[bool] = mapped_column(Boolean, default=False)
     category_id: Mapped[int | None] = mapped_column(ForeignKey("categories.id", ondelete="SET NULL"))
-    custom_category: Mapped[str | None] = mapped_column(String(100))  # nazwa dla kategorii „własna”
-    time_sec: Mapped[float] = mapped_column(Float)  # moment znacznika w czasie nagrania
+    custom_category: Mapped[str | None] = mapped_column(String(100))
+    time_sec: Mapped[float] = mapped_column(Float)
     margin_before: Mapped[float] = mapped_column(Float, default=15.0)
     margin_after: Mapped[float] = mapped_column(Float, default=15.0)
     description: Mapped[str] = mapped_column(Text, default="")
     described_at: Mapped[datetime | None] = mapped_column(DateTime)
     status: Mapped[str] = mapped_column(String(20), default="new")
-    clip_path: Mapped[str | None] = mapped_column(String(500))  # względem DATA_DIR
+    clip_path: Mapped[str | None] = mapped_column(String(500))  # relative to DATA_DIR
     clip_version: Mapped[int] = mapped_column(Integer, default=0)
     error: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
@@ -335,7 +323,6 @@ class Clip(Base):
 
 
 class Rating(Base):
-    """Ocena szkoleniowca; jedna na parę (klip, szkoleniowiec)."""
     __tablename__ = "ratings"
     __table_args__ = (
         UniqueConstraint("clip_id", "coach_id"),
@@ -355,7 +342,7 @@ class Rating(Base):
 
 
 class Comment(Base):
-    """Komentarz do meczu (match_id) albo do klipu (clip_id) — dokładnie jedno z nich."""
+    """Exactly one of match_id / clip_id is set."""
     __tablename__ = "comments"
     __table_args__ = (
         CheckConstraint(
@@ -376,10 +363,10 @@ class Comment(Base):
     author: Mapped[User] = relationship()
 
 
-# --- qualifier assessment sheet ---------------------------------------------------
 class SheetElement(Base):
-    """Assessment element from the admin-editable dictionary. A sheet copies the name when it is created
-    (`SheetRow.name`), so renaming, deactivating or deleting an element never changes existing sheets."""
+    """A sheet copies the name when it is created (`SheetRow.name`), so renaming, deactivating or
+    deleting an element never changes existing sheets.
+    """
     __tablename__ = "sheet_elements"
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -389,8 +376,7 @@ class SheetElement(Base):
 
 
 class Sheet(Base):
-    """Descriptive assessment sheet of a match, one per (match, coach). The header (teams, date, level) is read
-    from the match; the elements and the official columns are copies taken when the sheet is created."""
+    """The header is read from the match; elements and official columns are copies taken at creation."""
     __tablename__ = "sheets"
     __table_args__ = (
         UniqueConstraint("match_id", "coach_id"),
@@ -407,7 +393,7 @@ class Sheet(Base):
     crew_note: Mapped[str] = mapped_column(Text, default="", server_default="")
     status: Mapped[str] = mapped_column(String(20), default="draft", server_default="draft")
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
-    updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())  # set in code, only when the content changes
+    updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())  # set in code, only on content change
     published_at: Mapped[datetime | None] = mapped_column(DateTime)
 
     match: Mapped[Match] = relationship(back_populates="sheets")
@@ -427,8 +413,7 @@ class Sheet(Base):
 
 
 class SheetColumn(Base):
-    """Sheet column = an official of the crew at creation time: function and name are copies because the
-    crew may change later. The official's overall assessment and recommendation live here."""
+    """Function and name are copies because the crew may change later."""
     __tablename__ = "sheet_columns"
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -447,8 +432,9 @@ class SheetColumn(Base):
 
 
 class SheetRow(Base):
-    """Sheet row = assessment element; the name is a copy. `element_id` only tells whether a dictionary
-    element is in use (only an unused element can be deleted)."""
+    """`element_id` only tells whether a dictionary element is in use (only an unused element can be
+    deleted).
+    """
     __tablename__ = "sheet_rows"
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -462,10 +448,9 @@ class SheetRow(Base):
 
 
 class SheetCell(Base):
-    """Comment on one element for one official (a sheet cell)."""
     __tablename__ = "sheet_cells"
-    # Deleting a sheet removes its columns (and, through ON DELETE CASCADE, their cells) before the ORM deletes the
-    # cells itself; a DELETE that finds the row already gone is expected.
+    # Deleting a sheet removes its columns (and, through ON DELETE CASCADE, their cells) before the ORM
+    # deletes the cells itself; a DELETE that finds the row already gone is expected.
     __mapper_args__ = {"confirm_deleted_rows": False}
 
     row_id: Mapped[int] = mapped_column(ForeignKey("sheet_rows.id", ondelete="CASCADE"), primary_key=True)
@@ -474,10 +459,10 @@ class SheetCell(Base):
     text: Mapped[str] = mapped_column(Text, default="", server_default="")
 
 
-# --- udostępnianie klipów linkiem bez konta ------------------------------------------
 class ShareLink(Base):
-    """Link do jednego lub kilku klipów dla osób bez konta (`/s/<kod>`). W bazie tylko skrót SHA-256
-    kodu — jawny kod widzi twórca raz, po utworzeniu. Ważność jest zawsze ograniczona (`expires_at`)."""
+    """Only the SHA-256 hash of the code is stored; the creator sees the code once. Validity is always
+    bounded (`expires_at`).
+    """
     __tablename__ = "share_links"
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -486,7 +471,7 @@ class ShareLink(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
     expires_at: Mapped[datetime] = mapped_column(DateTime)
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime)
-    view_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0")  # wejścia na stronę
+    view_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
 
     creator: Mapped[User | None] = relationship(foreign_keys=[created_by])
     items: Mapped[list[ShareLinkClip]] = relationship(
@@ -494,8 +479,9 @@ class ShareLink(Base):
 
 
 class ShareLinkClip(Base):
-    """Klip w linku. `position` (od 1) jest stała i trafia do adresów publicznych zamiast id klipu;
-    po usunięciu klipu (ON DELETE CASCADE) pozostałe pozycje się nie zmieniają."""
+    """`position` (from 1) is stable and goes into public URLs instead of the clip id; deleting a clip
+    (ON DELETE CASCADE) does not renumber the rest.
+    """
     __tablename__ = "share_link_clips"
     __table_args__ = (UniqueConstraint("link_id", "position"),)
 
@@ -507,14 +493,13 @@ class ShareLinkClip(Base):
     clip: Mapped[Clip] = relationship()
 
 
-# --- kolejka zadań i ustawienia --------------------------------------------------
 class Job(Base):
     __tablename__ = "jobs"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    type: Mapped[str] = mapped_column(String(20))  # transcode / cut (retencja i sprzątanie: bez zadań w tabeli)
-    status: Mapped[str] = mapped_column(String(20), default="pending")  # pending/running/done/error
-    progress: Mapped[float] = mapped_column(Float, default=0.0)  # 0..1
+    type: Mapped[str] = mapped_column(String(20))
+    status: Mapped[str] = mapped_column(String(20), default="pending")
+    progress: Mapped[float] = mapped_column(Float, default=0.0)
     error: Mapped[str | None] = mapped_column(Text)
     video_id: Mapped[int | None] = mapped_column(ForeignKey("videos.id", ondelete="CASCADE"))
     clip_id: Mapped[int | None] = mapped_column(ForeignKey("clips.id", ondelete="CASCADE"))

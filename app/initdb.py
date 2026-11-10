@@ -1,4 +1,3 @@
-"""Migracje Alembic + dane początkowe. Użycie: python -m app.initdb"""
 from alembic import command
 from alembic.config import Config
 from sqlalchemy import select

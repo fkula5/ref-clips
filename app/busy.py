@@ -1,14 +1,6 @@
-"""Czy coś trwa? Sprawdzenie przed wdrożeniem: restart kontenerów przerwałby trwającą konwersję
-(zaczęłaby od zera) i zerwałby trwające wgrywanie (wznowi się, ale użytkownik zobaczy błąd).
-
-Za „trwające” uznajemy: upload tus z aktywnością w ostatnich `ACTIVE_UPLOAD_MINUTES` minutach,
-zadanie w stanie `running` (konwersja, cięcie klipu) oraz zadania czekające w kolejce, które worker
-w ogóle może podjąć (cięcie nagrania w błędzie ani usuniętego nie ruszy nigdy, więc nie blokuje).
-
-Użycie (w kontenerze aplikacji): python -m app.busy
-Kod wyjścia: 0 = wolne, 1 = zajęte (pierwsza linia zaczyna się od „ZAJĘTE”), 2 = nie udało się sprawdzić.
-deploy.sh wysyła ten plik na wejście `python -` działającego kontenera, więc sprawdzenie działa także
-na obrazie sprzed wprowadzenia tego modułu — dlatego moduł używa tylko stabilnych części aplikacji.
+"""deploy.sh pipes this file into `python -` of the running container, so it works on images that
+predate this module; use only stable parts of the app.
+Exit code: 0 idle, 1 busy (first line starts with ZAJĘTE), 2 check failed.
 """
 from __future__ import annotations
 
@@ -22,7 +14,7 @@ from app.db import SessionLocal
 from app.models import Clip, Job, UploadSession, Video
 from app.timeutil import utcnow
 
-ACTIVE_UPLOAD_MINUTES = 10    # upload bez aktywności dłużej niż tyle nie blokuje wdrożenia
+ACTIVE_UPLOAD_MINUTES = 10
 GB = 1024 ** 3
 MB = 1024 ** 2
 
@@ -30,7 +22,6 @@ JOB_NAMES = {"transcode": "konwersja", "cut": "wycinanie klipu"}
 
 
 def _size(value: int) -> str:
-    """1 717 986 918 -> '1,6 GB'; poniżej 1 GB w MB."""
     text = f"{value / GB:.1f} GB" if value >= GB else f"{value / MB:.0f} MB"
     return text.replace(".", ",")
 
@@ -53,7 +44,6 @@ def _job_target(db: Session, job: Job) -> str:
 
 def busy_items(db: Session, now: datetime | None = None,
                active_minutes: int = ACTIVE_UPLOAD_MINUTES) -> list[str]:
-    """Czytelne opisy tego, co trwa; pusta lista = można wdrażać."""
     now = now or utcnow()
     items: list[str] = []
 
@@ -74,7 +64,7 @@ def busy_items(db: Session, now: datetime | None = None,
             clip = db.get(Clip, job.clip_id)
             video = clip.video if clip else None
             if video is None or video.purged_at is not None or video.status not in ("ready", "queued", "processing"):
-                continue    # worker nigdy nie podejmie cięcia nagrania w błędzie lub usuniętego
+                continue  # the worker never picks up cutting for an errored or deleted recording
         waiting[job.type] = waiting.get(job.type, 0) + 1
     if waiting:
         parts = ", ".join(f"{JOB_NAMES.get(kind, kind)} ×{count}" for kind, count in sorted(waiting.items()))
@@ -89,7 +79,6 @@ def _zadan(count: int) -> str:
 
 
 def idle_uploads(db: Session, now: datetime | None = None, active_minutes: int = ACTIVE_UPLOAD_MINUTES) -> int:
-    """Niedokończone uploady bez ostatniej aktywności — nie blokują, ale warto o nich wspomnieć."""
     since = (now or utcnow()) - timedelta(minutes=active_minutes)
     return len(db.scalars(select(UploadSession.id).where(
         UploadSession.offset_bytes < UploadSession.size_bytes, UploadSession.updated_at < since)).all())
@@ -99,7 +88,7 @@ def main() -> int:
     try:
         with SessionLocal() as db:
             items, idle = busy_items(db), idle_uploads(db)
-    except Exception as exc:  # noqa: BLE001 - CLI: czytelny komunikat zamiast śladu stosu
+    except Exception as exc:  # noqa: BLE001
         print(f"BŁĄD sprawdzania zajętości: {type(exc).__name__}: {exc}", file=sys.stderr)
         return 2
     if items:

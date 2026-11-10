@@ -1,4 +1,3 @@
-"""Konwersja: kolejność zadań, ograniczenie klatek, weryfikacja wyniku, usuwanie oryginału, ponawianie."""
 import subprocess
 from pathlib import Path
 
@@ -20,13 +19,12 @@ def new_video(db, match, **kw):
     return video
 
 
-# --- kolejka ---------------------------------------------------------------------------
 def test_cut_jobs_take_priority_over_transcode(db):
     match = make_match(db)
     waiting = new_video(db, match, status="queued", original_path="uploads/a.mp4")
-    services.enqueue(db, "transcode", video_id=waiting.id)           # starsze zadanie
+    services.enqueue(db, "transcode", video_id=waiting.id)
     ready = make_ready_video(db, match)
-    clip = services.create_clip(db, ready, None, time_sec=30)        # nowsze: cięcie
+    clip = services.create_clip(db, ready, None, time_sec=30)
     db.commit()
     first = worker.claim_next(db)
     assert first.type == "cut" and first.clip_id == clip.id
@@ -44,14 +42,13 @@ def test_cut_still_waits_for_ready_video(db):
     assert clip.status == "queued"
 
 
-# --- polecenie ffmpeg ------------------------------------------------------------------
 def test_transcode_command_caps_fps_only_when_needed():
     src, dst = Path("in.mp4"), Path("out.mp4")
     vf = lambda cmd: cmd[cmd.index("-vf") + 1]
     assert "fps=30" in vf(vid.build_transcode_command("ffmpeg", src, dst, 60))
     assert "fps=30" in vf(vid.build_transcode_command("ffmpeg", src, dst, 50))
     for fps in (None, 24, 25, 29.97, 30):
-        assert "fps=" not in vf(vid.build_transcode_command("ffmpeg", src, dst, fps)), fps  # nie podnosimy
+        assert "fps=" not in vf(vid.build_transcode_command("ffmpeg", src, dst, fps)), fps
     cmd = vid.build_transcode_command("ffmpeg", src, dst, 60)
     assert cmd[cmd.index("-preset") + 1] == "veryfast" and cmd[cmd.index("-crf") + 1] == "23"
     assert "min(720,ih)" in vf(cmd) and "+faststart" in cmd
@@ -71,7 +68,6 @@ def test_niced_child_really_has_lower_priority():
     assert int(out) >= 10
 
 
-# --- prawdziwy ffmpeg ------------------------------------------------------------------
 def _fps_of(path) -> float:
     return vid.probe(path)["fps"]
 
@@ -89,7 +85,7 @@ def test_transcode_limits_60fps_to_30_and_keeps_lower_rates(tmp_path):
     src25 = _make_source(tmp_path / "s25.mp4", seconds=4, rate=25, brightness_steps=False)
     out25 = tmp_path / "o25.mp4"
     vid.transcode_to_proxy(src25, out25, 4, src_fps=vid.probe(src25)["max_fps"])
-    assert _fps_of(out25) == pytest.approx(25, abs=0.1)  # niższej liczby klatek nie podnosimy
+    assert _fps_of(out25) == pytest.approx(25, abs=0.1)
 
 
 def _ff(*args):
@@ -106,7 +102,7 @@ def test_verify_conversion_tolerance_and_streams(tmp_path):
     src = _make_source(tmp_path / "s.mp4", seconds=4)
     info = vid.probe(src)
     assert vid.verify_conversion(info, src)["duration"] == pytest.approx(4, abs=0.2)
-    assert vid.verify_tolerance(10) == 2 and vid.verify_tolerance(3600) == 36  # max(2 s, 1%)
+    assert vid.verify_tolerance(10) == 2 and vid.verify_tolerance(3600) == 36
     vid.verify_conversion({**info, "video_duration": info["video_duration"] + 1.9}, src)
     with pytest.raises(vid.FFmpegError, match="różni się"):
         vid.verify_conversion({**info, "video_duration": info["video_duration"] + 2.5}, src)
@@ -120,7 +116,7 @@ def test_verify_conversion_tolerance_and_streams(tmp_path):
 
 @needs_ffmpeg
 def test_verify_accepts_audio_longer_than_video(tmp_path):
-    """Telefon: audio dłuższe od wideo o 3 s nie może unieważnić poprawnej konwersji."""
+    """Phone: audio 3 s longer than the video must not invalidate a correct conversion."""
     src = tmp_path / "long_audio.mp4"
     _ff("-f", "lavfi", "-i", "testsrc2=size=320x240:rate=25:duration=10",
         "-f", "lavfi", "-i", "sine=frequency=440:duration=13",
@@ -139,7 +135,7 @@ def test_verify_accepts_nonzero_start_time(tmp_path):
         "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", "-output_ts_offset", "37.5", str(src))
     start = float(subprocess.run([vid.ffprobe_bin(), "-v", "error", "-show_entries", "format=start_time",
                                   "-of", "csv=p=0", str(src)], capture_output=True, text=True).stdout)
-    assert start > 30  # źródło naprawdę nie zaczyna się od 0
+    assert start > 30
     info = vid.probe(src)
     proxy = _convert(src, tmp_path / "p.mp4")
     assert vid.verify_conversion(info, proxy)["video_duration"] == pytest.approx(8, abs=0.3)
@@ -163,7 +159,6 @@ def short_source(tmp_path_factory):
 
 @needs_ffmpeg
 def test_full_flow_tus_upload_worker_ready_original_removed(client, db, short_source):
-    """tus -> kolejka -> worker -> wersja robocza gotowa -> oryginał usunięty -> odtwarzanie z Range."""
     match = make_match(db)
     tus_upload(client, match.id, short_source.read_bytes(), chunk=300_000, content="Q2", label="Q2")
     video = db.scalar(select(Video))
@@ -176,7 +171,7 @@ def test_full_flow_tus_upload_worker_ready_original_removed(client, db, short_so
     assert video.status == "ready" and video.error is None
     assert video.original_path is None and not storage.exists(original)
     assert storage.exists(video.proxy_path) and video.duration == pytest.approx(6, abs=0.3)
-    assert video.proxy_bytes == storage.size(video.proxy_path) > 0      # rozmiar do panelu dysku
+    assert video.proxy_bytes == storage.size(video.proxy_path) > 0
     assert video.expires_at is not None and video.content == "Q2"
     assert vid.probe(storage.local_path(video.proxy_path))["height"] == 240
     r = client.get(f"/videos/{video.id}/stream", headers={"Range": "bytes=0-99"})
@@ -194,7 +189,7 @@ def test_mismatched_result_keeps_original_and_retry_works(client, db, short_sour
 
     def truncating(src, dst, duration, on_progress=None, src_fps=None):
         real(src, dst, duration, on_progress, src_fps)
-        short = dst.with_name("short.mp4")  # wynik krótszy o połowę => niezgodny czas trwania
+        short = dst.with_name("short.mp4")  # a result half as long => duration mismatch
         subprocess.run([vid.ffmpeg_bin(), "-y", "-loglevel", "error", "-i", str(dst), "-t", "2",
                         "-c", "copy", str(short)], check=True)
         short.replace(dst)
@@ -228,7 +223,6 @@ def test_failed_transcode_keeps_original(client, db):
     assert video.status == "error" and storage.exists(video.original_path)
 
 
-# --- ponowienie bez oryginału --------------------------------------------------------------
 def test_retry_without_original_is_refused_with_clear_message(client, db):
     match = make_match(db)
     video = new_video(db, match, status="error", error="coś poszło nie tak", original_path=None)

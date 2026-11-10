@@ -1,7 +1,5 @@
-{# Karta „Oceny szkoleniowców” na stronie klipu (HTMX podmienia ją w całości). Zmienne: c, ratings,
-   rating_error, rating_error_for ("own" albo id oceny), rating_draft ({verdict, comment}).
-   Formularz „Twoja ocena” widzi tylko rola szkoleniowca; administrator zmienia i usuwa cudze oceny,
-   a autorem oceny (coach_id) zostaje szkoleniowiec. #}
+{# The "Your rating" form is for the coach role only; an admin edits and deletes others' ratings, and
+   the rating author (coach_id) stays the coach. #}
 {% set mine = ratings|selectattr('coach_id', 'equalto', user.id)|first if perm.can_rate(user) else none %}
 {% macro verdict_choices(current) %}
 <fieldset class="choice-group">

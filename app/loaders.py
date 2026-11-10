@@ -1,5 +1,3 @@
-"""Zależności FastAPI ładujące obiekty po id ze ścieżki (404, gdy ich nie ma).
-Używane razem z `auth.require(...)`, np. `require(can_manage_clips, get_match)`."""
 from fastapi import Depends, HTTPException
 from sqlalchemy.orm import Session
 

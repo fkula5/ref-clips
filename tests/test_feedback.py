@@ -1,5 +1,3 @@
-"""Oceny szkoleniowców i komentarze (segment 6): każdy wiersz tabeli uprawnień przez API, walidacja,
-upsert oceny, podsumowanie i filtr ocen w tabeli klipów, kaskady przy usuwaniu."""
 import re
 
 import pytest
@@ -17,7 +15,6 @@ HTMX = {"HX-Request": "true"}
 
 @pytest.fixture()
 def world(db, make_client):
-    """Dwa mecze z klipami; w obsadze meczu 1 jest `member`. Konta o różnych (łączonych) rolach."""
     people = {}
     for key, roles in dict(admin=("admin",), coach=("coach",), coach2=("coach",), referee=("referee",),
                            admin_coach=("admin", "coach"), referee_coach=("referee", "coach"),
@@ -60,12 +57,11 @@ def add_comment(db, author, body="Komentarz", *, clip=None, match=None):
     return comment
 
 
-# === oceny: uprawnienia (tabela: „Ocena klipu”) =============================================
 @pytest.mark.parametrize("who,allowed", [
-    ("admin", False),            # sama rola administratora nie wystarcza
+    ("admin", False),
     ("coach", True),
     ("referee", False),
-    ("admin_coach", True),       # role się sumują
+    ("admin_coach", True),
     ("referee_coach", True),
     ("norole", False),
 ])
@@ -103,7 +99,6 @@ def test_rating_is_upsert_one_per_coach_and_clip(world, db):
     rows = db.scalars(select(Rating)).all()
     assert len(rows) == 1 and rows[0].verdict == "debatable" and rows[0].comment == "Po namyśle"
     assert feedback.is_edited(rows[0])
-    # drugi szkoleniowiec i ten sam klip: osobna ocena; ten sam szkoleniowiec i inny klip: też
     assert rate(world["clients"]["coach2"], clip, "incorrect").status_code == 303
     assert rate(coach, world["clip2"], "correct").status_code == 303
     assert db.query(Rating).count() == 3
@@ -119,7 +114,9 @@ def test_resubmitting_the_same_rating_does_not_mark_it_changed(world, db):
 
 
 def test_rating_race_on_unique_pair_updates_instead_of_failing(world, db, monkeypatch):
-    """Dwa równoległe żądania: drugie nie widzi oceny pierwszego przy SELECT, ale unikalność go zatrzymuje."""
+    """Two parallel requests: the second does not see the first's rating on SELECT, but uniqueness stops
+    it.
+    """
     clip, coach = world["clip"], world["users"]["coach"]
     add_rating(db, clip, coach, "correct", "Z pierwszego żądania")
     real = feedback._own_rating
@@ -137,33 +134,28 @@ def test_rating_race_on_unique_pair_updates_instead_of_failing(world, db, monkey
     assert len(rows) == 1 and rows[0].verdict == "incorrect" and rows[0].comment == "Z drugiego żądania"
 
 
-# === oceny: zmiana i usuwanie (autor albo administrator) ====================================
 def test_rating_edit_and_delete_rules(world, db):
     clip, c = world["clip"], world["clients"]
     rating = add_rating(db, clip, world["users"]["coach"], "correct", "Moja")
     edit = f"/clips/{clip.id}/ratings/{rating.id}/edit"
     delete = f"/clips/{clip.id}/ratings/{rating.id}/delete"
     data = {"verdict": "incorrect", "comment": "Zmiana"}
-    for who in ("coach2", "referee", "referee_coach", "norole"):   # cudza ocena: nie
+    for who in ("coach2", "referee", "referee_coach", "norole"):
         assert c[who].post(edit, data=data).status_code == 403, who
         assert c[who].post(delete).status_code == 403, who
     db.expire_all()
     assert db.get(Rating, rating.id).verdict == "correct"
-    # autor zmienia
     assert c["coach"].post(edit, data=data, follow_redirects=False).status_code == 303
     db.expire_all()
     assert db.get(Rating, rating.id).verdict == "incorrect"
-    # administrator (sama rola) zmienia cudzą ocenę, a autorem zostaje szkoleniowiec
     assert c["admin"].post(edit, data={"verdict": "debatable", "comment": "Admin"}, follow_redirects=False).status_code == 303
     db.expire_all()
     changed = db.get(Rating, rating.id)
     assert changed.verdict == "debatable" and changed.comment == "Admin"
     assert changed.coach_id == world["users"]["coach"].id and feedback.is_edited(changed)
-    # admin+coach też zmienia cudzą (jako administrator)
     assert c["admin_coach"].post(edit, data=data, follow_redirects=False).status_code == 303
     db.expire_all()
     assert db.get(Rating, rating.id).coach_id == world["users"]["coach"].id
-    # usunięcie: autor
     assert c["coach"].post(delete, follow_redirects=False).status_code == 303
     assert db.scalar(select(Rating)) is None
 
@@ -199,7 +191,6 @@ def test_rating_write_routes_need_login_and_csrf(world, db, anon_client):
     assert db.get(Rating, rating.id) is not None
 
 
-# === oceny: walidacja i widok ===============================================================
 def test_rating_validation_errors_keep_the_typed_text(world, db):
     coach, clip = world["clients"]["coach"], world["clip"]
     r = rate(coach, clip, "swietna", "Mój komentarz")
@@ -209,10 +200,8 @@ def test_rating_validation_errors_keep_the_typed_text(world, db):
     r = rate(coach, clip, "correct", "x" * 5001)
     assert r.status_code == 422 and "najwyżej 5000 znaków" in r.text
     assert db.scalar(select(Rating)) is None
-    # HTMX dostaje samą kartę ocen z błędem
     r = rate(coach, clip, "swietna", "abc", headers=HTMX)
     assert r.status_code == 422 and 'id="oceny"' in r.text and "<html" not in r.text and "Ocena: wybierz" in r.text
-    # dokładnie 5000 znaków przechodzi
     assert rate(coach, clip, "correct", "x" * 5000).status_code == 303
 
 
@@ -231,7 +220,6 @@ def test_clip_page_shows_all_ratings_with_author_and_change_info(world, db):
     assert "Osoba coach" in card and "Osoba coach2" in card
     assert "dyskusyjna" in card and "nieprawidłowa" in card and "zmieniona" in card
     assert "Zgadzam się" not in card and "Jednak dyskusyjna" in card
-    # sędzia widzi oceny, ale bez formularza i bez przycisków zmiany
     assert 'id="rating-form"' not in card and "Zmień" not in card and "Usuń" not in card
 
 
@@ -253,7 +241,7 @@ def test_admin_sees_change_and_delete_on_foreign_ratings(world, db):
     other = world["clients"]["coach2"].get(f"/clips/{world['clip'].id}").text
     assert f"/ratings/{rating.id}/edit" not in other and f"/ratings/{rating.id}/delete" not in other
     own = world["clients"]["coach"].get(f"/clips/{world['clip'].id}").text
-    assert f"/ratings/{rating.id}/edit" not in own      # własną zmienia się formularzem „Twoja ocena”
+    assert f"/ratings/{rating.id}/edit" not in own
     assert f"/ratings/{rating.id}/delete" in own
 
 
@@ -263,7 +251,6 @@ def test_rating_htmx_returns_the_card_fragment(world, db):
     assert "prawidłowa" in r.text and "Osoba coach" in r.text
 
 
-# === podsumowanie ocen i filtr w tabeli klipów =============================================
 def test_table_shows_rating_summary_and_filters_by_rating(world, db):
     m, clip, clip2, clip3 = world["match"], world["clip"], world["clip2"], None
     v = clip.video
@@ -288,8 +275,7 @@ def test_table_shows_rating_summary_and_filters_by_rating(world, db):
     assert listed(rating="incorrect") == [clip2.id]
     assert listed(rating="any") == [clip.id, clip2.id]
     assert listed(rating="none") == [clip3.id]
-    assert listed(rating="bzdura") == sorted([clip.id, clip2.id, clip3.id])    # nieznana wartość = bez filtra
-    # filtr jest też w adresie nawigacji poprzedni/następny i w zakładce meczu
+    assert listed(rating="bzdura") == sorted([clip.id, clip2.id, clip3.id])
     tab = client.get(f"/matches/{m.id}", params={"rating": "none"}).text
     assert f'href="/clips/{clip3.id}?rating=none"' in tab and f'href="/clips/{clip.id}' not in tab
     assert '<option value="none" selected>' in tab
@@ -323,7 +309,6 @@ def test_clip_lists_do_not_run_per_clip_queries_for_ratings_and_comments(world, 
     assert large == small
 
 
-# === komentarze: uprawnienia ===============================================================
 SCOPES = ("clip", "match")
 
 
@@ -370,8 +355,8 @@ def test_anonymous_cannot_comment(world, db, anon_client, scope):
 
 @pytest.mark.parametrize("scope", SCOPES)
 @pytest.mark.parametrize("who,allowed", [
-    ("coach", True),                # autor
-    ("admin", False),               # admin NIE edytuje cudzych
+    ("coach", True),
+    ("admin", False),
     ("admin_coach", False),
     ("coach2", False),
     ("referee", False),
@@ -390,7 +375,7 @@ def test_only_the_author_edits_a_comment(world, db, scope, who, allowed):
 
 @pytest.mark.parametrize("scope", SCOPES)
 @pytest.mark.parametrize("who,allowed", [
-    ("coach", True), ("admin", True), ("admin_coach", True),     # autor albo administrator
+    ("coach", True), ("admin", True), ("admin_coach", True),
     ("coach2", False), ("referee", False), ("referee_coach", False), ("norole", False),
 ])
 def test_author_or_admin_deletes_a_comment(world, db, scope, who, allowed):
@@ -407,7 +392,7 @@ def test_comment_must_belong_to_the_clip_or_match_from_url(world, db):
     other_clip_comment = add_comment(db, world["users"]["coach"], "Inny klip", clip=world["other_clip"])
     coach = world["clients"]["coach"]
     admin = world["clients"]["admin"]
-    wrong = [  # (adres rodzica, komentarz) niezgodne
+    wrong = [
         (f"/clips/{world['clip2'].id}", clip_comment), (f"/clips/{world['clip'].id}", match_comment),
         (f"/matches/{world['match'].id}", clip_comment), (f"/matches/{world['other_match'].id}", match_comment),
         (f"/clips/{world['clip'].id}", other_clip_comment), (f"/clips/{world['clip'].id}", None),
@@ -422,12 +407,10 @@ def test_comment_must_belong_to_the_clip_or_match_from_url(world, db):
     db.expire_all()
     assert db.query(Comment).count() == 3
     assert {c.body for c in db.scalars(select(Comment))} == {"Pod klipem", "Pod meczem", "Inny klip"}
-    # komentowanie nieistniejącego klipu/meczu
     assert coach.post("/clips/99999/comments", data={"body": "x"}).status_code == 404
     assert coach.post("/matches/99999/comments", data={"body": "x"}).status_code == 404
 
 
-# === komentarze: walidacja, bezpieczeństwo, odpowiedzi HTMX =================================
 @pytest.mark.parametrize("scope", SCOPES)
 def test_comment_body_validation(world, db, scope):
     client = world["clients"]["coach"]
@@ -436,10 +419,10 @@ def test_comment_body_validation(world, db, scope):
         assert r.status_code == 422 and "wpisz treść" in r.text, repr(body)
     r = client.post(comment_url(world, scope), data={"body": "z" * 5001})
     assert r.status_code == 422 and "najwyżej 5000 znaków" in r.text
-    assert "z" * 5001 in r.text              # wpisana treść wraca do pola, nic nie ginie
+    assert "z" * 5001 in r.text
     assert db.scalar(select(Comment)) is None
     assert client.post(comment_url(world, scope), data={"body": "z" * 5000}, follow_redirects=False).status_code == 303
-    # limit liczony po normalizacji końców linii (przeglądarka wysyła \r\n)
+    # the limit is counted after normalising line endings (the browser sends CRLF)
     assert client.post(comment_url(world, scope), data={"body": "a\r\n" * 2499 + "b"}, follow_redirects=False).status_code == 303
     assert db.query(Comment).count() == 2
 
@@ -481,7 +464,7 @@ def test_comment_edit_sets_edited_marker_only_on_real_change(world, db, scope):
     comment = comment_of(db, scope, world, world["users"]["coach"], "Pierwotny")
     client = world["clients"]["coach"]
     url = comment_url(world, scope, f"/{comment.id}/edit")
-    client.post(url, data={"body": "Pierwotny  "})                       # bez zmiany treści
+    client.post(url, data={"body": "Pierwotny  "})
     db.expire_all()
     assert db.get(Comment, comment.id).edited_at is None
     client.post(url, data={"body": "Poprawiony"})
@@ -503,15 +486,12 @@ def test_comment_htmx_fragments(world, db, scope):
     assert edit.status_code == 200 and "<textarea" in edit.text and "Anuluj" in edit.text and "<html" not in edit.text
     cancel = client.get(comment_url(world, scope, f"/{comment.id}"), headers=HTMX)
     assert cancel.status_code == 200 and "Nowy" in cancel.text and "<textarea" not in cancel.text
-    # bez HTMX: edycja to osobna strona, anulowanie wraca do rodzica
     page = client.get(comment_url(world, scope, f"/{comment.id}/edit"))
     assert page.status_code == 200 and "<html" in page.text and "Edycja komentarza" in page.text
     back = client.get(comment_url(world, scope, f"/{comment.id}"), follow_redirects=False)
     assert back.status_code == 303 and back.headers["location"].endswith(f"#comment-{comment.id}")
-    # błąd dodawania w HTMX: podmieniamy sam formularz
     bad = client.post(comment_url(world, scope), data={"body": " "}, headers=HTMX)
     assert bad.status_code == 422 and bad.headers["HX-Retarget"] == "#comment-form" and bad.headers["HX-Reswap"] == "outerHTML"
-    # usunięcie: ostatni komentarz przywraca komunikat o braku komentarzy
     gone = client.post(comment_url(world, scope, f"/{comment.id}/delete"), headers=HTMX)
     assert gone.status_code == 200 and "Brak komentarzy." in gone.text and db.scalar(select(Comment)) is None
     db.expunge_all()
@@ -530,7 +510,6 @@ def test_pages_list_comments_with_authors_in_order(world, db):
     assert "Do klipu" not in match_page
     clip_page = world["clients"]["referee"].get(f"/clips/{world['clip'].id}").text
     assert "Do klipu" in clip_page and "Pierwszy" not in clip_page
-    # sędzia widzi „Edytuj”/„Usuń” tylko przy swoich
     mine = add_comment(db, world["member"][1], "Mój", match=world["match"])
     page = world["member"][0].get(f"/matches/{world['match'].id}").text
     assert f"/comments/{mine.id}/edit" in page and f"/comments/{mine.id}/delete" in page
@@ -539,13 +518,13 @@ def test_pages_list_comments_with_authors_in_order(world, db):
 
 
 def test_htmx_refresh_of_match_page_does_not_render_comments(world, db):
-    """Odświeżanie panelu nagrań/klipów (HTMX) nie obejmuje sekcji komentarzy ani jej nie wczytuje."""
     add_comment(db, world["users"]["coach"], "Widoczny tylko na pełnej stronie", match=world["match"])
     client = world["clients"]["coach"]
     full = client.get(f"/matches/{world['match'].id}").text
     partial = client.get(f"/matches/{world['match'].id}", headers=HTMX).text
     assert 'id="komentarze"' in full and 'id="komentarze"' not in partial
-    # sekcja komentarzy jest poza elementami odświeżanymi: #videos-panel, #clips-head, #clips-list, #match-state
+    # the comments section is outside the refreshed elements: #videos-panel, #clips-head, #clips-list,
+    # #match-state
     refreshed = re.search(r'<div id="videos-panel".*?<h3>|<section id="clips-section">.*?</section>', full, re.S)
     assert refreshed and 'id="komentarze"' not in refreshed.group(0)
     clip_full = client.get(f"/clips/{world['clip'].id}").text
@@ -555,8 +534,9 @@ def test_htmx_refresh_of_match_page_does_not_render_comments(world, db):
 
 
 def test_htmx_history_restore_renders_comments_and_ratings(world, db):
-    """Wstecz przy braku kopii w pamięci HTMX: żądanie ma HX-Request, ale podmienia całe body, więc
-    strona musi mieć komentarze i oceny jak przy zwykłej nawigacji."""
+    """Back with no HTMX cache copy: the request has HX-Request but swaps the whole body, so the page
+    must have comments and ratings as with plain navigation.
+    """
     add_comment(db, world["users"]["coach"], "Komentarz po powrocie", match=world["match"])
     client = world["clients"]["coach"]
     restore = {**HTMX, "HX-History-Restore-Request": "true"}
@@ -573,7 +553,6 @@ def test_failed_comment_on_page_without_js_rerenders_page_with_draft(world, db):
     assert r.status_code == 422 and "<html" in r.text and "Opis klipu" in r.text
 
 
-# === kaskady ===================================================================================
 def test_deleting_a_clip_removes_its_comments_and_ratings(world, db):
     clip, other = world["clip"], world["clip2"]
     add_rating(db, clip, world["users"]["coach"])
@@ -601,7 +580,9 @@ def test_deleting_a_match_removes_match_and_clip_comments_and_ratings(world, db)
 
 
 def test_database_level_cascades_work_with_foreign_keys_on(world, db):
-    """Kaskada działa także na poziomie bazy (ON DELETE CASCADE, PRAGMA foreign_keys=ON), nie tylko w ORM."""
+    """The cascade also works in the DB (ON DELETE CASCADE, PRAGMA foreign_keys=ON), not only in the
+    ORM.
+    """
     from sqlalchemy import delete, text
     assert db.execute(text("PRAGMA foreign_keys")).scalar() == 1
     add_rating(db, world["clip"], world["users"]["coach"])
@@ -613,8 +594,10 @@ def test_database_level_cascades_work_with_foreign_keys_on(world, db):
 
 
 def test_accounts_with_ratings_or_comments_cannot_be_deleted(world, db):
-    """Użytkowników się nie usuwa (panel admina tylko dezaktywuje); baza i tak chroni oceny i komentarze:
-    ratings.coach_id i comments.author_id nie mają ON DELETE, więc usunięcie konta zostaje odrzucone."""
+    """Users are never deleted (the admin panel only deactivates), but the DB protects ratings and
+    comments anyway: ratings.coach_id and comments.author_id have no ON DELETE, so deleting an
+    account is rejected.
+    """
     coach = world["users"]["coach"]
     add_rating(db, world["clip"], coach)
     add_comment(db, coach, "Treść", match=world["match"])

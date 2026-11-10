@@ -1,4 +1,3 @@
-"""Panel administratora: użytkownicy, role, dezaktywacja, linki."""
 import re
 
 from sqlalchemy import func, select
@@ -24,7 +23,7 @@ def test_create_user_shows_link_once(admin, db):
     user = db.scalar(select(User).where(User.email == "jan@example.com"))
     assert user.name == "Jan Kowalski" and user.roles == {"referee", "coach"} and user.password_hash is None
     assert db.scalar(select(Invite)).purpose == "activate"
-    assert "set-password/" not in admin[0].get("/admin/users").text  # po odświeżeniu linku nie widać
+    assert "set-password/" not in admin[0].get("/admin/users").text
 
 
 def test_create_user_uses_public_url_setting(admin, monkeypatch):
@@ -55,7 +54,6 @@ def test_update_roles_sums_multiple_roles(admin, make_client, db):
     assert r.status_code == 200
     db.expire_all()
     assert db.get(User, user.id).roles == {"referee", "coach"}
-    # uprawnienia sumują się od razu (nowa rola działa na istniejącej sesji)
     assert client.get("/matches/new").status_code == 200
     assert admin[0].post(f"/admin/users/{user.id}/roles", data={"roles": []}).status_code == 422
 
@@ -68,7 +66,6 @@ def test_cannot_remove_or_deactivate_last_admin(admin, db):
     assert r.status_code == 422
     db.expire_all()
     assert db.get(User, me.id).roles == {"admin"} and db.get(User, me.id).is_active
-    # z drugim administratorem można
     other = make_user(db, ["admin"], email="drugi@example.com")
     assert client.post(f"/admin/users/{me.id}/roles", data={"roles": ["coach"]}).status_code == 200
     assert other.is_active
@@ -93,7 +90,6 @@ def test_inactive_user_not_offered_in_crew_form(admin, db):
     assert "Aktywny Sędzia" in page and "Nieaktywny Sędzia" not in page and "Tylko Trener" not in page
 
 
-# --- PRG: po udanym POST przekierowanie 303, jednorazowy komunikat/link w ciasteczku ------------------
 def _invite_count(db):
     return db.scalar(select(func.count()).select_from(Invite))
 
@@ -103,19 +99,18 @@ def test_create_user_redirects_and_link_is_shown_once_without_token_in_url(admin
     r = client.post("/admin/users", data={"name": "Jan Nowak", "email": "jan@example.com", "roles": ["coach"]},
                     follow_redirects=False)
     assert r.status_code == 303 and r.headers["location"] == "/admin/users"
-    assert "set-password" not in r.text and "set-password" not in str(r.url)   # token nie w adresie ani w treści
+    assert "set-password" not in r.text and "set-password" not in str(r.url)
     cookie = r.headers["set-cookie"].lower()
     assert "path=/admin/users" in cookie and "httponly" in cookie and "samesite=strict" in cookie
     assert "max-age=60" in cookie
     assert "set-password" not in r.headers["location"] and "?" not in r.headers["location"]
-    # pierwsze wyświetlenie listy pokazuje link (bez cache), drugie — już nie
     first = client.get("/admin/users")
     assert first.status_code == 200 and re.search(r'value="http://testserver/set-password/[\w-]+"', first.text)
     assert first.headers["cache-control"] == "no-store" and "Jan Nowak" in first.text
     assert "refclips_invite=" in first.headers["set-cookie"] and "Max-Age=0" in first.headers["set-cookie"]
     again = client.get("/admin/users")
     assert "set-password/" not in again.text and "cache-control" not in again.headers
-    assert _invite_count(db) == 1                                              # odświeżenia nie tworzą zaproszeń
+    assert _invite_count(db) == 1
 
 
 def test_invite_link_works_and_new_invite_redirects_too(admin, make_client, anon_client, db):
@@ -125,8 +120,7 @@ def test_invite_link_works_and_new_invite_redirects_too(admin, make_client, anon
     assert r.status_code == 303 and r.headers["location"] == "/admin/users" and "set-password" not in r.text
     page = client.get("/admin/users").text
     link = re.search(r'value="http://testserver(/set-password/[\w-]+)"', page).group(1)
-    assert anon_client.get(link).status_code == 200                           # token z ciasteczka jest prawdziwy
-    # odświeżenie (GET) nie tworzy ani nie unieważnia zaproszeń
+    assert anon_client.get(link).status_code == 200
     assert "set-password/" not in client.get("/admin/users").text
     assert anon_client.get(link).status_code == 200
 
@@ -135,10 +129,9 @@ def test_invite_cookie_is_read_only_on_users_page_and_garbage_is_ignored(admin, 
     client = admin[0]
     client.post("/admin/users", data={"name": "Jan Nowak", "email": "jan@example.com", "roles": ["coach"]},
                 follow_redirects=False)
-    # ciasteczko ma ścieżkę /admin/users: inne strony panelu go nie dostają, więc go nie zużywają
+    # the cookie path is /admin/users: other admin pages do not get it, so they do not consume it
     assert "set-password/" not in client.get("/admin/categories").text
     assert re.search(r"set-password/[\w-]+", client.get("/admin/users").text)
-    # śmieci w ciasteczku i konto, którego nie ma, nie dają linku ani błędu
     for value in ("<script>alert(1)</script>", "999.", f"9999.{'a' * 43}", "../../x"):
         client.cookies.set("refclips_invite", value, path="/admin/users")
         r = client.get("/admin/users")
@@ -164,8 +157,7 @@ def test_users_notice_is_flashed_once_and_html_is_escaped(admin, make_client, db
     page = client.get("/admin/users")
     assert 'id="admin-notice"' in page.text and "Zapisano role: Ala &lt;b&gt;Kot&lt;/b&gt;." in page.text
     assert "<b>Kot</b>" not in page.text
-    assert 'id="admin-notice"' not in client.get("/admin/users").text           # drugi raz już nie
-    # własne ciasteczko z HTML-em też jest tylko tekstem
+    assert 'id="admin-notice"' not in client.get("/admin/users").text
     client.cookies.set("refclips_flash", "%3Cscript%3Ealert(1)%3C%2Fscript%3E", path="/admin")
     page = client.get("/admin/users").text
     assert "<script>alert(1)" not in page and "&lt;script&gt;alert(1)" in page

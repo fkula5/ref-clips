@@ -1,4 +1,3 @@
-"""Wspólne elementy warstwy webowej: szablony, filtry, widoki JSON."""
 from __future__ import annotations
 
 from pathlib import Path
@@ -23,12 +22,10 @@ BASE = Path(__file__).parent
 templates = Jinja2Templates(directory=str(BASE / "templates"))
 env = templates.env
 env.filters["clock"] = format_clock
-# Daty i godziny z bazy (UTC) pokazujemy w strefie z konfiguracji: {{ x.created_at|local("%d.%m.%Y %H:%M") }}.
 env.filters["local"] = local_time
 
 
 def human_bytes(value: int | float | None) -> str:
-    """Rozmiar po polsku: „512 B”, „1,3 GB”."""
     if value is None:
         return "—"
     size = float(value)
@@ -44,7 +41,8 @@ def human_bytes(value: int | float | None) -> str:
 env.filters["filesize"] = human_bytes
 
 
-# Kolory strojów wpisywane ręcznie: rozpoznajemy początek nazwy (np. „czerwone”, „Czerwony”).
+# Uniform colours are typed by hand: only the beginning of the name is recognised (e.g. "czerwone",
+# "Czerwony").
 COLOR_STEMS = {
     "bial": "#ffffff", "czerw": "#d32f2f", "nieb": "#1e6fd9", "granat": "#1a2a5a", "ziel": "#2e9d4a",
     "zolt": "#f2c500", "pomaran": "#f28c00", "czarn": "#111111", "ciemn": "#2b2f3a", "szar": "#9aa0aa",
@@ -54,14 +52,12 @@ COLOR_STEMS = {
 
 
 def color_hex(name: str | None) -> str:
-    """Kolor CSS dla nazwy koloru strojów albo pusty napis, gdy nazwy nie rozpoznajemy."""
     key = normalize(name or "")
     return next((hex_ for stem, hex_ in COLOR_STEMS.items() if key.startswith(stem)), "")
 
 
 @pass_context
 def csrf_input(context) -> Markup:
-    """Ukryte pole z tokenem CSRF do formularzy: {{ csrf_input() }}."""
     return Markup('<input type="hidden" name="csrf_token" value="{}">').format(
         escape(context.get("csrf_token", "")))
 
@@ -100,10 +96,9 @@ env.globals.update(
 
 
 def render(request: Request, name: str, status_code: int = 200, **context):
-    """Renderuje szablon z użytkownikiem i tokenem CSRF.
-
-    Zalogowany dostaje token swojej sesji; niezalogowany (strony logowania) token z ciasteczka,
-    które ustawiamy przy pierwszym wyświetleniu formularza."""
+    """A logged-in user gets their session's token; a logged-out one (login pages) gets the cookie token
+    set on the first display of the form.
+    """
     user = getattr(request.state, "user", None)
     anon_cookie = None
     if user is not None:
@@ -125,14 +120,14 @@ def render(request: Request, name: str, status_code: int = 200, **context):
 
 
 def is_htmx(request: Request) -> bool:
-    """Żądanie wysłane przez HTMX (odświeżanie fragmentu, a nie nawigacja). Odtworzenie strony z historii
-    (wstecz przy braku kopii w pamięci HTMX) też ma nagłówek HX-Request, ale podmienia całe body, więc
-    traktujemy je jak zwykłą nawigację."""
+    """Restoring a page from history (back, with no HTMX cache copy) also carries HX-Request but swaps
+    the whole body, so it is treated as plain navigation.
+    """
     return "hx-request" in request.headers and "hx-history-restore-request" not in request.headers
 
 
 def back_url(request: Request) -> str | None:
-    """Adres poprzedniej strony z nagłówka Referer, tylko z tego samego serwisu (inaczej None)."""
+    """Same site only (otherwise None)."""
     referer = urlsplit(request.headers.get("referer", ""))
     if not referer.netloc or referer.netloc != request.url.netloc or not referer.path.startswith("/"):
         return None
@@ -150,7 +145,7 @@ def clip_json(c: m.Clip) -> dict:
         "time_sec": c.time_sec,
         "clock": format_clock(c.time_sec),
         "period": position[0] if position else None,
-        "period_clock": format_clock(position[1]) if position else None,  # od początku kwarty
+        "period_clock": format_clock(position[1]) if position else None,
         "official": c.official_label or None,
         "category": c.category_label or None,
         "described": c.is_described,
@@ -168,7 +163,6 @@ def mark_json(mark: m.PeriodMark) -> dict:
 
 
 def file_response(path: Path, media_type: str = "video/mp4", download_name: str | None = None):
-    """Plik z obsługą HTTP Range (Starlette FileResponse zwraca 206 dla nagłówka Range)."""
     kwargs = {}
     if download_name:
         kwargs = {"filename": download_name, "content_disposition_type": "attachment"}

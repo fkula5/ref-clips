@@ -1,4 +1,3 @@
-"""Lista meczów: filtry z adresu (GET), paginacja i dane wierszy (stan, liczba klipów)."""
 from __future__ import annotations
 
 from collections.abc import Mapping
@@ -20,13 +19,12 @@ class MatchFilters:
     date_from: date | None = None
     date_to: date | None = None
     level: str = ""
-    person: str = ""       # klucz z services.people: "u<id>" albo "n<nazwisko>"
+    person: str = ""  # "u<id>" or "n<name>" key from services.people
     mine: bool = False
     page: int = 1
     errors: list[str] = field(default_factory=list)
 
     def query(self, page: int | None = None) -> str:
-        """Parametry adresu (bez pustych), np. do linków paginacji."""
         pairs = [("date_from", self.date_from.isoformat() if self.date_from else ""),
                  ("date_to", self.date_to.isoformat() if self.date_to else ""),
                  ("level", self.level), ("person", self.person), ("mine", "1" if self.mine else ""),
@@ -46,7 +44,6 @@ def _parse_date(raw: str, label: str, errors: list[str]) -> date | None:
 
 
 def parse_filters(params: Mapping[str, str]) -> MatchFilters:
-    """Filtry z parametrów adresu; niepoprawne wartości są pomijane (z komunikatem)."""
     errors: list[str] = []
     try:
         page = max(1, int(params.get("page") or 1))
@@ -65,7 +62,7 @@ class MatchRow:
     state: services.MatchState
     clips: int
     undescribed: int
-    expiry: str | None = None   # „pełne nagranie dostępne jeszcze X dni” na tydzień przed terminem
+    expiry: str | None = None
 
 
 @dataclass
@@ -93,7 +90,6 @@ def _person_match_ids(db: Session, person: str) -> list[int]:
 
 def list_matches(db: Session, filters: MatchFilters, user_id: int,
                  page_size: int = PAGE_SIZE) -> MatchPage:
-    """Mecze po filtrach, od najnowszych, z jedną stroną wyników."""
     stmt = select(Match)
     if filters.date_from:
         stmt = stmt.where(Match.date >= filters.date_from)

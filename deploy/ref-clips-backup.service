@@ -5,7 +5,7 @@ After=docker.service
 
 [Service]
 Type=oneshot
-# Jako root: czyta cały wolumin i zapisuje w /var/backups. Instalacja: docs/wdrozenie.md
+# Runs as root: reads the whole volume and writes to /var/backups. Install: docs/wdrozenie.md
 User=root
 WorkingDirectory=/opt/ref-clips
 ExecStart=/opt/ref-clips/deploy/backup.sh

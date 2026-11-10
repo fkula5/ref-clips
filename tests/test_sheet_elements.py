@@ -1,4 +1,3 @@
-"""Admin panel: the dictionary of assessment sheet elements (add, rename, reorder, deactivate, delete when unused)."""
 from sqlalchemy import select
 
 from app import sheet_elements
@@ -21,11 +20,11 @@ def test_admin_edits_the_element_dictionary(client, db):
     r = client.post(f"/admin/sheet-elements/{element.id}/update", data={"name": "Sędziowska mechanika"})
     assert "Sędziowska mechanika" in names(db) and "istniejące arkusze zostają" in r.text
     r = client.post(f"/admin/sheet-elements/{element.id}/update", data={"name": "ocena błędów"})
-    assert r.status_code == 422 and "ocena błędów" in r.text   # the typed name stays in the field
+    assert r.status_code == 422 and "ocena błędów" in r.text
     client.post(f"/admin/sheet-elements/{element.id}/move", data={"direction": "up"})
     assert names(db)[1] == "Sędziowska mechanika"
     client.post(f"/admin/sheet-elements/{element.id}/active", data={"active": "0"})
     assert element.id not in [e.id for e in sheet_elements.ordered(db, active_only=True)]
-    assert client.post(f"/admin/sheet-elements/{element.id}/delete").status_code == 200   # unused: deleted
+    assert client.post(f"/admin/sheet-elements/{element.id}/delete").status_code == 200
     assert "Sędziowska mechanika" not in names(db)
     assert client.post("/admin/sheet-elements/99999/delete").status_code == 404

@@ -1,10 +1,3 @@
-"""Retencja pełnych nagrań i sprzątanie plików (segment 7).
-
-Wersja robocza pełnego nagrania znika po `retention_days` od wgrania (`Video.expires_at`); klipy
-zostają. Usuwanie działa tak samo dla zadania w workerze (`run_if_due`) i dla ręcznego „Usuń
-pełne nagranie teraz” w panelu admina (`purge_video`) — wspólne są też reguły, kiedy nie wolno
-usuwać (`purge_blocker`).
-"""
 from __future__ import annotations
 
 import logging
@@ -25,25 +18,23 @@ from app.timeutil import utcnow
 
 log = logging.getLogger("retention")
 
-LAST_RUN_KEY = "retention_last_run"          # kiedy zadanie ostatnio ruszyło (UTC, napis do porównań)
-LAST_SUMMARY_KEY = "retention_last_summary"  # krótki wynik ostatniego uruchomienia
+LAST_RUN_KEY = "retention_last_run"
+LAST_SUMMARY_KEY = "retention_last_summary"
 TIME_FORMAT = "%Y-%m-%d %H:%M:%S"
-PENDING_CLIP = ("new", "queued")             # klip czeka na wycięcie z wersji roboczej
+PENDING_CLIP = ("new", "queued")
 BUSY_VIDEO = ("uploading", "queued", "processing")
 
 
 class PurgeError(Exception):
-    """Nagrania nie wolno (teraz) usunąć — komunikat po polsku."""
+    pass
 
 
 class RetentionError(ValueError):
-    """Niepoprawne ustawienie retencji (komunikat po polsku; HTTP 422)."""
+    pass
 
 
-# --- termin i oznaczenie w interfejsie ---------------------------------------------------
 def days_left(video: Video, now: datetime | None = None) -> int | None:
-    """Pełne dni do usunięcia wersji roboczej (zaokrąglone w górę; <= 0 = po terminie, czeka na
-    sprzątanie). None, gdy nie ma czego usuwać albo nagranie nie ma terminu."""
+    """Rounded up; <= 0 means overdue and waiting for cleanup."""
     if video.purged_at is not None or video.expires_at is None or not video.proxy_path:
         return None
     seconds = (video.expires_at - (now or utcnow())).total_seconds()
@@ -55,8 +46,6 @@ def days_phrase(days: int) -> str:
 
 
 def expiry_note(videos, now: datetime | None = None) -> str | None:
-    """„pełne nagranie dostępne jeszcze X dni” na `config.EXPIRY_WARN_DAYS` dni przed terminem
-    (dla najbliższego terminu spośród nagrań meczu); inaczej None."""
     now = now or utcnow()
     left = [d for v in videos if (d := days_left(v, now)) is not None]
     if not left or min(left) > config.EXPIRY_WARN_DAYS:
@@ -71,21 +60,19 @@ def video_expiry_note(video: Video, now: datetime | None = None) -> str | None:
     return expiry_note([video], now)
 
 
-# --- usuwanie pełnego nagrania -----------------------------------------------------------
 def pending_clips(db: Session, video: Video) -> int:
     return db.scalar(select(func.count()).select_from(Clip).where(
         Clip.video_id == video.id, Clip.status.in_(PENDING_CLIP))) or 0
 
 
 def purge_blocker(db: Session, video: Video, pending: int | None = None) -> str | None:
-    """Powód, dla którego nagrania nie wolno teraz usunąć (None = można). Nie usuwamy nagrania
-    w trakcie wgrywania i konwersji ani dopóki klipy z niego czekają na cięcie — usunięcie
-    zostawiłoby je w kolejce na zawsze. Klipy po błędzie cięcia nie blokują."""
+    """Deleting during upload or conversion, or while clips still wait for cutting, would leave them
+    queued forever. Clips after a cut error do not block.
+    """
     if video.purged_at is not None:
         return "Pełne nagranie zostało już usunięte."
     if video.status in BUSY_VIDEO:
         return "Nagranie jest wgrywane albo konwertowane — poczekaj na koniec konwersji."
-    # Nagranie w błędzie nigdy nie wytnie klipów, więc ich kolejka go nie blokuje.
     if video.status != "ready":
         return None
     pending = pending_clips(db, video) if pending is None else pending
@@ -101,8 +88,6 @@ def purge_blocker(db: Session, video: Video, pending: int | None = None) -> str 
 
 
 def abandon_pending_clips(db: Session, video: Video) -> int:
-    """Klipy czekające na cięcie z nagrania, którego już nie ma, dostają stan błędu (zamiast
-    wisieć w kolejce); ich oczekujące zadania cięcia są zamykane. Zwraca liczbę klipów."""
     message = "Pełne nagranie zostało usunięte przed wycięciem klipu."
     clips = list(db.scalars(select(Clip).where(Clip.video_id == video.id, Clip.status.in_(PENDING_CLIP))))
     for clip in clips:
@@ -114,23 +99,23 @@ def abandon_pending_clips(db: Session, video: Video) -> int:
 
 
 def purge_video(db: Session, video: Video, now: datetime | None = None) -> None:
-    """Oznacza pełne nagranie jako usunięte (`purged_at`, wyzerowane ścieżki; klipy zostają), a dopiero
-    potem kasuje pliki wersji roboczej (i oryginału, jeśli został po błędzie konwersji). Kolejność
-    jest celowa: gdyby zapis w bazie się nie udał, nagranie zostaje nietknięte (z plikami); gdyby
-    nie udało się skasować pliku, to tylko ostrzeżenie w logu — plik-sierotę zabierze później
-    `cleanup_orphan_videos`. Wyjątkiem jest wyłącznie PurgeError z reguł (`purge_blocker`); błąd
-    bazy przy zapisie leci dalej, a nagranie zostaje bez zmian."""
+    """Marks the recording purged first (`purged_at`, paths cleared; clips stay), then deletes the
+    files. The order is deliberate: if the DB write fails the recording stays untouched; if a file
+    delete fails it is only a log warning and `cleanup_orphan_videos` removes the orphan later. Only
+    a PurgeError from the rules is swallowed; a DB error propagates and leaves the recording
+    unchanged.
+    """
     blocker = purge_blocker(db, video)
     if blocker:
         raise PurgeError(blocker)
-    keys = [key for key in (video.original_path, video.proxy_path) if key]  # zapamiętane przed wyzerowaniem
+    keys = [key for key in (video.original_path, video.proxy_path) if key]
     video.original_path = video.proxy_path = video.proxy_bytes = None
     video.purged_at = now or utcnow()
-    abandon_pending_clips(db, video)  # klip dodany tuż przed usunięciem (wyścig z „Zaznacz”)
+    abandon_pending_clips(db, video)  # race with a clip marked just before the purge
     try:
         db.commit()
     except Exception:
-        db.rollback()  # obiekt wraca do stanu z bazy; pliki nietknięte
+        db.rollback()
         raise
     for key in keys:
         try:
@@ -152,9 +137,9 @@ class RetentionResult:
 
 
 def run_retention(db: Session, now: datetime | None = None) -> RetentionResult:
-    """Usuwa wersje robocze nagrań po terminie. Nagrania w konwersji i z klipami czekającymi na
-    cięcie oraz te, których usunięcia nie udało się zapisać w bazie, są pomijane (wrócą przy następnym
-    uruchomieniu); nieudane kasowanie samego pliku nie przerywa przebiegu. Idempotentne: usunięte mają `purged_at`."""
+    """Skips recordings in conversion, with clips waiting for cutting, or whose DB write failed (retried
+    next run); a failed file delete does not abort the run. Idempotent.
+    """
     now = now or utcnow()
     result = RetentionResult()
     due = db.scalars(select(Video).where(
@@ -167,7 +152,7 @@ def run_retention(db: Session, now: datetime | None = None) -> RetentionResult:
             db.rollback()
             result.skipped.append((video.id, str(exc)))
             log.info("Retencja: pominięto nagranie %s: %s", video.id, exc)
-        except SQLAlchemyError as exc:  # np. zajęta baza: nagranie zostaje bez zmian, wróci w następnym przebiegu
+        except SQLAlchemyError as exc:
             result.skipped.append((video.id, f"błąd bazy danych: {exc.__class__.__name__}"))
             log.warning("Retencja: nie zapisano usunięcia nagrania %s w bazie", video.id, exc_info=True)
         else:
@@ -177,15 +162,15 @@ def run_retention(db: Session, now: datetime | None = None) -> RetentionResult:
 
 
 def run_if_due(db: Session, now: datetime | None = None) -> RetentionResult | None:
-    """Uruchamia retencję, jeśli ostatnie uruchomienie było ponad `RETENTION_INTERVAL_HOURS` temu
-    (albo nigdy). Czas zapisujemy atomowym UPDATE-em w `settings`: restart workera w ciągu doby
-    i kilka workerów naraz nie uruchomią zadania drugi raz. Zwraca None, gdy nie była to ta chwila."""
+    """The run time is recorded with an atomic UPDATE on `settings`, so a worker restart within a day or
+    several workers do not run it twice. Returns None when it was not due.
+    """
     now = now or utcnow()
     if db.get(Setting, LAST_RUN_KEY) is None:
         try:
             db.add(Setting(key=LAST_RUN_KEY, value=""))
             db.commit()
-        except IntegrityError:  # drugi worker założył wiersz w tej samej chwili
+        except IntegrityError:  # a second worker created the row at the same moment
             db.rollback()
     cutoff = (now - timedelta(hours=config.RETENTION_INTERVAL_HOURS)).strftime(TIME_FORMAT)
     claimed = db.execute(update(Setting).where(
@@ -202,7 +187,6 @@ def run_if_due(db: Session, now: datetime | None = None) -> RetentionResult | No
 
 
 def last_run(db: Session) -> tuple[datetime | None, str]:
-    """(czas ostatniego uruchomienia, krótki wynik) do panelu admina."""
     raw = services.get_setting(db, LAST_RUN_KEY)
     try:
         when = datetime.strptime(raw, TIME_FORMAT) if raw else None
@@ -211,7 +195,6 @@ def last_run(db: Session) -> tuple[datetime | None, str]:
     return when, services.get_setting(db, LAST_SUMMARY_KEY)
 
 
-# --- ustawienie retention_days -----------------------------------------------------------
 def parse_retention_days(raw: str) -> int:
     low, high = config.RETENTION_DAYS_MIN, config.RETENTION_DAYS_MAX
     try:
@@ -226,13 +209,14 @@ def parse_retention_days(raw: str) -> int:
 @dataclass
 class RetentionChange:
     days: int
-    recalculated: int = 0   # nagrania z przeliczonym terminem
-    overdue: int = 0        # z nich: po nowym terminie (zostaną usunięte przy najbliższym sprzątaniu)
+    recalculated: int = 0
+    overdue: int = 0
 
 
 def set_retention_days(db: Session, days: int, recalculate: bool, now: datetime | None = None) -> RetentionChange:
-    """Zapisuje `retention_days`. Domyślnie dotyczy tylko nowych nagrań. Z `recalculate` termin
-    istniejących, jeszcze nieusuniętych nagrań staje się: data wgrania + `days`."""
+    """Default affects only new recordings. With `recalculate`, existing unpurged recordings get upload
+    date + `days`.
+    """
     now = now or utcnow()
     services.set_setting(db, "retention_days", str(days))
     change = RetentionChange(days)
@@ -245,12 +229,10 @@ def set_retention_days(db: Session, days: int, recalculate: bool, now: datetime 
     return change
 
 
-# --- osierocone pliki klipów -------------------------------------------------------------
 def cleanup_orphan_clips(db: Session, min_age_seconds: float | None = None) -> int:
-    """Usuwa z katalogu klipów pliki .mp4 (także niedokończone .part.mp4), do których nie prowadzi
-    `clip_path` żadnego klipu, starsze niż `ORPHAN_MIN_AGE_SECONDS` (świeży plik może być właśnie
-    zapisywany przez cięcie, które jeszcze nie zapisało ścieżki). Zostają po usunięciu znacznika
-    w trakcie cięcia. Zwraca liczbę usuniętych plików."""
+    """A fresh file may be written by a cut that has not stored the path yet. Orphans appear when a
+    marker is deleted during cutting.
+    """
     if min_age_seconds is None:
         min_age_seconds = config.ORPHAN_MIN_AGE_SECONDS
     used = set(db.scalars(select(Clip.clip_path).where(Clip.clip_path.is_not(None))))
@@ -269,12 +251,11 @@ def cleanup_orphan_clips(db: Session, min_age_seconds: float | None = None) -> i
     return removed
 
 
-# --- pliki tymczasowe ----------------------------------------------------------------------
 def cleanup_tmp(db: Session | None = None, min_age_seconds: float | None = None) -> int:
-    """Usuwa z `tmp` paczki ZIP (linki udostępniające, eksport), starsze niż `ORPHAN_MIN_AGE_SECONDS`.
-    Zwykle plik znika zaraz po wysłaniu; zostaje po awarii albo zerwanym pobieraniu. Pobieranie trwające
-    dłużej nie przeszkadza: plik jest już otwarty. `db` jest niewykorzystane (jednolity podpis kroków
-    sprzątania w workerze). Zwraca liczbę usuniętych plików."""
+    """Normally the file vanishes right after sending; leftovers come from crashes or aborted downloads.
+    A longer download is fine: the file is already open. `db` is unused (uniform signature of the
+    cleanup steps).
+    """
     if min_age_seconds is None:
         min_age_seconds = config.ORPHAN_MIN_AGE_SECONDS
     cutoff = time.time() - min_age_seconds
@@ -292,18 +273,15 @@ def cleanup_tmp(db: Session | None = None, min_age_seconds: float | None = None)
     return removed
 
 
-# --- osierocone pliki nagrań -------------------------------------------------------------
 VIDEO_FILE = re.compile(r"^(?:uploads/(?P<up>\d+)_.+|proxies/(?P<proxy>\d+)(?:\.part)?\.mp4)$")
 
 
 def cleanup_orphan_videos(db: Session, min_age_seconds: float | None = None) -> int:
-    """Usuwa pliki oryginałów (`uploads/<id>_nazwa`) i wersji roboczych (`proxies/<id>.mp4`,
-    `proxies/<id>.part.mp4`), do których nie prowadzi `original_path` ani `proxy_path` żadnego
-    nagrania, starsze niż `ORPHAN_MIN_AGE_SECONDS`. Zostają po nieudanym kasowaniu pliku przy
-    usunięciu nagrania (`purge_video`) albo po usunięciu meczu. Pomija pliki nagrań w trakcie
-    wgrywania i konwersji (świeży `.part.mp4` powstaje, zanim `proxy_path` trafi do bazy) oraz
-    trwające uploady (`uploads/tus-*.part` nie pasuje do wzorca; porzucone sprząta
-    `uploads.cleanup_stale`). Zwraca liczbę usuniętych plików."""
+    """Orphans remain after a failed file delete in `purge_video` or after a match is deleted. Skips
+    recordings being uploaded or converted (a fresh `.part.mp4` exists before `proxy_path` is stored)
+    and running uploads (`uploads/tus-*.part` does not match the pattern; stale ones go through
+    `uploads.cleanup_stale`).
+    """
     if min_age_seconds is None:
         min_age_seconds = config.ORPHAN_MIN_AGE_SECONDS
     cutoff = time.time() - min_age_seconds

@@ -1,4 +1,3 @@
-{# Zakładki panelu administratora. Zmienne: tab ("users" / "categories" / "sheet" / "retention"), rejected_count. #}
 <nav class="admin-tabs" aria-label="Panel administratora">
   {% if perm.can_manage_users(user) %}<a href="/admin/users" {{ 'class=active aria-current=page' if tab == 'users' }}>Użytkownicy</a>{% endif %}
   {% if perm.can_manage_categories(user) %}<a href="/admin/categories" {{ 'class=active aria-current=page' if tab == 'categories' }}>Kategorie</a>{% endif %}

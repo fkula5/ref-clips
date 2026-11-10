@@ -1,4 +1,3 @@
-"""Mecze: lista z filtrami, formularz z obsadą (CC/U1/U2), szczegóły, usuwanie."""
 from __future__ import annotations
 
 from datetime import date as date_type
@@ -30,13 +29,10 @@ def match_form(
     cc_user: str = Form(""), cc_name: str = Form(""), u1_user: str = Form(""),
     u1_name: str = Form(""), u2_user: str = Form(""), u2_name: str = Form(""),
 ) -> dict[str, str]:
-    """Pola formularza meczu jako słownik (zależność FastAPI)."""
     return dict(locals())
 
 
 def _form_values(match: Match | None, user: User | None = None) -> dict:
-    """Wartości początkowe formularza. Nowy mecz: użytkownik z rolą sędziego jest od razu
-    wstawiony na pierwszą wolną pozycję (CC), z możliwością zmiany funkcji."""
     values: dict = {"date": "", "level": "", "team_a_name": "", "team_a_color": "białe",
                     "team_b_name": "", "team_b_color": "ciemne"}
     for function in OFFICIAL_FUNCTIONS:
@@ -50,7 +46,7 @@ def _form_values(match: Match | None, user: User | None = None) -> dict:
             values[f"{key}_user"] = str(official.user_id) if official.user_id else ""
             values[f"{key}_name"] = official.name or ""
     else:
-        values["date"] = datetime.now(local_tz()).date().isoformat()  # „dziś” w strefie lokalnej, nie UTC
+        values["date"] = datetime.now(local_tz()).date().isoformat()  # "today" in the local timezone, not UTC
         if user is not None and "referee" in user.roles:
             values["cc_user"] = str(user.id)
     return values
@@ -69,8 +65,6 @@ FIELD_LIMITS = {"level": ("Liga", 100), "team_a_name": ("Nazwa drużyny A", 100)
 
 
 def _save(db: Session, user: User, match: Match, form: dict[str, str]) -> None:
-    """Zapisuje dane meczu i obsadę. Błędy walidacji to MatchFormError (422); sędzia (tylko
-    sędzia) spoza obsady to MatchForbiddenError (403) — oba wracają do formularza."""
     try:
         match.date = date_type.fromisoformat(form["date"])
     except ValueError:
@@ -121,14 +115,12 @@ def create_match(request: Request, db: Session = Depends(get_db),
 
 
 def render_match(request: Request, db: Session, match: Match, *, status_code: int = 200, **extra):
-    """Strona meczu z zakładką „Klipy”: filtry (sędzia, kategoria, kwarta, opisane/nieopisane, oceny) są
-    w adresie. Komentarze są poza obszarami odświeżanymi co 3 s; odpowiedź HTMX (odświeżanie panelu
-    nagrań i listy klipów) ich nie wczytuje. `extra` to stan formularza komentarza po błędzie."""
+    """Comments sit outside the areas refreshed every 3 s; the HTMX response (recordings panel and clip
+    list refresh) does not load them.
+    """
     f = clip_list.parse_filters(request.query_params)
     clips = clip_list.select_clips(db, f, match_id=match.id)
     all_clips = match.clips
-    # Panel nagrań odświeża się, dopóki trwa wgrywanie lub konwersja, a lista klipów — dopóki któryś
-    # z pokazanych klipów czeka na cięcie.
     busy = any(v.status in ("uploading", "queued", "processing") for v in match.videos)
     user = request.state.user
     return render(request, "match_detail.html", status_code=status_code, match=match, busy=busy, clips=clips,
@@ -172,7 +164,6 @@ def update_match(request: Request, db: Session = Depends(get_db), match: Match =
 @router.get("/matches/{match_id}/delete")
 def confirm_delete_match(request: Request, match: Match = Depends(get_match),
                          user: User = require(permissions.can_delete_match, get_match)):
-    """Potwierdzenie usunięcia: ile nagrań i klipów zniknie razem z meczem."""
     clips = len(match.clips)
     return render(request, "match_delete.html", match=match, videos=len(match.videos), clips=clips,
                   # others' drafts must stay hidden, so a non-admin only counts the sheets they can see
@@ -186,7 +177,7 @@ def delete_match(db: Session = Depends(get_db), match: Match = Depends(get_match
     for video in match.videos:
         services.remove_video_files(video)
     for up in db.scalars(select(UploadSession).where(UploadSession.match_id == match.id)):
-        storage.delete(uploads.part_key(up.id))  # niedokończone wgrywania do tego meczu
+        storage.delete(uploads.part_key(up.id))
     db.delete(match)
     db.commit()
     return RedirectResponse("/", status_code=303)

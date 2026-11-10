@@ -1,9 +1,4 @@
-"""Indeksy komentarzy po klipie i meczu (segment 6): lista komentarzy strony i kaskada przy usuwaniu.
-
-Revision ID: mvp0003
-Revises: mvp0002
-Create Date: 2026-11-02 10:00:00.000000
-"""
+"""Comment indexes by clip and match."""
 from alembic import op
 
 

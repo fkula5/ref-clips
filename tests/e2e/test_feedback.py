@@ -1,5 +1,3 @@
-"""Scenariusz m): oceny szkoleniowców i komentarze (klip, mecz) w przeglądarce, odświeżanie strony meczu
-a wpisywany komentarz oraz widoki mobilne (375×740)."""
 import re
 
 from playwright.sync_api import Page, expect
@@ -10,7 +8,6 @@ PHONE = {"width": 375, "height": 740}
 
 
 def rated_setup(ui):
-    """Mecz CC=Roman (konto), nagranie i opisany klip (bez pliku klipu: to nie jest tu potrzebne)."""
     match_id = ui.server.make_match()
     video_id = ui.server.make_ready_video(match_id, content="full")
     clip_id = ui.server.insert_clip(video_id, 30.0, official="CC", category="kroki", described=True,
@@ -26,8 +23,7 @@ def no_horizontal_scroll(page: Page) -> bool:
     return page.evaluate("document.scrollingElement.scrollWidth <= document.scrollingElement.clientWidth")
 
 
-# --- oceny ------------------------------------------------------------------------------
-def test_szkoleniowiec_ocenia_i_zmienia_ocene(ui):
+def test_coach_rates_and_changes_the_rating(ui):
     _, _, clip_id = rated_setup(ui)
     page = ui.page("coach")
     page.goto(f"/clips/{clip_id}")
@@ -47,7 +43,6 @@ def test_szkoleniowiec_ocenia_i_zmienia_ocene(ui):
     expect(card.get_by_role("button", name="Zapisz zmianę")).to_be_visible()
     assert page.evaluate("window.__bez_przeladowania === true")
 
-    # zmiana oceny: ta sama para (klip, szkoleniowiec) — nadal jedna ocena, z adnotacją o zmianie
     expect(card.get_by_label("nieprawidłowa", exact=True)).to_be_checked()
     verdict(page, "dyskusyjna")
     card.get_by_role("button", name="Zapisz zmianę").click()
@@ -56,13 +51,12 @@ def test_szkoleniowiec_ocenia_i_zmienia_ocene(ui):
     expect(page.locator("#oceny .rating")).to_contain_text("zmieniona")
     expect(page.locator("#oceny .rating .verdict")).to_have_text("dyskusyjna")
     assert page.evaluate("window.__bez_przeladowania === true")
-    # po odświeżeniu to samo
     page.reload()
     expect(page.locator("#oceny .rating")).to_have_count(1)
     expect(page.locator("#oceny .rating")).to_contain_text("zmieniona")
 
 
-def test_sedzia_widzi_ocene_bez_formularza_a_admin_zmienia_i_usuwa_cudza(ui):
+def test_referee_sees_a_rating_without_the_form_and_admin_changes_and_deletes_someone_elses(ui):
     _, _, clip_id = rated_setup(ui)
     coach = ui.page("coach")
     coach.goto(f"/clips/{clip_id}")
@@ -77,7 +71,6 @@ def test_sedzia_widzi_ocene_bez_formularza_a_admin_zmienia_i_usuwa_cudza(ui):
     expect(referee.locator("#oceny form")).to_have_count(0)
     expect(referee.locator("#oceny").get_by_role("button")).to_have_count(0)
 
-    # administrator (bez roli szkoleniowca): bez własnego formularza, ale zmienia i usuwa cudzą ocenę
     admin = ui.page("admin")
     admin.goto(f"/clips/{clip_id}")
     expect(admin.locator("#rating-form")).to_have_count(0)
@@ -85,7 +78,7 @@ def test_sedzia_widzi_ocene_bez_formularza_a_admin_zmienia_i_usuwa_cudza(ui):
     admin.locator("#oceny .rating-edit").get_by_label("nieprawidłowa", exact=True).check()
     admin.locator("#oceny .rating-edit").get_by_label("Komentarz (opcjonalnie)").fill("Korekta administratora")
     admin.get_by_role("button", name="Zapisz zmianę").click()
-    expect(admin.locator("#oceny .rating")).to_contain_text("Cezary Trener")       # autor się nie zmienia
+    expect(admin.locator("#oceny .rating")).to_contain_text("Cezary Trener")
     expect(admin.locator("#oceny .rating")).to_contain_text("nieprawidłowa")
     expect(admin.locator("#oceny .rating")).to_contain_text("Korekta administratora")
     expect(admin.locator("#oceny .rating")).not_to_contain_text("Adam Admin")
@@ -97,22 +90,22 @@ def test_sedzia_widzi_ocene_bez_formularza_a_admin_zmienia_i_usuwa_cudza(ui):
     expect(referee.locator("#oceny")).to_contain_text("Klip nie ma jeszcze ocen.")
 
 
-def test_inny_szkoleniowiec_nie_ma_przyciskow_przy_cudzej_ocenie(ui):
+def test_another_coach_has_no_buttons_on_someone_elses_rating(ui):
     _, _, clip_id = rated_setup(ui)
     coach = ui.page("coach")
     coach.goto(f"/clips/{clip_id}")
     verdict(coach, "prawidłowa")
     coach.locator("#oceny").get_by_role("button", name="Zapisz ocenę").click()
     expect(coach.locator("#oceny .rating")).to_have_count(1)
-    expect(coach.locator("#oceny").get_by_role("button", name="Usuń")).to_have_count(1)   # własna
-    # drugi szkoleniowiec: z rolą admin+coach nie ma konta testowego, więc sprawdzamy sędziego-outsidera
+    expect(coach.locator("#oceny").get_by_role("button", name="Usuń")).to_have_count(1)
+    # a second coach: the admin+coach role has no test account, so the outsider referee is checked
     outsider = ui.page("outsider")
     outsider.goto(f"/clips/{clip_id}")
     expect(outsider.locator("#oceny .rating")).to_have_count(1)
     expect(outsider.locator("#oceny").get_by_role("button")).to_have_count(0)
 
 
-def test_podsumowanie_ocen_i_filtr_w_tabeli_klipow(ui):
+def test_rating_summary_and_filter_in_the_clips_table(ui):
     match_id, video_id, rated = rated_setup(ui)
     plain = ui.server.insert_clip(video_id, 60.0, official="U1", category="aut", described=True)
     coach = ui.page("coach")
@@ -138,16 +131,15 @@ def test_podsumowanie_ocen_i_filtr_w_tabeli_klipow(ui):
     expect(page.locator("#clips-list tbody tr")).to_contain_text("Przekroczenie linii")
     assert page.evaluate("window.__bez_przeladowania === true")
 
-    # globalna lista /clips: te same filtry w adresie
     page.goto(f"/clips?match_id={match_id}&rating=incorrect")
     expect(page.locator("#clips-list")).to_contain_text("Brak klipów dla wybranych filtrów.")
     page.goto(f"/clips?match_id={match_id}&rating=any")
     expect(page.locator("#clips-list tbody tr")).to_have_count(1)
-    assert plain  # klip bez ocen nie pasuje do filtra „z oceną”
+    assert plain
 
 
-def test_blad_walidacji_oceny_i_komentarza_pokazuje_komunikat_i_zachowuje_tekst(ui):
-    ui.allow(r"status of 422")      # serwer odpowiada 422 na błędną treść; przeglądarka loguje to w konsoli
+def test_rating_and_comment_validation_error_shows_a_message_and_keeps_the_text(ui):
+    ui.allow(r"status of 422")
     _, _, clip_id = rated_setup(ui)
     page = ui.page("coach")
     page.goto(f"/clips/{clip_id}")
@@ -164,19 +156,16 @@ def test_blad_walidacji_oceny_i_komentarza_pokazuje_komunikat_i_zachowuje_tekst(
     expect(page.locator("#comment-form [role=alert]")).to_contain_text("najwyżej 5000 znaków")
     expect(page.get_by_label("Nowy komentarz")).to_have_value(long_text)
     expect(page.locator("#comments .comment")).to_have_count(0)
-    # poprawienie i ponowne wysłanie działa
     page.get_by_label("Nowy komentarz").fill("Krótki")
     page.get_by_role("button", name="Dodaj komentarz").click()
     expect(page.locator("#comments .comment")).to_have_count(1)
     expect(page.locator("#comment-form [role=alert]")).to_have_count(0)
 
 
-# --- komentarze -------------------------------------------------------------------------
 def comment_cycle(ui, page: Page, scope_name: str) -> None:
-    """Dodaj, edytuj, anuluj edycję i usuń komentarz bez przeładowania strony."""
-    ui.allow(r"status of 422")      # pusta edycja: serwer odpowiada 422 (sprawdzamy komunikat)
+    ui.allow(r"status of 422")
     page.evaluate("window.__bez_przeladowania = true")
-    page.on("dialog", lambda d: d.accept())   # potwierdzenie usunięcia
+    page.on("dialog", lambda d: d.accept())
     expect(page.locator("#no-comments")).to_have_text("Brak komentarzy.")
 
     box = page.get_by_label("Nowy komentarz")
@@ -193,7 +182,6 @@ def comment_cycle(ui, page: Page, scope_name: str) -> None:
     assert page.locator("#comments .comment b").count() == 0
     expect(comment).not_to_contain_text("edytowano")
 
-    # edycja inline: formularz zamiast treści; Anuluj zostawia treść
     comment.get_by_role("link", name="Edytuj").click()
     editor = page.locator("#comments .comment textarea")
     expect(editor).to_have_value("Pierwsza linia\nDruga linia <b>nie jest HTML</b>")
@@ -202,7 +190,6 @@ def comment_cycle(ui, page: Page, scope_name: str) -> None:
     expect(page.locator("#comments .comment textarea")).to_have_count(0)
     expect(page.locator("#comments .comment .body")).to_contain_text("Pierwsza linia")
 
-    # edycja i zapis: "edytowano" widoczne
     page.locator("#comments .comment").get_by_role("link", name="Edytuj").click()
     page.locator("#comments .comment textarea").fill("Poprawiony komentarz")
     page.get_by_role("button", name="Zapisz", exact=True).click()
@@ -210,17 +197,15 @@ def comment_cycle(ui, page: Page, scope_name: str) -> None:
     expect(page.locator("#comments .comment")).to_contain_text("edytowano")
     expect(page.locator("#comments .comment textarea")).to_have_count(0)
 
-    # pusta edycja: komunikat błędu, treść zostaje w bazie
     page.locator("#comments .comment").get_by_role("link", name="Edytuj").click()
     page.locator("#comments .comment textarea").fill("   ")
-    # `required` blokuje wysłanie pustego pola, więc zwalniamy walidację przeglądarki
+    # `required` blocks sending an empty field, so browser validation is released
     page.evaluate("document.querySelector('#comments .comment textarea').removeAttribute('required')")
     page.get_by_role("button", name="Zapisz", exact=True).click()
     expect(page.locator("#comments .comment [role=alert]")).to_contain_text("wpisz treść")
     page.locator("#comments .comment").get_by_role("link", name="Anuluj").click()
     expect(page.locator("#comments .comment .body")).to_have_text("Poprawiony komentarz")
 
-    # usunięcie z potwierdzeniem
     page.locator("#comments .comment").get_by_role("button", name="Usuń").click()
     expect(page.locator("#comments .comment")).to_have_count(0)
     expect(page.locator("#no-comments")).to_have_text("Brak komentarzy.")
@@ -229,22 +214,22 @@ def comment_cycle(ui, page: Page, scope_name: str) -> None:
     expect(page.locator("#no-comments")).to_have_text("Brak komentarzy.")
 
 
-def test_komentarz_do_klipu_dodaj_edytuj_anuluj_usun(ui):
+def test_clip_comment_add_edit_cancel_delete(ui):
     _, _, clip_id = rated_setup(ui)
     page = ui.page("admin")
     page.goto(f"/clips/{clip_id}")
     comment_cycle(ui, page, "klip")
 
 
-def test_komentarz_do_meczu_dodaj_edytuj_anuluj_usun(ui):
+def test_match_comment_add_edit_cancel_delete(ui):
     match_id, _, _ = rated_setup(ui)
     page = ui.page("admin")
     page.goto(f"/matches/{match_id}")
     comment_cycle(ui, page, "mecz")
 
 
-def test_komentarze_uprawnienia_w_interfejsie(ui):
-    ui.allow(r"status of 404|Error Code 404")      # edycja komentarza usuniętego w międzyczasie: 404 i komunikat
+def test_comments_permissions_in_the_interface(ui):
+    ui.allow(r"status of 404|Error Code 404")
     match_id, _, _ = rated_setup(ui)
     author = ui.page("referee")
     author.goto(f"/matches/{match_id}")
@@ -252,14 +237,12 @@ def test_komentarze_uprawnienia_w_interfejsie(ui):
     author.get_by_role("button", name="Dodaj komentarz").click()
     expect(author.locator("#comments .comment")).to_have_count(1)
 
-    # administrator usuwa cudzy, ale nie edytuje
     admin = ui.page("admin")
     admin.goto(f"/matches/{match_id}")
     mine = admin.locator("#comments .comment")
     expect(mine).to_contain_text("Komentarz sędziego")
     expect(mine.get_by_role("link", name="Edytuj")).to_have_count(0)
     expect(mine.get_by_role("button", name="Usuń")).to_have_count(1)
-    # inny sędzia nie widzi żadnych akcji
     other = ui.page("outsider")
     other.goto(f"/matches/{match_id}")
     expect(other.locator("#comments .comment")).to_have_count(1)
@@ -267,13 +250,12 @@ def test_komentarze_uprawnienia_w_interfejsie(ui):
     admin.on("dialog", lambda d: d.accept())
     mine.get_by_role("button", name="Usuń").click()
     expect(admin.locator("#comments .comment")).to_have_count(0)
-    # autor próbuje edytować komentarz, który ktoś już usunął: komunikat zamiast cichej bezczynności
     author.locator("#comments .comment").get_by_role("link", name="Edytuj").click()
     expect(author.locator(".toast.error")).to_contain_text("Nie ma takiego komentarza")
 
 
-def test_komentarze_bez_javascriptu_formularze_post_z_przekierowaniem(ui):
-    ui.allow(r"status of 422")      # błąd walidacji w zwykłym formularzu: strona z kodem 422
+def test_comments_without_javascript_post_forms_with_redirect(ui):
+    ui.allow(r"status of 422")
     match_id, _, clip_id = rated_setup(ui)
     page = ui.page("admin", java_script_enabled=False)
     page.goto(f"/clips/{clip_id}")
@@ -281,22 +263,20 @@ def test_komentarze_bez_javascriptu_formularze_post_z_przekierowaniem(ui):
     page.get_by_role("button", name="Dodaj komentarz").click()
     expect(page).to_have_url(re.compile(rf"/clips/{clip_id}#comment-\d+$"))
     expect(page.locator("#comments .comment")).to_have_count(1)
-    page.get_by_role("link", name="Edytuj").click()                  # osobna strona edycji
+    page.get_by_role("link", name="Edytuj").click()
     expect(page.get_by_role("heading", name="Edycja komentarza")).to_be_visible()
     page.locator("textarea[name=body]").fill("Bez JS, poprawiony")
     page.get_by_role("button", name="Zapisz", exact=True).click()
     expect(page).to_have_url(re.compile(rf"/clips/{clip_id}#comment-\d+$"))
     expect(page.locator("#comments .comment .body")).to_have_text("Bez JS, poprawiony")
     expect(page.locator("#comments .comment")).to_contain_text("edytowano")
-    # błąd: cały widok z komunikatem i zachowaną treścią
     page.get_by_label("Nowy komentarz").fill("y" * 5001)
     page.get_by_role("button", name="Dodaj komentarz").click()
     expect(page.locator("#comment-form [role=alert]")).to_contain_text("najwyżej 5000 znaków")
     expect(page.get_by_label("Nowy komentarz")).to_have_value("y" * 5001)
-    page.locator("#comments").get_by_role("button", name="Usuń").click()   # bez JS: bez potwierdzenia
+    page.locator("#comments").get_by_role("button", name="Usuń").click()
     expect(page.locator("#comments .comment")).to_have_count(0)
 
-    # ocena bez JS
     coach = ui.page("coach", java_script_enabled=False)
     coach.goto(f"/clips/{clip_id}")
     coach.get_by_label("dyskusyjna", exact=True).check()
@@ -310,10 +290,8 @@ def test_komentarze_bez_javascriptu_formularze_post_z_przekierowaniem(ui):
     expect(page2.locator("#comments .comment")).to_have_count(1)
 
 
-# --- odświeżanie strony meczu --------------------------------------------------------------
-def test_odswiezanie_strony_meczu_nie_kasuje_wpisywanego_komentarza_ani_edycji(ui):
+def test_match_page_refresh_does_not_wipe_a_comment_being_typed_or_an_edit(ui):
     match_id, video_id, _ = rated_setup(ui)
-    # nagranie w trakcie wgrywania => strona meczu odpytuje serwer co 3 s (hx-trigger every 3s)
     from app.models import Video
     with ui.server.db() as db:
         db.get(Video, video_id).status = "processing"
@@ -336,7 +314,7 @@ def test_odswiezanie_strony_meczu_nie_kasuje_wpisywanego_komentarza_ani_edycji(u
     editor = page.locator("#comments .comment textarea")
     editor.fill("Edycja w toku")
     editor.focus()
-    # znaczniki: te elementy nie mogą zostać podmienione; panel nagrań ma zostać odświeżony
+    # markers: these elements must not be swapped; the recordings panel must be refreshed
     page.evaluate("""() => {
         document.querySelector('#komentarze').__zostaje = true;
         document.querySelector('#comment-form').__zostaje = true;
@@ -345,7 +323,7 @@ def test_odswiezanie_strony_meczu_nie_kasuje_wpisywanego_komentarza_ani_edycji(u
     }""")
 
     wait_until(page, lambda: len(polls) >= 2, timeout=20, message="strona meczu nie odświeżyła się dwa razy")
-    page.wait_for_function("!document.querySelector('#videos-panel').__stary")        # panel faktycznie podmieniony
+    page.wait_for_function("!document.querySelector('#videos-panel').__stary")
     page.wait_for_timeout(300)
     assert page.evaluate("""() => ({
         sekcja: !!document.querySelector('#komentarze').__zostaje,
@@ -358,9 +336,8 @@ def test_odswiezanie_strony_meczu_nie_kasuje_wpisywanego_komentarza_ani_edycji(u
               "szkic": "Rozpoczęty, niewysłany komentarz", "edycja": "Edycja w toku", "fokus": True}
 
 
-# --- widoki mobilne (375×740) ---------------------------------------------------------------
 def populate_feedback(ui, match_id, clip_id):
-    """Oceny i komentarze o długich słowach i wielu liniach: najgorszy przypadek dla układu."""
+    """Long words and many lines: the worst case for the layout."""
     from app.models import Comment, Rating
     long_word = "Superdługie" + "słowo" * 30
     with ui.server.db() as db:
@@ -372,7 +349,7 @@ def populate_feedback(ui, match_id, clip_id):
         db.commit()
 
 
-def test_widoki_mobilne_bez_poziomego_przewijania(ui):
+def test_mobile_views_without_horizontal_scrolling(ui):
     match_id, video_id, clip_id = rated_setup(ui)
     for t in (60.0, 90.0, 120.0):
         ui.server.insert_clip(video_id, t, official="U1", category="aut", described=True,
@@ -385,17 +362,14 @@ def test_widoki_mobilne_bez_poziomego_przewijania(ui):
         page.wait_for_load_state("networkidle")
         assert no_horizontal_scroll(page), (path, page.evaluate(
             "[document.scrollingElement.scrollWidth, document.scrollingElement.clientWidth]"))
-    # strona klipu: opis, oceny i komentarze widoczne w obrębie ekranu
     page.goto(f"/clips/{clip_id}")
     for selector in ("#clip-info", "#oceny", "#komentarze", "#comment-form textarea"):
         box = page.locator(selector).first.bounding_box()
         assert box and box["x"] >= 0 and box["x"] + box["width"] <= PHONE["width"] + 1, (selector, box)
-    # edycja komentarza i formularz oceny też mieszczą się w ekranie
     page.locator("#comments .comment").last.get_by_role("link", name="Edytuj").tap()
     assert no_horizontal_scroll(page)
     box = page.locator("#comments .comment textarea").bounding_box()
     assert box["x"] + box["width"] <= PHONE["width"] + 1
-    # tabela klipów to karty z podsumowaniem ocen
     page.goto(f"/clips?match_id={match_id}")
     expect(page.locator("#clips-list td[data-label='Oceny']").first).to_contain_text("1× dyskusyjna")
     assert page.evaluate("getComputedStyle(document.querySelector('#clips-list thead')).position") == "absolute"

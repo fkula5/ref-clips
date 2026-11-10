@@ -1,6 +1,4 @@
-"""Dictionary of assessment sheet elements (admin panel): add, rename, reorder, deactivate, delete when unused.
-
-A sheet copies the element name when it is created, so none of these operations changes an existing sheet.
+"""A sheet copies the element name at creation, so none of these operations changes an existing sheet.
 "Used" means referenced by at least one sheet row; a used element can only be deactivated.
 """
 from __future__ import annotations
@@ -14,7 +12,6 @@ from app.textutil import normalize
 
 
 class SheetElementError(ValueError):
-    """Invalid change of the element dictionary (Polish message; HTTP 422, 409 when the element is in use)."""
     status_code = 422
 
 
@@ -30,14 +27,13 @@ def ordered(db: Session, *, active_only: bool = False) -> list[SheetElement]:
 
 
 def usage_counts(db: Session) -> dict[int, int]:
-    """Element id -> number of sheets that use it."""
     return {eid: n for eid, n in db.execute(
         select(SheetRow.element_id, func.count()).where(SheetRow.element_id.is_not(None))
         .group_by(SheetRow.element_id))}
 
 
 def renumber(db: Session) -> list[SheetElement]:
-    """Assigns sort 10, 20, ... in the current order, so that swapping two neighbours is always possible."""
+    """Gaps of 10, so swapping two neighbours is always possible."""
     items = ordered(db)
     for index, element in enumerate(items, start=1):
         element.sort = index * 10
@@ -59,7 +55,7 @@ def _clean_name(db: Session, name: str, own_id: int | None) -> str:
 
 
 def create(db: Session, name: str) -> SheetElement:
-    element = SheetElement(name=_clean_name(db, name, None), is_active=True, sort=10 ** 6)  # at the end
+    element = SheetElement(name=_clean_name(db, name, None), is_active=True, sort=10 ** 6)
     db.add(element)
     db.flush()
     renumber(db)
@@ -68,7 +64,6 @@ def create(db: Session, name: str) -> SheetElement:
 
 
 def rename(db: Session, element: SheetElement, name: str) -> None:
-    """Existing sheets keep the old name."""
     element.name = _clean_name(db, name, element.id)
     db.commit()
 

@@ -1,7 +1,5 @@
-"""Funkcje odłożone do wersji 2: korekta granic klipu i eksport ZIP + CSV.
-
-Kod jest utrzymywany i testowany, ale trasy nie są dołączone do aplikacji ani podlinkowane
-w interfejsie MVP. Włącza je zmienna `REFCLIPS_V2_FEATURES=1` (patrz app/main.py).
+"""Deferred features: maintained and tested, but the routes are neither mounted nor linked in the MVP
+UI. Enabled by `REFCLIPS_V2_FEATURES=1` (see app/main.py).
 """
 from __future__ import annotations
 
@@ -29,7 +27,6 @@ from app.textutil import format_clock
 router = APIRouter()
 
 
-# --- eksport ZIP (przed trasami z {id}) -----------------------------------------
 def _csv_text(clips: list[Clip], names: dict[int, str]) -> str:
     out = io.StringIO()
     writer = csv.writer(out, delimiter=";")
@@ -65,12 +62,10 @@ def export_zip(db: Session = Depends(get_db), user: User = require(permissions.c
                         background=BackgroundTask(os.unlink, tmp_path))
 
 
-# --- korekta granic klipu ---------------------------------------------------------
 @router.post("/clips/{clip_id}/adjust")
 def clip_adjust(db: Session = Depends(get_db), clip: Clip = Depends(get_clip),
                 user: User = require(via_match(permissions.can_manage_clips), get_clip),
                 start: str = Form(), end: str = Form()):
-    """Korekta początku/końca klipu (m:ss lub liczba sekund) i ponowne wycięcie."""
     if clip.video.purged_at is not None or not clip.video.proxy_path:
         raise HTTPException(409, "Pełnego nagrania nie ma już na serwerze — klipu nie da się wyciąć ponownie")
     def to_seconds(text: str) -> float | None:

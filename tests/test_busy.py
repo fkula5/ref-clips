@@ -1,4 +1,3 @@
-"""Sprawdzenie zajętości przed wdrożeniem (app/busy.py): uploady, zadania w toku i w kolejce."""
 from datetime import timedelta
 
 from app import busy
@@ -15,34 +14,34 @@ def _upload(db, user, *, offset, size=2 * GB, minutes_ago=1, name="IMG_2056.MOV"
     db.commit()
 
 
-def test_pusta_baza_jest_wolna(db):
+def test_empty_database_is_idle(db):
     assert busy.busy_items(db) == []
 
 
-def test_aktywny_upload_blokuje_z_opisem(db, admin):
+def test_active_upload_blocks_with_a_description(db, admin):
     _upload(db, admin[1], offset=int(1.6 * GB), size=int(2.7 * GB), minutes_ago=2)
     assert busy.busy_items(db) == [
         "upload IMG_2056.MOV — 1,6 GB/2,7 GB, ostatnia aktywność 2 min temu"]
 
 
-def test_upload_bez_aktywnosci_nie_blokuje_ale_jest_zliczony(db, admin):
+def test_upload_without_activity_does_not_block_but_is_counted(db, admin):
     _upload(db, admin[1], offset=GB, minutes_ago=30)
     assert busy.busy_items(db) == []
     assert busy.idle_uploads(db) == 1
 
 
-def test_ukonczony_upload_nie_blokuje(db, admin):
+def test_finished_upload_does_not_block(db, admin):
     _upload(db, admin[1], offset=2 * GB, size=2 * GB)
     assert busy.busy_items(db) == []
 
 
-def test_upload_tuz_przed_progiem(db, admin):
+def test_upload_just_before_the_threshold(db, admin):
     _upload(db, admin[1], offset=100, size=1000, minutes_ago=busy.ACTIVE_UPLOAD_MINUTES - 1)
     assert len(busy.busy_items(db)) == 1
-    assert "100 B" not in busy.busy_items(db)[0]   # małe pliki w MB, nie bajtach
+    assert "100 B" not in busy.busy_items(db)[0]
 
 
-def test_trwajaca_konwersja_z_postepem(db, admin):
+def test_running_conversion_with_progress(db, admin):
     match = make_match(db)
     video = Video(match_id=match.id, label="Całość", status="processing", original_filename="mecz.mp4")
     db.add(video)
@@ -52,7 +51,7 @@ def test_trwajaca_konwersja_z_postepem(db, admin):
     assert busy.busy_items(db) == [f"konwersja nagrania #{video.id} (mecz.mp4) — 43%"]
 
 
-def test_zadania_w_kolejce_sa_zliczone(db, admin):
+def test_queued_jobs_are_counted(db, admin):
     match = make_match(db)
     v1 = Video(match_id=match.id, status="queued")
     v2 = Video(match_id=match.id, status="queued")
@@ -64,7 +63,7 @@ def test_zadania_w_kolejce_sa_zliczone(db, admin):
     assert busy.busy_items(db) == ["w kolejce: 2 zadania (konwersja ×2)"]
 
 
-def test_zakonczone_i_bledne_zadania_nie_blokuja(db, admin):
+def test_finished_and_failed_jobs_do_not_block(db, admin):
     match = make_match(db)
     video = Video(match_id=match.id, status="error")
     db.add(video)
@@ -75,7 +74,7 @@ def test_zakonczone_i_bledne_zadania_nie_blokuja(db, admin):
     assert busy.busy_items(db) == []
 
 
-def test_ciecie_nagrania_w_bledzie_lub_usunietego_nie_blokuje(db, admin):
+def test_cut_of_an_errored_or_deleted_recording_does_not_block(db, admin):
     match = make_match(db)
     video = make_ready_video(db, match)
     clip = Clip(match_id=match.id, video_id=video.id, time_sec=10.0, status="new")
@@ -92,7 +91,7 @@ def test_ciecie_nagrania_w_bledzie_lub_usunietego_nie_blokuje(db, admin):
     assert busy.busy_items(db) == []
 
 
-def test_cli_kody_wyjscia_i_komunikaty(db, admin, capsys):
+def test_cli_exit_codes_and_messages(db, admin, capsys):
     assert busy.main() == 0
     assert "Wolne" in capsys.readouterr().out
     _upload(db, admin[1], offset=GB, minutes_ago=0)
@@ -101,7 +100,7 @@ def test_cli_kody_wyjscia_i_komunikaty(db, admin, capsys):
     assert out.startswith("ZAJĘTE") and "IMG_2056.MOV" in out and "przed chwilą" in out
 
 
-def test_cli_blad_bazy_to_kod_2(db, monkeypatch, capsys):
+def test_cli_database_error_is_code_2(db, monkeypatch, capsys):
     def boom():
         raise RuntimeError("baza niedostępna")
     monkeypatch.setattr(busy, "SessionLocal", boom)
@@ -109,5 +108,5 @@ def test_cli_blad_bazy_to_kod_2(db, monkeypatch, capsys):
     assert "BŁĄD" in capsys.readouterr().err
 
 
-def test_odmiana_zadan():
+def test_job_noun_inflection():
     assert [busy._zadan(n) for n in (1, 2, 5, 12, 22)] == ["zadanie", "zadania", "zadań", "zadań", "zadania"]

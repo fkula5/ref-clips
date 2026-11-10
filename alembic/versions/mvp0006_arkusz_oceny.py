@@ -1,14 +1,4 @@
-"""Qualifier assessment sheet (descriptive, no points).
-
-Additive only: the dictionary `sheet_elements` (seeded with the ten standard elements), `sheets`
-(one per match and coach), and the snapshot tables `sheet_columns` (officials), `sheet_rows`
-(elements) and `sheet_cells` (comments). Deleting a match cascades to its sheets; the author FK has no
-cascade (like ratings). No existing table is touched.
-
-Revision ID: mvp0006
-Revises: mvp0005
-Create Date: 2026-11-09 20:00:00.000000
-"""
+"""Qualifier assessment sheet (descriptive, no points)."""
 from alembic import op
 import sqlalchemy as sa
 
@@ -18,7 +8,6 @@ down_revision = 'mvp0005'
 branch_labels = None
 depends_on = None
 
-# The standard elements, in display order (the admin can edit the list afterwards).
 DEFAULT_ELEMENTS = [
     "Obowiązki przedmeczowe", "Przygotowanie fizyczne", "Mechanika", "Sygnalizacja", "Ocena kontaktów",
     "Ocena błędów", "Współpraca", "Kontrola gry", "Przywództwo", "Jakość pracy",

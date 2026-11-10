@@ -1,5 +1,4 @@
-{# Jeden komentarz: widok zwykły albo formularz edycji (editing). Zmienne: cm, cbase, editing,
-   edit_error, edit_draft. Treść jest zwykłym tekstem (autoescape); łamania linii zachowuje CSS pre-wrap. #}
+{# Content is plain text (autoescape); line breaks are kept by CSS pre-wrap. #}
 {% if editing %}
 <div class="comment editing" id="comment-{{ cm.id }}">
   <form class="form" method="post" action="{{ cbase }}/comments/{{ cm.id }}/edit"

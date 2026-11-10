@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# Kopia zapasowa ref-clips na serwerze: baza (API kopii zapasowej SQLite) + klipy, bez pełnych
-# nagrań i wersji roboczych. Wynik: $BACKUP_ROOT/RRRR-MM-DD (14 ostatnich migawek; klipy jako
-# twarde dowiązania, więc kolejne dni zajmują tylko nowe klipy). Uruchamia go systemd timer
-# (deploy/ref-clips-backup.timer), można też ręcznie: sudo /opt/ref-clips/deploy/backup.sh
-# Praca idzie w jednorazowym kontenerze aplikacji — na hoście nie trzeba sqlite3 ani rsync.
+# Server backup: DB (SQLite backup API) + clips, without full recordings and drafts. Result:
+# $BACKUP_ROOT/YYYY-MM-DD (last 14 snapshots; clips as hard links, so later days take only new clips).
+# Run by the systemd timer (deploy/ref-clips-backup.timer) or by hand: sudo
+# /opt/ref-clips/deploy/backup.sh
+# Runs in a one-off app container: no sqlite3 or rsync needed on the host.
 #
-# Zmienne (opcjonalne): REFCLIPS_DIR (katalog z compose.yaml), BACKUP_ROOT, KEEP_BACKUPS,
-# COMPOSE_FILE (domyślnie compose.yaml:compose.prod.yaml), COMPOSE_PROJECT_NAME.
+# Optional variables: REFCLIPS_DIR (directory with compose.yaml), BACKUP_ROOT, KEEP_BACKUPS,
+# COMPOSE_FILE (default compose.yaml:compose.prod.yaml), COMPOSE_PROJECT_NAME.
 set -euo pipefail
 
 REFCLIPS_DIR="${REFCLIPS_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
@@ -15,13 +15,13 @@ KEEP_BACKUPS="${KEEP_BACKUPS:-14}"
 export COMPOSE_FILE="${COMPOSE_FILE:-compose.yaml:compose.prod.yaml}"
 
 cd "$REFCLIPS_DIR"
-umask 077   # w kopii są nagrania z wizerunkiem zawodników — tylko dla właściciela
+umask 077  # the backup holds recordings of players: owner only
 mkdir -p "$BACKUP_ROOT"
 chmod 700 "$BACKUP_ROOT"
 
 echo "==> Kopia zapasowa ref-clips do $BACKUP_ROOT ($(date -u +%FT%TZ))"
-# --user = bieżący użytkownik hosta: pliki kopii należą do niego (root z systemd, czyta cały wolumin).
-# --no-deps: nie startuje init/app, działa także przy zatrzymanej aplikacji.
+# --user = current host user: backup files belong to them (root from systemd, reads the whole volume).
+# --no-deps: does not start init/app, works while the app is stopped.
 docker compose run --rm -T --no-deps --user "$(id -u):$(id -g)" \
   -v "$BACKUP_ROOT:/backup" app \
   python - /data /backup "$KEEP_BACKUPS" < "$REFCLIPS_DIR/deploy/backup_snapshot.py"

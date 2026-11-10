@@ -1,9 +1,8 @@
-"""Publiczne strony linków udostępniających klipy: bez logowania, sesji i CSRF (tylko odczyt).
-
-Trasy nie używają `current_user`, `render()` ani `base.html`: nie czytają ciasteczek sesji, nie ustawiają
-żadnych ciasteczek i nie pokazują danych użytkownika, nawet gdy przeglądarka jest zalogowana. Nagłówki
-prywatności daje `app.privacy` (cały prefiks `/s/`). W adresach jest trwała pozycja klipu w linku,
-nigdy id klipu ani ścieżka pliku. Linki tworzą i unieważniają zalogowani: `app/routers/share_links.py`."""
+"""Public pages: no login, session or CSRF (read-only). Routes do not use `current_user`, `render()` or
+base.html: no session cookie is read or set, and no user data is shown even if the browser is logged
+in. URLs carry the stable position of the clip in the link, never the clip id or file path. Privacy
+headers come from `app.privacy`.
+"""
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Request
@@ -19,7 +18,7 @@ from app.web import templates
 router = APIRouter()
 
 NO_STORE = {"Cache-Control": "no-store"}
-VIDEO_HEADERS = {"Cache-Control": "private, no-store"}   # Range (206) działa, przeglądarka nie zachowuje pliku
+VIDEO_HEADERS = {"Cache-Control": "private, no-store"}  # Range (206) works; the browser does not keep the file
 
 
 def message_page(request: Request, status_code: int, heading: str, message: str, headers: dict | None = None):
@@ -28,8 +27,9 @@ def message_page(request: Request, status_code: int, heading: str, message: str,
 
 
 def gone_response(request: Request):
-    """Jedna odpowiedź na link nieistniejący, wygasły, unieważniony i bez klipów (oraz na każdy błędny adres
-    pod `/s/`): po niej nie da się odróżnić tych przypadków."""
+    """One response for a missing, expired, revoked or empty link (and any bad URL under `/s/`), so the
+    cases cannot be told apart.
+    """
     return message_page(request, 404, "Link jest nieaktywny",
                         "Ten link nie istnieje, wygasł albo został unieważniony. Poproś osobę, która go "
                         "przesłała, o nowy.")
@@ -40,7 +40,7 @@ def share_page(request: Request, code: str, db: Session = Depends(get_db)):
     view = share.open_link(db, code)
     if view is None:
         return gone_response(request)
-    if request.method == "GET":   # tylko wejście na stronę; pliki, Range, HEAD i ZIP nie liczą się jako wejścia
+    if request.method == "GET":  # only page visits count; files, Range, HEAD and ZIP do not
         share.count_view(db, view.link.id)
     return templates.TemplateResponse(request, "share.html", {"code": code, "view": view}, headers=NO_STORE)
 
@@ -56,7 +56,6 @@ def share_file(request: Request, code: str, position: str, db: Session = Depends
 
 @router.get("/s/{code}/clips/{position}/download")
 def share_download(request: Request, code: str, position: str, db: Session = Depends(get_db)):
-    """Pobranie MP4 — tylko w linku do jednego klipu (przy kilku jest jeden ZIP)."""
     view = share.open_link(db, code)
     entry = view.clip_at(position) if view and view.single else None
     if entry is None:
@@ -67,7 +66,6 @@ def share_download(request: Request, code: str, position: str, db: Session = Dep
 
 @router.get("/s/{code}/zip")
 def share_zip(request: Request, code: str, db: Session = Depends(get_db)):
-    """Wszystkie klipy linku jako ZIP (tylko w linku do kilku klipów). Plik tymczasowy znika po wysłaniu."""
     view = share.open_link(db, code)
     if view is None or view.single:
         return gone_response(request)

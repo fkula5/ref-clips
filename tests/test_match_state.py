@@ -1,4 +1,3 @@
-"""Stan meczu wyliczany z nagrań: czyste funkcje, bez bazy."""
 from datetime import datetime
 
 import pytest
@@ -32,7 +31,7 @@ def test_converting(status):
 def test_converting_shows_queue_position_or_progress():
     queued = services.match_state([video("queued", id=5)], {5: 3})
     assert queued.detail == "pozycja w kolejce: 3"
-    assert services.match_state([video("queued", id=5)]).detail == ""             # brak zadania
+    assert services.match_state([video("queued", id=5)]).detail == ""
     assert services.match_state([video("processing", id=5)], {5: 1}).detail == "w toku"
     best = services.match_state([video("queued", id=1), video("queued", id=2)], {1: 4, 2: 2})
     assert best.detail == "pozycja w kolejce: 2"
@@ -76,7 +75,7 @@ def test_multi_quarter_file_needs_marks_for_declared_quarters_only():
     assert code(video("ready", "Q1,Q2")) == "no_marks"
     assert code(video("ready", "Q1,Q2", marks=("Q1",))) == "no_marks"
     assert code(video("ready", "Q1,Q2", marks=("Q1", "Q2"))) == "ready"
-    assert code(video("ready", "Q3,Q4", marks=("Q3", "Q4"))) == "ready"     # nie wymaga Q1/Q2
+    assert code(video("ready", "Q3,Q4", marks=("Q3", "Q4"))) == "ready"
 
 
 def test_single_quarter_file_does_not_need_marks():

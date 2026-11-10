@@ -1,10 +1,9 @@
-"""Scenariusz b) Administrator zakłada konto z rolami; zaproszenie w nowym kontekście przeglądarki."""
 from playwright.sync_api import expect
 
 from tests.e2e.support import PASSWORD
 
 
-def test_dodanie_konta_link_zaproszenia_i_logowanie_nowym_kontem(ui):
+def test_adding_an_account_invite_link_and_login_with_the_new_account(ui):
     admin = ui.page("admin")
     admin.goto("/admin/users")
     admin.get_by_label("Imię i nazwisko").first.fill("Nowy Sędzia")
@@ -18,17 +17,15 @@ def test_dodanie_konta_link_zaproszenia_i_logowanie_nowym_kontem(ui):
     expect(admin.locator(".invite-box")).to_contain_text("Nowy Sędzia (nowy.sedzia@example.com)")
     invite_url = link_box.input_value()
     assert "/set-password/" in invite_url
-    # PRG: po zapisie jesteśmy na zwykłym adresie listy kont (token nie leci w adresie), a odświeżenie
-    # strony nie wysyła formularza ponownie i nie pokazuje linku drugi raz
+    # PRG: the token is not in the URL, and a refresh neither resubmits the form nor shows the link
+    # again.
     expect(admin).to_have_url(ui.server.base_url + "/admin/users")
-    # nowe konto na liście czeka na ustawienie hasła
     expect(admin.locator("tr", has_text="nowy.sedzia@example.com")).to_contain_text("czeka na ustawienie hasła")
     admin.reload()
     expect(admin.get_by_role("heading", name="Konta")).to_be_visible()
     expect(admin.locator("#invite-link")).to_have_count(0)
     assert ui.server.user_by_email("nowy.sedzia@example.com") is not None
 
-    # Link otwiera osoba zapraszana — osobny kontekst (bez sesji admina).
     guest = ui.page()
     guest.goto(invite_url)
     expect(guest.get_by_role("heading", name="Ustaw hasło")).to_be_visible()
@@ -43,21 +40,19 @@ def test_dodanie_konta_link_zaproszenia_i_logowanie_nowym_kontem(ui):
     guest.get_by_label("Hasło").fill(PASSWORD)
     guest.get_by_role("button", name="Zaloguj").click()
     expect(guest.locator(".who")).to_contain_text("Nowy Sędzia")
-    expect(guest.get_by_role("link", name="+ Nowy mecz")).to_be_visible()  # role sędziego i szkoleniowca
+    expect(guest.get_by_role("link", name="+ Nowy mecz")).to_be_visible()
     expect(guest.get_by_role("link", name="Użytkownicy")).to_have_count(0)
 
-    # Token nie zostaje w dzienniku dostępu serwera (ani w przekierowaniu po utworzeniu konta, ani w linku).
     token = invite_url.rsplit("/", 1)[-1]
     assert token not in (ui.server.logs / "server.log").read_text(errors="replace")
 
-    # Link jest jednorazowy: ponowne otwarcie pokazuje komunikat o nieważnym linku.
     ui.allow(r"status of 410")
     again = ui.page()
     again.goto(invite_url)
     expect(again.get_by_role("heading", name="Link nieważny")).to_be_visible()
 
 
-def test_niezgodne_hasla_pokazuja_blad_w_formularzu(ui):
+def test_mismatched_passwords_show_an_error_in_the_form(ui):
     ui.allow(r"status of 422")
     admin = ui.page("admin")
     admin.goto("/admin/users")

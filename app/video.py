@@ -1,4 +1,3 @@
-"""Wrappery ffprobe/ffmpeg: odczyt metadanych, konwersja do wersji roboczej, wycinanie klipów."""
 from __future__ import annotations
 
 import json
@@ -57,7 +56,6 @@ def _parse_fraction(value: str | None) -> float | None:
 
 
 def probe(path: Path) -> dict:
-    """Zwraca {'duration', 'width', 'height', 'fps', 'has_audio'} z ffprobe."""
     _, ffprobe = _require()
     proc = subprocess.run(
         [ffprobe, "-v", "error", "-print_format", "json", "-show_format", "-show_streams", str(path)],
@@ -74,12 +72,13 @@ def probe(path: Path) -> dict:
     avg_fps, nominal_fps = _parse_fraction(video.get("avg_frame_rate")), _parse_fraction(video.get("r_frame_rate"))
     return {
         "duration": float(duration) if duration else None,
-        # czas trwania samej ścieżki wideo (bez wpływu dłuższego audio, edit list ani start_time)
+        # duration of the video stream alone (unaffected by longer audio, edit lists or start_time)
         "video_duration": float(video.get("duration") or duration or 0) or None,
         "width": video.get("width"),
         "height": video.get("height"),
         "fps": avg_fps or nominal_fps,
-        # największa z deklarowanych liczb klatek (nagrania z telefonów bywają VFR: średnio 30, nominalnie 60)
+        # the largest of the declared frame rates (phone recordings are often VFR: 30 average, 60
+        # nominal)
         "max_fps": max(avg_fps or 0.0, nominal_fps or 0.0) or None,
         "has_audio": any(s.get("codec_type") == "audio" for s in streams),
     }
@@ -87,8 +86,9 @@ def probe(path: Path) -> dict:
 
 def build_transcode_command(ffmpeg: str, src: Path, dst: Path, src_fps: float | None = None,
                             preset: str = "veryfast") -> list[str]:
-    """Wersja robocza: H.264/AAC, maks. 720p i 30 kl./s (niższej liczby klatek nie podnosimy),
-    klatka kluczowa co sekundę, +faststart. `src_fps` to największa liczba klatek źródła."""
+    """H.264/AAC, max 720p and 30 fps (a lower frame rate is not raised), keyframe every second,
+    +faststart. `src_fps` is the source's largest frame rate.
+    """
     filters = ["scale=-2:'min(720,ih)'"]
     if src_fps and src_fps > config.TRANSCODE_MAX_FPS + 0.5:
         filters.append(f"fps={config.TRANSCODE_MAX_FPS}")
@@ -108,16 +108,15 @@ def build_transcode_command(ffmpeg: str, src: Path, dst: Path, src_fps: float | 
 
 
 def verify_tolerance(duration: float) -> float:
-    """Dopuszczalna różnica czasu trwania: większa z VERIFY_MIN_SECONDS i VERIFY_RELATIVE długości."""
     return max(config.VERIFY_MIN_SECONDS, config.VERIFY_RELATIVE * duration)
 
 
 def verify_conversion(source: dict, proxy: Path) -> dict:
-    """Sprawdza wynik konwersji: wersja robocza ma ścieżkę wideo, a czas trwania jej ścieżki wideo
-    zgadza się z oryginałem (porównujemy ścieżki wideo, nie formaty, bo nagrania z telefonów mają
-    audio dłuższe od wideo, edit listy i start_time różny od 0). Ucięty wynik jest odrzucany.
-    Zwraca probe wersji roboczej albo rzuca FFmpegError."""
-    result = probe(proxy)  # rzuca FFmpegError bez ścieżki wideo
+    """Compares video-track durations, not container formats, because phone recordings have audio longer
+    than video, edit lists and a start_time other than 0. A truncated result is rejected. Returns the
+    draft's probe or raises FFmpegError.
+    """
+    result = probe(proxy)
     expected, actual = source.get("video_duration"), result.get("video_duration")
     if not expected or not actual:
         raise FFmpegError("Nie udało się odczytać czasu trwania — wyniku nie można zweryfikować")
@@ -128,14 +127,14 @@ def verify_conversion(source: dict, proxy: Path) -> dict:
     return result
 
 
-# Metadane źródła (tytuł, lokalizacja GPS, data nagrania, nazwy strumieni) nie przechodzą do wyników:
-# klipy można udostępnić linkiem bez konta, więc nie mogą zdradzać nic poza obrazem i dźwiękiem.
+# Source metadata (title, GPS location, recording date, stream names) must not reach the results: clips
+# can be shared by link without an account, so they may reveal nothing beyond picture and sound.
 STRIP_METADATA = ["-map_metadata", "-1", "-map_metadata:s:v", "-1", "-map_metadata:s:a", "-1",
                   "-map_chapters", "-1"]
 
 
 def build_cut_command(ffmpeg: str, src: Path, dst: Path, start: float, duration: float) -> list[str]:
-    """Dokładne wycięcie z przekodowaniem (-ss przed -i + re-encode daje precyzję co do klatki)."""
+    """-ss before -i plus re-encode is frame-accurate"""
     return [
         ffmpeg, "-y", "-hide_banner", "-loglevel", "error", "-nostdin",
         "-ss", f"{start:.3f}", "-i", str(src), "-t", f"{duration:.3f}",
@@ -149,7 +148,6 @@ def build_cut_command(ffmpeg: str, src: Path, dst: Path, start: float, duration:
 
 
 def _low_priority(cmd: list[str]) -> list[str]:
-    """Polecenie uruchamiane z obniżonym priorytetem (nice), żeby konwersja nie dusiła strony."""
     nice = shutil.which("nice")
     return [nice, "-n", str(config.FFMPEG_NICE), *cmd] if nice and config.FFMPEG_NICE else cmd
 
@@ -160,16 +158,16 @@ _POLL_SECONDS = 0.5
 
 
 class FFmpegStalled(FFmpegError):
-    """ffmpeg przestał zgłaszać postęp (albo przekroczył limit czasu) i został zabity."""
+    pass
 
 
-# Uruchomione teraz procesy ffmpeg (każdy we własnej grupie procesów) — worker zabija je przy SIGTERM.
+# Running ffmpeg processes (each in its own process group); the worker kills them on SIGTERM.
 _active: set[subprocess.Popen] = set()
 _active_lock = threading.Lock()
 
 
 def _kill_group(proc: subprocess.Popen) -> None:
-    """Zabija cały proces razem z potomkami (grupa procesów; `nice` i ffmpeg nie zostają osierocone)."""
+    """Kills the whole process group, so `nice` and ffmpeg are not orphaned."""
     try:
         os.killpg(proc.pid, signal.SIGKILL)
     except (ProcessLookupError, PermissionError):
@@ -178,8 +176,7 @@ def _kill_group(proc: subprocess.Popen) -> None:
 
 
 def _reap(proc: subprocess.Popen) -> None:
-    """Czeka na zakończenie zabitego procesu, ale nie dłużej niż chwilę (proces w stanie D, np. na
-    zawieszonym dysku, nie reaguje nawet na SIGKILL — worker nie może przez to stanąć)."""
+    """A process in state D (e.g. on a hung disk) ignores even SIGKILL; the worker must not hang on it."""
     try:
         proc.wait(timeout=15)
     except subprocess.TimeoutExpired:
@@ -187,7 +184,6 @@ def _reap(proc: subprocess.Popen) -> None:
 
 
 def terminate_active() -> None:
-    """Zabija wszystkie trwające procesy ffmpeg (wywoływane przy zatrzymaniu workera)."""
     with _active_lock:
         procs = list(_active)
     for proc in procs:
@@ -195,8 +191,8 @@ def terminate_active() -> None:
 
 
 def _spawn(cmd: list[str]) -> subprocess.Popen:
-    # Własna sesja = własna grupa procesów: można zabić cały ffmpeg jednym sygnałem, a Ctrl+C
-    # w terminalu workera nie rozwala konwersji w pół drogi (zadanie wraca do kolejki przy starcie).
+    # Own session = own process group: ffmpeg can be killed with one signal, and Ctrl+C in the worker's
+    # terminal does not break a conversion midway (the job returns to the queue at start).
     proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
                             start_new_session=True)
     with _active_lock:
@@ -221,12 +217,11 @@ def _stall_text(seconds: float) -> str:
 
 def _run_watched(cmd: list[str], stall: float, on_progress: Callable[[float], None] | None,
                  duration: float | None) -> tuple[int, str]:
-    """Uruchamia ffmpeg z `-progress pipe:1` i pilnuje postępu. Zwraca (kod wyjścia, stderr).
-
-    Stdout czyta osobny wątek (czytanie blokuje, a zawieszony ffmpeg może nic nie wypisać), a pętla
-    w wątku wywołującym co chwilę sprawdza, kiedy ostatnio `out_time` się zmienił. Gdy minie `stall`
-    sekund bez zmiany (albo bez żadnych danych), cała grupa procesów jest zabijana i rzucany
-    `FFmpegStalled`. `on_progress` jest wołane w wątku wywołującym (sesja bazy nie jest wątkowo-bezpieczna)."""
+    """Stdout is read by a separate thread (reads block and a hung ffmpeg may print nothing); the
+    calling thread's loop checks when `out_time` last changed. After `stall` seconds without change
+    (or without any data) the whole process group is killed and FFmpegStalled raised. `on_progress`
+    is called in the calling thread (a DB session is not thread-safe).
+    """
     proc = _spawn(cmd)
     lines: queue.Queue[str | None] = queue.Queue()
     stderr_parts: list[str] = []
@@ -265,7 +260,7 @@ def _run_watched(cmd: list[str], stall: float, on_progress: Callable[[float], No
                 if (m := _OUT_TIME_RE.match(text)) and m.group(1) != last_value:
                     last_value, last_change = m.group(1), time.monotonic()
                 if (m := _PROGRESS_RE.match(text)) and duration and on_progress:
-                    # out_time_us i out_time_ms w ffmpeg są podawane w mikrosekundach
+                    # out_time_us and out_time_ms are both in microseconds in ffmpeg
                     on_progress(min(0.99, int(m.group(1)) / 1_000_000 / duration))
             if eof and proc.poll() is not None:
                 break
@@ -279,15 +274,13 @@ def _run_watched(cmd: list[str], stall: float, on_progress: Callable[[float], No
             thread.join(timeout=5)
         return proc.returncode, "".join(stderr_parts)
     finally:
-        _release(proc)  # także przy wyjątku, SIGTERM workera i przerwaniu: nic nie zostaje w tle
+        _release(proc)  # also on exception, worker SIGTERM and interruption: nothing is left running
 
 
 def transcode_to_proxy(src: Path, dst: Path, duration: float | None,
                        on_progress: Callable[[float], None] | None = None,
                        src_fps: float | None = None, stall_seconds: float | None = None) -> None:
-    """Konwertuje do wersji roboczej; zapisuje najpierw do pliku tymczasowego. Gdy ffmpeg przez
-    `stall_seconds` (domyślnie `config.FFMPEG_STALL_SECONDS`) nie zgłosi postępu, jest zabijany
-    i rzucany jest `FFmpegStalled`; plik tymczasowy znika w każdym przypadku błędu."""
+    """Writes to a temp file first; it is removed on any error."""
     ffmpeg, _ = _require()
     tmp = dst.with_name(dst.stem + ".part.mp4")
     dst.parent.mkdir(parents=True, exist_ok=True)
@@ -304,7 +297,6 @@ def transcode_to_proxy(src: Path, dst: Path, duration: float | None,
 
 
 def cut_timeout(duration: float) -> float:
-    """Limit czasu cięcia klipu o danej długości (s)."""
     return max(float(config.CUT_TIMEOUT_MIN_SECONDS), config.CUT_TIMEOUT_PER_CLIP_SECOND * duration)
 
 

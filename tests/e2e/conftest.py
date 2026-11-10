@@ -1,9 +1,7 @@
-"""Testy interfejsu w przeglądarce (Playwright, Chromium): prawdziwy serwer i worker.
-
-Uruchomienie: `pytest -m e2e` albo `scripts/e2e.sh`. Domyślne `pytest` te testy pomija.
-Każdy test kończy się porażką, gdy w przeglądarce wystąpi błąd JavaScript (`pageerror`,
-`console.error`), chyba że test jawnie go dopuścił (`ui.allow("wzorzec")`). Przy porażce zapisujemy
-zrzut ekranu, log konsoli i logi serwera w katalogu tymczasowym (ścieżka w komunikacie błędu).
+"""Run with `pytest -m e2e` or `scripts/e2e.sh`; plain `pytest` skips these. Every test fails on a
+browser JavaScript error (`pageerror`, `console.error`) unless it allows it with
+`ui.allow("pattern")`. On failure a screenshot, the console log and the server logs are saved in a
+temp dir (path in the message).
 """
 from __future__ import annotations
 
@@ -33,10 +31,8 @@ def pytest_collection_modifyitems(items):
             item.add_marker(pytest.mark.e2e)
 
 
-# --- serwer ---------------------------------------------------------------------------
 @pytest.fixture(scope="session")
 def sample_video(tmp_path_factory) -> Path:
-    """Wideo próbne (50 s, 640x360, z dźwiękiem) — jedno na cały przebieg."""
     return make_sample_video(tmp_path_factory.mktemp("e2e-video") / "mecz-probka.mp4")
 
 
@@ -63,16 +59,13 @@ def _expect_timeout():
     expect.set_options(timeout=10_000)
 
 
-# --- przeglądarka ---------------------------------------------------------------------
 @pytest.fixture(scope="session")
 def browser_type_launch_args(browser_type_launch_args):
-    # Odtwarzanie z wywołania skryptu bez gestu użytkownika (np. video.play() w teście).
+    # Playback started from a script without a user gesture (e.g. video.play() in a test).
     return {**browser_type_launch_args, "args": ["--autoplay-policy=no-user-gesture-required"]}
 
 
 class Diagnostics:
-    """Zbiera logi konsoli i błędy JavaScript ze wszystkich stron kontekstów testu."""
-
     def __init__(self):
         self.lines: list[str] = []
         self.errors: list[str] = []
@@ -101,8 +94,6 @@ class Diagnostics:
 
 
 class UI:
-    """Fabryka stron przeglądarki dla testu: konteksty z zalogowaną rolą, diagnostyka, sprzątanie."""
-
     def __init__(self, browser: Browser, server: Server, states: dict[str, Path]):
         self.browser, self.server, self.states = browser, server, states
         self.contexts: list[BrowserContext] = []
@@ -110,14 +101,13 @@ class UI:
         self.diag = Diagnostics()
 
     def allow(self, pattern: str) -> None:
-        """Dopuszcza błąd konsoli pasujący do wyrażenia regularnego (test sprawdza go sam)."""
         self.diag.allow(pattern)
 
     def context(self, role: str | None = None, *, mobile: bool = False, **kwargs) -> BrowserContext:
         options = dict(base_url=self.server.base_url, locale="pl-PL", viewport=MOBILE if mobile else DESKTOP)
         if mobile:
             options.update(is_mobile=True, has_touch=True, device_scale_factor=2)
-        options.update(kwargs)  # np. własny viewport telefonu
+        options.update(kwargs)
         if role:
             options["storage_state"] = str(self.states[role])
         context = self.browser.new_context(**options)
@@ -136,7 +126,7 @@ class UI:
         for context in self.contexts:
             try:
                 context.close()
-            except Exception:  # noqa: BLE001 - kontekst mógł zostać już zamknięty przez test
+            except Exception:  # noqa: BLE001 - the context may already be closed by the test
                 pass
 
 
@@ -149,7 +139,6 @@ def login(page: Page, email: str, password: str = PASSWORD, next_path: str = "")
 
 @pytest.fixture(scope="session")
 def role_states(browser: Browser, server: Server, tmp_path_factory) -> dict[str, Path]:
-    """Stan zalogowania (cookies) per rola, zapisany po prawdziwym logowaniu przez formularz."""
     states = {}
     folder = tmp_path_factory.mktemp("e2e-states")
     for role, (email, _name, _roles) in USERS.items():
@@ -171,7 +160,6 @@ def ui(browser, server, role_states):
     helper.close()
 
 
-# --- diagnostyka porażek ----------------------------------------------------------------
 def _safe(name: str) -> str:
     return re.sub(r"[^\w.-]+", "_", name)
 

@@ -1,11 +1,11 @@
-# Testy ref-clips: uruchamiane na każdym PR do main oraz ręcznie (workflow_dispatch).
-# Nazwy jobów (`unit`, `e2e`) są stabilne, bo ustawia się je jako wymagane sprawdzenia ochrony main
-# (docs/ci-cd.md). Nie używamy `paths:` ani innych filtrów, które pomijałyby workflow — pominięty
-# wymagany check wisiałby w stanie „oczekuje” i blokował merge.
+# Tests: run on every PR to main and manually (workflow_dispatch).
+# Job names (`unit`, `e2e`) are stable because they are set as required checks of the main protection
+# (docs/ci-cd.md). No `paths:` or other filters that would skip the workflow: a skipped required check
+# would hang as "pending" and block the merge.
 #
-# workflow_dispatch używa też release.yml dla PR-a wydania: PR utworzony przez GITHUB_TOKEN nie uruchamia
-# zdarzenia `pull_request`, więc testy odpalamy ręcznie na jego gałęzi, a wynik zgłaszamy dodatkowo jako
-# status commita (ostatni krok każdego joba). Szczegóły i ograniczenia: docs/ci-cd.md.
+# release.yml also uses workflow_dispatch for the release PR: a PR created by GITHUB_TOKEN does not
+# trigger `pull_request`, so the tests are started manually on its branch and the result is also
+# reported as a commit status (last step of each job). Details and limits: docs/ci-cd.md.
 name: CI
 
 on:
@@ -13,11 +13,9 @@ on:
     branches: [main]
   workflow_dispatch:
 
-# Domyślnie tylko odczyt; `statuses: write` dopiero w jobach (potrzebne do zgłoszenia wyniku PR-a wydania).
 permissions:
   contents: read
 
-# Nowy przebieg tego samego PR-a (lub tej samej gałęzi) anuluje starszy.
 concurrency:
   group: ci-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true

@@ -1,4 +1,3 @@
-"""Endpoint /health i znacznik życia workera."""
 import json
 import threading
 from datetime import timedelta
@@ -14,51 +13,49 @@ from app.timeutil import utcnow
 
 @pytest.fixture()
 def beat(db):
-    """Świeży znacznik życia workera."""
     health.record_heartbeat(db)
 
 
-def test_zdrowy_stos_zwraca_200_i_tylko_status(anon_client, beat):
+def test_healthy_stack_returns_200_and_only_status(anon_client, beat):
     r = anon_client.get("/health")
     assert r.status_code == 200
     assert r.json() == {"status": "ok"}
     assert r.headers["cache-control"] == "no-store"
 
 
-def test_health_nie_wymaga_logowania_ani_csrf(anon_client, beat):
-    # brak ciasteczek, brak tokenu CSRF, brak przekierowania na logowanie
+def test_health_needs_no_login_or_csrf(anon_client, beat):
     r = anon_client.get("/health", follow_redirects=False)
     assert r.status_code == 200
     assert "set-cookie" not in r.headers
     assert anon_client.head("/health").status_code == 200
 
 
-def test_brak_znacznika_workera_to_503(anon_client, db):
+def test_missing_worker_heartbeat_is_503(anon_client, db):
     r = anon_client.get("/health")
     assert r.status_code == 503
     assert r.json() == {"status": "error", "checks": {"db": "ok", "worker": "missing", "disk": "ok"}}
     assert r.headers["cache-control"] == "no-store"
 
 
-def test_stary_znacznik_to_stale(anon_client, db):
+def test_old_heartbeat_is_stale(anon_client, db):
     health.record_heartbeat(db, utcnow() - timedelta(seconds=config.HEALTH_WORKER_STALE_SECONDS + 5))
     r = anon_client.get("/health")
     assert r.status_code == 503
     assert r.json()["checks"] == {"db": "ok", "worker": "stale", "disk": "ok"}
 
 
-def test_znacznik_tuz_przed_progiem_jest_ok(anon_client, db):
+def test_heartbeat_just_before_the_threshold_is_ok(anon_client, db):
     health.record_heartbeat(db, utcnow() - timedelta(seconds=config.HEALTH_WORKER_STALE_SECONDS - 5))
     assert anon_client.get("/health").status_code == 200
 
 
-def test_nieczytelny_znacznik_to_stale(anon_client, db):
+def test_unreadable_heartbeat_is_stale(anon_client, db):
     db.add(Setting(key=health.HEARTBEAT_KEY, value="wczoraj"))
     db.commit()
     assert anon_client.get("/health").json()["checks"]["worker"] == "stale"
 
 
-def test_baza_niedostepna(anon_client, beat, monkeypatch):
+def test_database_unavailable(anon_client, beat, monkeypatch):
     def boom():
         raise RuntimeError("sqlite3.OperationalError: unable to open database file /data/ref-clips.db")
     monkeypatch.setattr(health, "SessionLocal", boom)
@@ -68,7 +65,7 @@ def test_baza_niedostepna(anon_client, beat, monkeypatch):
     assert "sqlite" not in r.text and "/data" not in r.text
 
 
-def test_malo_miejsca_na_dysku(anon_client, beat, monkeypatch):
+def test_low_disk_space(anon_client, beat, monkeypatch):
     monkeypatch.setattr(storage, "free_bytes", lambda: config.HEALTH_DISK_MIN_BYTES - 1)
     r = anon_client.get("/health")
     assert r.status_code == 503
@@ -77,7 +74,7 @@ def test_malo_miejsca_na_dysku(anon_client, beat, monkeypatch):
     assert anon_client.get("/health").status_code == 200
 
 
-def test_blad_odczytu_dysku(anon_client, beat, monkeypatch):
+def test_disk_read_error(anon_client, beat, monkeypatch):
     def boom():
         raise OSError("/data: Input/output error")
     monkeypatch.setattr(storage, "free_bytes", boom)
@@ -86,7 +83,7 @@ def test_blad_odczytu_dysku(anon_client, beat, monkeypatch):
     assert "/data" not in r.text
 
 
-def test_odpowiedz_nie_zawiera_szczegolow(anon_client, db, monkeypatch):
+def test_response_contains_no_details(anon_client, db, monkeypatch):
     monkeypatch.setattr(storage, "free_bytes", lambda: 0)
     text = anon_client.get("/health").text
     assert set(json.loads(text)) == {"status", "checks"}
@@ -94,25 +91,25 @@ def test_odpowiedz_nie_zawiera_szczegolow(anon_client, db, monkeypatch):
         assert forbidden not in text
 
 
-def test_health_poza_nawigacja(client, beat):
+def test_health_is_not_browser_navigation(client, beat):
     assert "/health" not in client.get("/").text
 
 
-def test_zapis_znacznika_to_jeden_wiersz_aktualizowany(db):
+def test_heartbeat_write_updates_a_single_row(db):
     for _ in range(3):
         health.record_heartbeat(db)
     rows = db.query(Setting).filter(Setting.key == health.HEARTBEAT_KEY).count()
     assert rows == 1
 
 
-def test_cli_workera_kod_wyjscia(db, capsys):
-    assert health.main(["health", "worker"]) == 1          # brak znacznika
+def test_worker_cli_exit_code(db, capsys):
+    assert health.main(["health", "worker"]) == 1
     health.record_heartbeat(db)
     assert health.main(["health", "worker"]) == 0
     assert health.main(["health"]) == 2
 
 
-def test_petla_znacznika_zapisuje_i_przezywa_blad(db, monkeypatch):
+def test_heartbeat_loop_writes_and_survives_an_error(db, monkeypatch):
     stop = threading.Event()
     calls = []
     real = health.record_heartbeat
@@ -135,10 +132,10 @@ def test_petla_znacznika_zapisuje_i_przezywa_blad(db, monkeypatch):
         assert health.worker_state(s) == "ok"
 
 
-def test_wersja_w_stopce_tylko_dla_zalogowanych_i_nie_w_health(client, anon_client, beat, monkeypatch):
+def test_version_in_footer_only_for_logged_in_users_and_not_in_health(client, anon_client, beat, monkeypatch):
     from app import web
     monkeypatch.setitem(web.env.globals, "app_version", "v9.8.7")
     assert 'class="app-version">ref-clips v9.8.7' in client.get("/").text
     assert "v9.8.7" not in anon_client.get("/login").text
     assert "v9.8.7" not in anon_client.get("/health").text
-    assert config.VERSION == "dev"     # bez REFCLIPS_VERSION w środowisku testów
+    assert config.VERSION == "dev"

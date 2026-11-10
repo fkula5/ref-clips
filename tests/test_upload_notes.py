@@ -1,5 +1,3 @@
-"""Notatki przy wgrywaniu: podgląd przed wysłaniem, zapis razem z uploadem, klipy po zakończeniu
-wgrywania, moment poza nagraniem, limity i dostęp."""
 import pytest
 from sqlalchemy import select
 
@@ -32,13 +30,12 @@ def clips(db):
     return db.scalars(select(Clip).order_by(Clip.time_sec)).all()
 
 
-# --- podgląd przed wysłaniem ------------------------------------------------------------------
 def test_preview_uses_match_crew_and_category_dictionary(client, db):
     match = make_match(db)
     rows = parse(client, match.id, NOTES).json()
     assert [r["line_no"] for r in rows] == [1, 2, 3, 4]
     assert [r["time_sec"] for r in rows] == [174, 197, 250, None]
-    assert rows[0]["official"] == "Filip Kowalski" and rows[0]["category"] is None   # PTS nie jest zgadywane
+    assert rows[0]["official"] == "Filip Kowalski" and rows[0]["category"] is None  # PTS is not guessed
     assert rows[1]["official"] == "Kasia Żółć" and rows[1]["category"] == "blok / szarża"
     assert rows[2]["category"] == "techniczny" and rows[2]["clock"] == "4:10"
     assert rows[3]["ok"] is False and rows[3]["warnings"]
@@ -69,7 +66,6 @@ def test_preview_permissions_and_limits(make_client, db):
     assert parse(ref_client, match.id, "\n".join(["1:00 CC kroki"] * config.NOTES_MAX_LINES)).status_code == 200
 
 
-# --- zapis razem z uploadem -------------------------------------------------------------------
 def test_notes_are_stored_with_the_session_and_become_clips_after_finish(client, db):
     match = make_match(db)
     url = tus_create(client, match.id, len(DATA), content="Q1,Q2").headers["Location"]
@@ -77,27 +73,25 @@ def test_notes_are_stored_with_the_session_and_become_clips_after_finish(client,
     r = post_notes(client, url, NOTES)
     assert r.status_code == 200 and r.json() == {"saved": True, "lines": 4}
     assert db.get(UploadSession, upload_id).notes == NOTES.rstrip()
-    assert clips(db) == []                                # klipy dopiero po zakończeniu wgrywania
+    assert clips(db) == []
     assert tus_patch(client, url, 0, DATA).status_code == 204
 
     video = latest_video(db)
     found = clips(db)
-    assert [c.time_sec for c in found] == [174, 197, 250]   # linia bez czasu jest pomijana
+    assert [c.time_sec for c in found] == [174, 197, 250]
     assert all(c.video_id == video.id and c.described_at is None and c.status == "queued" for c in found)
     assert all((c.margin_before, c.margin_after) == (15, 15) and c.author_id for c in found)
     cc, u1 = match.official("CC"), match.official("U1")
     assert found[0].official_id == cc.id and found[0].category_id is None
     assert found[1].official_id == u1.id and found[1].category.name == "blok / szarża"
     assert found[2].official_id == cc.id and found[2].category.name == "techniczny"
-    assert found[0].description == "PTS"                  # bez czasu i sędziego
-    assert found[1].description == "dlaczego nie blok?"     # alias w środku zdania: zdanie zostaje
-    assert found[2].description == ""                       # „CC faul techniczny”: nic nie zostaje
+    assert found[0].description == "PTS"
+    assert found[1].description == "dlaczego nie blok?"
+    assert found[2].description == ""
     jobs = db.scalars(select(Job).where(Job.type == "cut")).all()
     assert len(jobs) == 3
-    # cięcie czeka na wersję roboczą
     assert worker.claim_next(db).type == "transcode"
     assert worker.claim_next(db) is None
-    # kwarta nieustalona do czasu ustawienia znaczników; po ustawieniu liczy się z nich
     assert services.period_position(video.marks, 174) is None
     db.expire_all()
     assert db.get(UploadSession, upload_id).notes == NOTES.rstrip()
@@ -110,7 +104,6 @@ def test_notes_sent_after_a_tiny_file_finished_still_become_clips(client, db):
     assert post_notes(client, url, "1:00 CC kroki").status_code == 200
     found = clips(db)
     assert len(found) == 1 and found[0].time_sec == 60 and found[0].category.name == "kroki"
-    # kolejne wysłanie po zamianie na klipy nie dubluje
     r = post_notes(client, url, "2:00 CC aut")
     assert r.status_code == 409 and "zostały już zamienione" in r.json()["detail"]
     assert len(clips(db)) == 1
@@ -171,7 +164,7 @@ def test_notes_permissions_follow_the_crew(make_client, db):
     match = make_match(db, officials=(("CC", ref), ("U1", "Kasia Żółć")))
     url = tus_create(ref_client, match.id, len(DATA)).headers["Location"]
     assert post_notes(ref_client, url, "1:00 CC kroki").status_code == 200
-    match.officials = [o for o in match.officials if o.user_id != ref.id]   # wypadł z obsady
+    match.officials = [o for o in match.officials if o.user_id != ref.id]
     db.commit()
     assert post_notes(ref_client, url, "2:00 CC kroki").status_code == 403
 
@@ -191,7 +184,7 @@ def test_finish_skips_notes_when_author_lost_access(make_client, db):
     post_notes(ref_client, url, "1:00 CC kroki")
     match.officials = [o for o in match.officials if o.user_id != ref.id]
     db.commit()
-    # wgranie nie przejdzie (403 w PATCH), więc kończymy sesję wprost
+    # the upload would not go through (403 in PATCH), so the session is finished directly
     up = db.get(UploadSession, url.rsplit("/", 1)[1])
     up.offset_bytes = up.size_bytes
     with storage.open_update(uploads.part_key(up.id)) as fh:
@@ -201,7 +194,6 @@ def test_finish_skips_notes_when_author_lost_access(make_client, db):
     assert clips(db) == [] and latest_video(db) is not None
 
 
-# --- moment poza nagraniem (po konwersji) ----------------------------------------------------------
 def test_clip_outside_recording_ends_in_error_state(client, db):
     match = make_match(db)
     url = tus_create(client, match.id, len(DATA)).headers["Location"]
@@ -231,8 +223,8 @@ def test_real_flow_notes_make_cut_clips_and_out_of_range_error(client, db, tmp_p
     offset = 0
     data = source.read_bytes()
     assert tus_patch(client, url, offset, data).status_code == 204
-    assert worker.run_once() is True               # konwersja
-    for _ in range(2):                              # dwa cięcia
+    assert worker.run_once() is True
+    for _ in range(2):
         assert worker.run_once() is True
     found = {c.time_sec: c for c in clips(db)}
     good, outside = found[2], found[50]

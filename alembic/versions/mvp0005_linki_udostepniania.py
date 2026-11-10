@@ -1,12 +1,4 @@
-"""Linki udostępniające klipy osobom bez konta (`/s/<kod>`).
-
-Wyłącznie addytywna: tabele `share_links` (skrót kodu, ważność, unieważnienie, licznik wejść) i
-`share_link_clips` (klipy w linku z trwałą pozycją; ON DELETE CASCADE po stronie linku i klipu).
-
-Revision ID: mvp0005
-Revises: mvp0004
-Create Date: 2026-11-09 18:00:00.000000
-"""
+"""Share links for clips."""
 from alembic import op
 import sqlalchemy as sa
 
