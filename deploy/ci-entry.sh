@@ -1,39 +1,8 @@
 #!/usr/bin/env bash
-# Entry point for the CI key (GitHub Actions): the only thing this key can run on the server.
-#
-# Install (once, as root; the file lives outside the app directory so the CI key cannot change it):
-#   sudo install -o root -g root -m 755 /opt/ref-clips/deploy/ci-entry.sh /usr/local/bin/ref-clips-ci-entry
-# and a forced command in ~ubuntu/.ssh/authorized_keys (see docs/ci-cd.md):
-#   command="/usr/local/bin/ref-clips-ci-entry",restrict ssh-ed25519 AAAA... ref-clips-ci
-# After changing this file in the repository, reinstall it by hand (after reviewing the changes).
-#
-# Accepts ONLY (SSH_ORIGINAL_COMMAND, strict patterns, no eval, no arguments passed on):
-#   deploy vX.Y.Z   deploys that version of the image ghcr.io/fkula5/ref-clips:vX.Y.Z
-#   status          prints the deployed version and the state of the services
-#
-# deploy, in order (nothing on the server changes until the "busy -> idle" point):
-#   1. flock (.deploy.lock, the same as in deploy.sh) for the whole run,
-#   2. download the version's files over HTTPS from the public repo (codeload.github.com) to a temp dir
-#       (the server pulls by itself; the CI key has no write channel): a bad tag fails at once, not after 2
-#       h of waiting,
-#   3. wait until nothing is running (app/busy.py as in deploy.sh; limit 120 min, then exit 3),
-#   4. docker pull, then re-check busy right before the change,
-#   5. replace compose.yaml, compose.prod.yaml and deploy/ (previous ones copied to .rollback/), write
-#       REFCLIPS_IMAGE to .env (atomically, one line; .env is never printed),
-#   6. docker compose up -d --no-build --remove-orphans --wait; restart Caddy only if the Caddyfile
-#       changed,
-#   7. check /health through Caddy; if the new version does not come up, restore the previous files and
-#       image,
-#   8. record the version in .deploy-commit, remove old ref-clips images (keeps the 3 newest plus the
-#       current and previous).
-#
-# Exit codes: 0 ok; 1 error (nothing changed, or changes undone before the start); 2 command not
-# allowed;
-#   3 something kept running for the whole limit (nothing changed); 4 the new version did not come up,
-#       the previous one was restored;
-#   5 the new version did not come up and the rollback failed: manual intervention needed.
-#
-# The REFCLIPS_CI_* variables are for local tests only (an ssh client cannot set them: `restrict`).
+# Forced command of the CI key: the only thing that key can run. Installed outside the app directory so
+# the key cannot change it; after editing, reinstall by hand (docs/ci-cd.md).
+# Accepts only "deploy vX.Y.Z" and "status".
+# Exit codes: 0 ok, 1 error, 2 command not allowed, 3 still busy at the time limit, 4 rolled back, 5 rollback failed.
 set -euo pipefail
 
 export PATH="${REFCLIPS_CI_PATH_PREFIX:+$REFCLIPS_CI_PATH_PREFIX:}/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
