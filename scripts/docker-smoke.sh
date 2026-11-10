@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# Test dymny wdrożenia w Dockerze: buduje obraz, startuje osobny projekt Compose (inny port,
-# osobny wolumin), zakłada admina, loguje się, wgrywa małe wideo (tus), czeka na konwersję
-# przez workera, sprawdza restart i na końcu usuwa wszystko (down -v + obraz testowy).
-# Użycie: scripts/docker-smoke.sh   (opcjonalnie SMOKE_PORT=8123)
+# Docker deployment smoke test: builds the image, starts a separate Compose project (other port,
+# separate volume), creates an admin, logs in, uploads a small video (tus), waits for the worker's
+# conversion, checks a restart, and removes everything (down -v + the test image).
+# Usage: scripts/docker-smoke.sh (optionally SMOKE_PORT=8123)
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -44,7 +44,7 @@ $DC logs worker | grep -q "Worker uruchomiony"
 
 step "Strona logowania bez sesji"
 test "$(curl -s -o /dev/null -w '%{http_code}' "$URL/login")" = 200
-test "$(curl -s -o /dev/null -w '%{http_code}' "$URL/")" = 303   # przekierowanie na logowanie
+test "$(curl -s -o /dev/null -w '%{http_code}' "$URL/")" = 303
 
 step "Założenie administratora (z argumentami)"
 $DC run --rm -T app python -m app.create_admin --email "$EMAIL" --name "Smoke Test" --password "$PASSWORD"

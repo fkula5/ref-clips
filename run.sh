@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Uruchamia serwer WWW (http://localhost:8000) oraz worker zadań w tle. Ctrl+C zatrzymuje oba.
+# Starts the web server (http://localhost:8000) and the background job worker. Ctrl+C stops both.
 set -euo pipefail
 cd "$(dirname "$0")"
 
@@ -18,5 +18,5 @@ $PY -m app.worker &
 WORKER_PID=$!
 trap 'kill "$WORKER_PID" 2>/dev/null || true' EXIT INT TERM
 
-# --host 0.0.0.0, żeby przeglądarka z Windowsa dotarła do WSL pod localhost:8000
+# --host 0.0.0.0 so a browser on Windows can reach WSL at localhost:8000
 $PY -m uvicorn app.main:app --host "${HOST:-0.0.0.0}" --port "${PORT:-8000}"

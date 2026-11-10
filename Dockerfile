@@ -1,13 +1,11 @@
-# Obraz aplikacji ref-clips: jeden dla serwera WWW (app) i workera — różnią się tylko komendą.
-# Budowanie: docker compose build   (albo: docker build -t ref-clips .)
+# One image for the web server (app) and the worker; they differ only in the command.
 FROM python:3.12-slim-bookworm
 
-# ffmpeg z pakietów Debiana (bez zbędnych pakietów polecanych), listy apt czyścimy.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 
-# Użytkownik bez uprawnień roota; stałe UID/GID (można zmienić, gdy dane są na zwykłym katalogu hosta).
+# Fixed UID/GID (can be changed when the data is on a plain host directory).
 ARG APP_UID=1000
 ARG APP_GID=1000
 RUN groupadd --gid "$APP_GID" app \
@@ -21,8 +19,9 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /srv/app
 
-# Zależności przed kodem — zmiana kodu nie unieważnia tej warstwy. Baza stref czasowych dla `zoneinfo`
-# (Europe/Warsaw) pochodzi z pakietu tzdata w requirements.txt, więc nie zależy od systemu obrazu.
+# Dependencies before code, so a code change does not invalidate this layer. The `zoneinfo` timezone
+# database (Europe/Warsaw) comes from the tzdata package in requirements.txt, not from the image's
+# system.
 COPY requirements.txt ./
 RUN pip install -r requirements.txt
 
@@ -30,21 +29,21 @@ COPY alembic.ini ./
 COPY alembic ./alembic
 COPY app ./app
 
-# Numer wersji pokazywany w stopce strony (zalogowani). Wdrożenie z GitHub Actions podaje go w
-# --build-arg REFCLIPS_VERSION=vX.Y.Z; przy ręcznym budowaniu zostaje „dev”. Celowo po instalacji
-# zależności i kopiowaniu kodu, żeby zmiana numeru nie unieważniała wcześniejszych warstw.
+# Version shown in the page footer (logged-in users). GitHub Actions passes it as --build-arg
+# REFCLIPS_VERSION=vX.Y.Z; manual builds stay "dev". Placed after installing dependencies and copying
+# the code, so a version change does not invalidate earlier layers.
 ARG REFCLIPS_VERSION=dev
 ENV REFCLIPS_VERSION=$REFCLIPS_VERSION
 
-# Katalog danych tworzymy i oddajemy użytkownikowi przed VOLUME: nowy, pusty wolumin
-# dziedziczy ten właściciel, więc pierwszy start nie kończy się błędem uprawnień.
+# The data directory is created and handed to the user before VOLUME: a new empty volume inherits this
+# owner, so the first start does not fail on permissions.
 RUN mkdir /data && chown app:app /data
 VOLUME /data
 
 USER app
 EXPOSE 8000
 
-# /login jest publiczny i nie zdradza danych; sprawdza, że serwer odpowiada i działa szablon.
+# /login is public and leaks nothing; it checks that the server answers and templates render.
 HEALTHCHECK --interval=15s --timeout=5s --start-period=30s --retries=5 \
     CMD ["python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/login', timeout=4).status == 200 else 1)"]
 

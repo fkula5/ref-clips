@@ -1,14 +1,10 @@
-"""Migawka kopii zapasowej ref-clips: spójna kopia bazy SQLite + klipy (twarde dowiązania do
-niezmienionych plików z poprzedniej migawki, więc kolejne dni prawie nie zajmują miejsca).
-
-Uruchamiana w kontenerze aplikacji przez deploy/backup.sh (tylko biblioteka standardowa):
+"""Consistent copy of the SQLite DB plus the clips (hard links to files unchanged since the previous
+snapshot, so extra days take almost no space).
+Run in the app container by deploy/backup.sh (standard library only):
     python - /data /backup 14 < deploy/backup_snapshot.py
-
-Co jest kopiowane: baza (API kopii zapasowej SQLite — spójna przy działającej aplikacji, bez
-instalowania sqlite3 na serwerze) i katalog `clips/`. Pełnych nagrań (`proxies/`), oryginałów
-i niedokończonych uploadów (`uploads/`, `tmp/`) NIE kopiujemy — są tymczasowe.
-Kolejność: najpierw baza, potem klipy; klip dodany w międzyczasie jest w kopii bez wiersza
-w bazie (sprzątnie go zadanie cleanup), a odwrotna sytuacja (wiersz bez pliku) nie wystąpi.
+Full recordings (`proxies/`), originals and unfinished uploads (`uploads/`, `tmp/`) are NOT copied:
+they are temporary. Order: DB first, then clips; a clip added meanwhile is in the copy without a DB
+row (the cleanup task removes it), while the reverse (row without file) cannot happen.
 """
 from __future__ import annotations
 
@@ -25,8 +21,8 @@ DAY_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
 
 def backup_database(source: Path, target: Path) -> None:
-    """Kopia przez API SQLite (nie zwykłe cp pliku, który przy WAL bywa niespójny)."""
-    src = sqlite3.connect(source, timeout=60)  # tylko odczyt; plik istnieje (sprawdza snapshot)
+    """SQLite backup API, not a plain cp: a WAL database copied that way can be inconsistent."""
+    src = sqlite3.connect(source, timeout=60)
     dst = sqlite3.connect(target)
     try:
         src.backup(dst)
@@ -39,8 +35,9 @@ def backup_database(source: Path, target: Path) -> None:
 
 
 def copy_clips(source: Path, target: Path, previous: Path | None) -> tuple[int, int, int]:
-    """Kopiuje klipy; plik taki sam jak w poprzedniej migawce (rozmiar i czas) tylko dowiązuje.
-    Zwraca (liczba plików, skopiowane, dowiązane). Pomija niedokończone `*.part.mp4`."""
+    """A file identical to the previous snapshot (size and mtime) is only hard-linked. Skips unfinished
+    `*.part.mp4`.
+    """
     target.mkdir(parents=True, exist_ok=True)
     total = copied = linked = 0
     if not source.is_dir():
@@ -73,7 +70,6 @@ def list_snapshots(root: Path) -> list[Path]:
 
 
 def snapshot(data_dir: Path, backup_root: Path, keep: int = 14, today: date | None = None) -> Path:
-    """Tworzy migawkę `backup_root/RRRR-MM-DD` i zostawia `keep` najnowszych. Zwraca jej ścieżkę."""
     today = today or date.today()
     day = today.isoformat()
     db_path = data_dir / DB_NAME
@@ -83,7 +79,7 @@ def snapshot(data_dir: Path, backup_root: Path, keep: int = 14, today: date | No
 
     final = backup_root / day
     work = backup_root / f".tmp-{day}-{os.getpid()}"
-    for leftover in backup_root.glob(".tmp-*"):  # po przerwanym przebiegu
+    for leftover in backup_root.glob(".tmp-*"):  # left over from an interrupted run
         shutil.rmtree(leftover, ignore_errors=True)
     previous = next((p for p in reversed(list_snapshots(backup_root)) if p.name != day), None)
     work.mkdir()
@@ -97,7 +93,7 @@ def snapshot(data_dir: Path, backup_root: Path, keep: int = 14, today: date | No
     except BaseException:
         shutil.rmtree(work, ignore_errors=True)
         raise
-    if final.exists():  # drugi przebieg tego samego dnia zastępuje pierwszy
+    if final.exists():  # a second run on the same day replaces the first
         old = backup_root / f".old-{day}-{os.getpid()}"
         final.rename(old)
         work.rename(final)

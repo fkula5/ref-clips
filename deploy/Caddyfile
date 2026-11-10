@@ -1,10 +1,10 @@
-# Caddy przed ref-clips (produkcja). Adres strony z zmiennej REFCLIPS_SITE (compose.prod.yaml),
-# np. 57-131-162-204.sslip.io lub własna domena; Caddy sam wystawia i odnawia certyfikat
-# Let's Encrypt (wymaga otwartych portów 80 i 443). Lokalny test: REFCLIPS_SITE=localhost
-# (certyfikat z wewnętrznego CA Caddy — przeglądarka ostrzeże, curl wymaga -k).
+# Caddy in front of ref-clips (production). The site address comes from REFCLIPS_SITE
+# (compose.prod.yaml), e.g. 57-131-162-204.sslip.io or your own domain; Caddy issues and renews the
+# Let's Encrypt certificate itself (needs ports 80 and 443 open). Local test: REFCLIPS_SITE=localhost
+# (certificate from Caddy's internal CA: the browser warns, curl needs -k).
 {
-	# Limity czasu na poziomie serwera. Treści żądania i odpowiedzi (read_body, write) bez limitu:
-	# kawałek tus 50 MB z telefonu przez słabą sieć i film oglądany godzinę nie mogą być ucinane.
+	# Server-level timeouts. Request and response bodies (read_body, write) have no limit: a 50 MB tus
+	# chunk from a phone over a weak network and a movie watched for an hour must not be cut.
 	servers {
 		timeouts {
 			read_header 30s
@@ -14,29 +14,29 @@
 }
 
 {$REFCLIPS_SITE} {
-	# Kompresja tylko dla tekstu (domyślne typy Caddy); wideo (video/mp4) jest już skompresowane
-	# i zostaje bez zmian — odpowiedzi 206 (Range) idą wprost z aplikacji.
+	# Compression for text only (Caddy's default types); video (video/mp4) is already compressed and stays
+	# as is: 206 (Range) responses go straight from the app.
 	encode zstd gzip
 
 	header {
 		Strict-Transport-Security "max-age=31536000"
 		X-Content-Type-Options "nosniff"
 		X-Frame-Options "SAMEORIGIN"
-		# Tylko ochrona przed osadzaniem w cudzej ramce. Celowo bez script-src/default-src:
-		# szablony mają skrypty i style w treści strony (onclick, <script>, style="...").
+		# Only protection against embedding in a foreign frame. Deliberately no script-src/default-src:
+		# templates have inline scripts and styles (onclick, <script>, style="...").
 		Content-Security-Policy "frame-ancestors 'self'"
 		Permissions-Policy "camera=(), microphone=(), geolocation=()"
 		-Server
 	}
 
-	# Referrer-Policy: strony z tokenem w adresie (zaproszenie /set-password/<token>, publiczny link do klipów
-	# /s/<kod>) mają `no-referrer` ustawione przez aplikację. `header` w Caddy nadpisuje nagłówek z aplikacji,
-	# więc dla tych ścieżek nie ustawiamy własnego.
+	# Referrer-Policy: pages with a token in the URL (invite /set-password/<token>, public clip link
+	# /s/<code>) get `no-referrer` from the app. Caddy's `header` overrides the app's header, so none is
+	# set here for those paths.
 	@reszta not path /set-password/* /s/*
 	header @reszta Referrer-Policy "strict-origin-when-cross-origin"
 
-	# Wgrywanie tus: kawałki po 50 MB (52 428 800 B) w PATCH. Limit z zapasem; reszta serwisu to
-	# formularze, więc tam limit jest mały. Caddy nie buforuje żądań, więc 50 MB nie ląduje w pamięci.
+	# tus upload: 50 MB chunks (52 428 800 B) in PATCH; the limit has headroom. The rest of the site is
+	# forms, so the limit there is small. Caddy does not buffer requests, so 50 MB does not land in memory.
 	@tus path /uploads /uploads/*
 	request_body @tus {
 		max_size 64MB
@@ -46,10 +46,10 @@
 		max_size 10MB
 	}
 
-	# Dziennik dostępu: token z linku zaproszenia (/set-password/<token>) pozwala ustawić hasło do cudzego
-	# konta, a kod z linku do klipów (/s/<kod>) otwiera klipy bez logowania, więc nie zostają w logach — ani
-	# w adresie żądania, ani w Referer; reszta ścieżki zostaje (/s/[ukryty]/zip). Ciasteczka i Authorization
-	# Caddy i tak zastępuje napisem REDACTED.
+	# Access log: the invite token (/set-password/<token>) allows setting another account's password and
+	# the clip link code (/s/<code>) opens clips without login, so neither stays in logs, in the request
+	# URL or in Referer; the rest of the path stays (/s/[ukryty]/zip). Cookies and Authorization are
+	# replaced by Caddy with REDACTED anyway.
 	log {
 		output stdout
 		format filter {
@@ -59,8 +59,8 @@
 		}
 	}
 
-	# Wideo (/videos, klipy) serwuje aplikacja (FileResponse z obsługą Range -> 206); Caddy tylko
-	# przekazuje. flush_interval -1 = bez buforowania odpowiedzi, żeby przewijanie startowało od razu.
+	# Video (/videos, clips) is served by the app (FileResponse with Range -> 206); Caddy only passes it
+	# through. flush_interval -1 = no response buffering, so seeking starts at once.
 	reverse_proxy app:8000 {
 		flush_interval -1
 		transport http {

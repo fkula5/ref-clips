@@ -1,31 +1,34 @@
 #!/usr/bin/env bash
-# Wdrożenie ref-clips na serwer — uruchamiane LOKALNIE, z repozytorium.
-# Wysyła aktualny commit (git archive HEAD, nie katalog roboczy) przez ssh do katalogu na serwerze,
-# nie ruszając pliku .env ani danych (dane są w wolumenach Dockera), buduje obrazy, uruchamia
-# stos (docker compose -f compose.yaml -f compose.prod.yaml up -d --build), czeka na zdrowie
-# aplikacji i pokazuje status. Można uruchamiać wielokrotnie (idempotentne). Nie wypisuje .env.
+# Deploys ref-clips to the server; run LOCALLY from the repository.
+# Sends the current commit (git archive HEAD, not the working directory) over ssh without touching .env
+# or data (data lives in Docker volumes), builds the images, starts the stack (docker compose -f
+# compose.yaml -f compose.prod.yaml up -d --build), waits for the app to be healthy and shows the
+# status. Idempotent. Never prints .env.
 #
-# Zanim cokolwiek zmieni na serwerze, sprawdza, czy nie trwa upload (aktywność w ostatnich 10 min),
-# konwersja/cięcie ani zadania w kolejce (python -m app.busy w działającym kontenerze). Jeśli coś trwa,
-# kończy BEZ podmiany plików i restartu (kod wyjścia 3); --force pomija blokadę, --wait czeka.
+# Before changing anything on the server it checks for an upload (activity in the last 10 min), a
+# conversion/cut or queued jobs (python -m app.busy in the running container). If something is running
+# it exits WITHOUT replacing files or restarting (exit code 3); --force skips the check, --wait waits.
 #
-# To wyjście awaryjne (obraz budowany na serwerze). Zwykłe wdrożenia robi GitHub Actions z gotowego obrazu z GHCR
-# (deploy/ci-entry.sh, docs/ci-cd.md); jeśli ostatnie z nich zapisało w .env tag GHCR (REFCLIPS_IMAGE), ten skrypt na
-# czas wdrożenia wymusza REFCLIPS_IMAGE=ref-clips:local i zapisuje to w .env (tuż przed restartem), więc zbudowany
-# lokalnie obraz nie podszywa się pod tag z GHCR, a deploy/backup.sh używa tego samego obrazu co działający stos.
+# This is the emergency path (image built on the server). Normal deploys come from GitHub Actions with a
+# ready GHCR image (deploy/ci-entry.sh, docs/ci-cd.md). If the last of those wrote a GHCR tag to .env
+# (REFCLIPS_IMAGE), this script forces REFCLIPS_IMAGE=ref-clips:local for the deploy and writes it to
+# .env (right before the restart), so the locally built image does not pose as a GHCR tag and
+# deploy/backup.sh uses the same image as the running stack.
 #
-# Użycie:   deploy/deploy.sh [-H użytkownik@host] [-i klucz_ssh] [-d katalog_na_serwerze] [--force] [--wait]
-#           --force   wdróż mimo trwającego uploadu/konwersji (przerwie je; konwersja zacznie od zera)
-#           --wait    poczekaj, aż będzie wolne (sprawdzanie co minutę), potem wdróż
-# Zmienne:  REFCLIPS_DEPLOY_HOST  (domyślnie ubuntu@57.131.162.204)
-#           REFCLIPS_DEPLOY_KEY   (domyślnie ~/.ssh/ref_clips_deploy)
-#           REFCLIPS_DEPLOY_DIR   (domyślnie /opt/ref-clips)
-#           REFCLIPS_DEPLOY_URL   (adres do końcowego sprawdzenia; domyślnie https://57-131-162-204.sslip.io,
-#                                  puste = pomiń)
-#           REFCLIPS_DEPLOY_CURL_OPTS          dodatkowe opcje curl do końcowego sprawdzenia (np. -k dla testu z certyfikatem lokalnym)
-#           REFCLIPS_DEPLOY_FORCE=1            to samo co --force
-#           REFCLIPS_DEPLOY_WAIT_MINUTES       limit czekania przy --wait (domyślnie 120)
-#           REFCLIPS_DEPLOY_WAIT_INTERVAL      odstęp między sprawdzeniami przy --wait, w sekundach (domyślnie 60)
+# Usage:   deploy/deploy.sh [-H user@host] [-i ssh_key] [-d server_dir] [--force] [--wait]
+#          --force   deploy despite a running upload/conversion (interrupts it; a conversion restarts
+#              from zero)
+#          --wait    wait until idle (checked every minute), then deploy
+# Variables: REFCLIPS_DEPLOY_HOST  (default ubuntu@57.131.162.204)
+#            REFCLIPS_DEPLOY_KEY   (default ~/.ssh/ref_clips_deploy)
+#            REFCLIPS_DEPLOY_DIR   (default /opt/ref-clips)
+#            REFCLIPS_DEPLOY_URL   (address for the final check; default
+#                https://57-131-162-204.sslip.io, empty = skip)
+#            REFCLIPS_DEPLOY_CURL_OPTS     extra curl options for the final check (e.g. -k for a test
+#                with a local certificate)
+#            REFCLIPS_DEPLOY_FORCE=1       same as --force
+#            REFCLIPS_DEPLOY_WAIT_MINUTES  wait limit for --wait (default 120)
+#            REFCLIPS_DEPLOY_WAIT_INTERVAL seconds between checks for --wait (default 60)
 set -euo pipefail
 
 HOST="${REFCLIPS_DEPLOY_HOST:-ubuntu@57.131.162.204}"
@@ -41,7 +44,7 @@ WAIT_INTERVAL="${REFCLIPS_DEPLOY_WAIT_INTERVAL:-60}"
 usage() { sed -n '2,/^set -/p' "$0" | sed '$d' | sed 's/^# \{0,1\}//'; }
 die() { echo "BŁĄD: $*" >&2; exit 1; }
 
-# Opcje długie (--force, --wait, --help) wyjmujemy przed getopts, który zna tylko krótkie.
+# Long options (--force, --wait, --help) are removed before getopts, which knows only short ones.
 args=()
 for arg in "$@"; do
   case "$arg" in
@@ -67,11 +70,13 @@ cd "$(dirname "${BASH_SOURCE[0]}")/.."
 git rev-parse --is-inside-work-tree >/dev/null 2>&1 || die "to nie jest repozytorium git"
 [ -f "$KEY" ] || die "brak klucza ssh: $KEY (ustaw REFCLIPS_DEPLOY_KEY albo użyj -i)"
 case "$DIR" in /*) ;; *) die "katalog na serwerze musi być ścieżką bezwzględną: $DIR" ;; esac
-# Wysyłka czyści katalog docelowy (poza .env), więc nie pozwalamy na katalog systemowy ani zbyt płytki.
+# The upload wipes the target directory (except .env), so system directories and ones that are too
+# shallow are refused.
 case "${DIR%/}" in ""|/*/*) ;; *) die "katalog na serwerze musi mieć co najmniej dwa poziomy (np. /opt/ref-clips): $DIR" ;; esac
 [ -n "${DIR%/}" ] || die "katalog na serwerze nie może być /"
 
-# Wdrażamy commit, więc zmiany niezacommitowane do niego nie trafią — odmawiamy, żeby nie było niespodzianek.
+# The commit is what gets deployed, so uncommitted changes would not be included: refuse, to avoid
+# surprises.
 if ! git diff-index --quiet HEAD --; then
   git status --short --untracked-files=no >&2
   die "są niezacommitowane zmiany w śledzonych plikach — zacommituj je albo schowaj (git stash)"
@@ -87,12 +92,12 @@ SSH=(ssh -i "$KEY" -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecki
      -o ConnectTimeout=15 -o ServerAliveInterval=30 "$HOST")
 QDIR="$(printf '%q' "$DIR")"
 
-# --- czy coś trwa? Sprawdzamy PRZED podmianą plików, żeby po przerwaniu stan katalogu na serwerze
-# zgadzał się z działającą wersją. Sprawdzenie robi moduł app.busy z wdrażanego commitu, wysłany na
-# wejście `python -` działającego kontenera (działa też na obrazie sprzed dodania tego modułu).
+# The busy check happens BEFORE replacing files, so after an abort the server directory matches the
+# running version. It is app.busy from the deployed commit, piped into `python -` of the running
+# container (works on images that predate the module).
 BUSY_B64="$(git show HEAD:app/busy.py | base64 | tr -d '\n')"
 
-# Zwraca 0 = wolne (albo stos nie działa), 1 = zajęte, 2 = nie udało się sprawdzić.
+# Returns 0 = idle (or the stack is not running), 1 = busy, 2 = check failed.
 check_busy() {
   local out rc=0
   out="$("${SSH[@]}" "bash -s -- $QDIR $BUSY_B64" 2>&1 <<'CHECK'
@@ -142,8 +147,8 @@ while true; do
 done
 
 echo "==> Wysyłanie plików (git archive)"
-# Rozpakowanie do .incoming, potem podmiana: usuwamy stare pliki (także te skasowane w repo),
-# ale zostaje .env i pliki techniczne wdrożenia. Dane aplikacji leżą w wolumenach, nie tutaj.
+# Unpack to .incoming, then swap: old files go (also those deleted in the repo), but .env and technical
+# deploy files stay. App data is in volumes, not here.
 git archive --format=tar HEAD | "${SSH[@]}" "set -e
   cd $QDIR || { echo 'Brak katalogu $DIR na serwerze — patrz docs/wdrozenie.md' >&2; exit 1; }
   exec 9>.deploy.lock
@@ -167,15 +172,16 @@ for key in REFCLIPS_SITE REFCLIPS_COOKIE_SECURE REFCLIPS_TRUST_PROXY REFCLIPS_PU
   grep -Eq "^${key}=." .env || { echo "BŁĄD: w .env brakuje ustawienia $key" >&2; exit 1; }
 done
 
-# Obraz budowany tu nazywa się ref-clips:local — niezależnie od REFCLIPS_IMAGE w .env (może wskazywać na GHCR).
-# Zmienna idzie przez `env`, bo sudo czyści środowisko.
+# The image built here is ref-clips:local regardless of REFCLIPS_IMAGE in .env (it may point to GHCR).
+# The variable goes through `env` because sudo clears the environment.
 DOCKER=(env REFCLIPS_IMAGE=ref-clips:local docker)
 docker info >/dev/null 2>&1 || DOCKER=(sudo -n env REFCLIPS_IMAGE=ref-clips:local docker)
 export COMPOSE_FILE=compose.yaml:compose.prod.yaml
 
 "${DOCKER[@]}" compose build
 
-# Budowanie trwa minuty — w tym czasie ktoś mógł zacząć wgrywać plik. Ostatnie sprawdzenie tuż przed restartem.
+# A build takes minutes and someone may have started an upload meanwhile: final check right before the
+# restart.
 if [ "$2" != 1 ] && "${DOCKER[@]}" compose ps --status running --services | grep -qx app; then
   rc=0; out="$("${DOCKER[@]}" compose exec -T app python - < app/busy.py 2>&1)" || rc=$?
   if [ "$rc" -ne 0 ]; then
@@ -186,16 +192,16 @@ if [ "$2" != 1 ] && "${DOCKER[@]}" compose ps --status running --services | grep
   fi
 fi
 
-# Dopiero teraz (po ostatnim sprawdzeniu zajętości) zapisujemy obraz lokalny w .env: nowy plik obok i rename,
-# reszta .env bez zmian. Dzięki temu backup.sh i kolejne `docker compose` używają tego, co właśnie działa.
+# Only now (after the last busy check) is the local image written to .env: new file alongside, then
+# rename; the rest of .env unchanged. So backup.sh and later `docker compose` use what is running.
 env_tmp="$(mktemp .env.XXXXXX)"
 chmod --reference=.env "$env_tmp"
 { grep -v '^REFCLIPS_IMAGE=' .env || true; echo 'REFCLIPS_IMAGE=ref-clips:local'; } > "$env_tmp"
 mv -f "$env_tmp" .env
 
 "${DOCKER[@]}" compose up -d --remove-orphans --wait --wait-timeout 300
-# Caddyfile jest zamontowany jako pojedynczy plik, a wysyłka tworzy go na nowo: działający Caddy dalej
-# widzi starą treść i compose go nie odtwarza. Po zmianie konfiguracji trzeba go zrestartować.
+# The Caddyfile is mounted as a single file and the upload recreates it: the running Caddy still sees
+# the old content and compose does not recreate it. After a config change it must be restarted.
 if ! "${DOCKER[@]}" compose exec -T caddy cat /etc/caddy/Caddyfile | cmp -s - deploy/Caddyfile; then
   echo "--- Caddyfile się zmienił, restart Caddy:"
   "${DOCKER[@]}" compose restart caddy
@@ -213,10 +219,11 @@ if [ -n "$URL" ]; then
   for _ in $(seq 1 20); do
     code="$(curl -sS ${CURL_OPTS[@]+"${CURL_OPTS[@]}"} -o /dev/null -w '%{http_code}' --max-time 10 "$URL/login" 2>/dev/null || true)"
     [ "$code" = 200 ] && break
-    sleep 3   # pierwszy start: Caddy dopiero wystawia certyfikat
+    sleep 3  # first start: Caddy is still obtaining the certificate
   done
   [ "$code" = 200 ] || die "$URL/login odpowiada kodem $code (logi: ssh ... docker compose logs caddy app)"
-  # /health: baza, worker (znacznik życia odnawia się co 30 s, więc po restarcie może chwilę potrwać) i dysk.
+  # /health: DB, worker (the heartbeat renews every 30 s, so after a restart it may take a moment) and
+  # disk.
   echo "==> Sprawdzanie $URL/health"
   code=000
   for _ in $(seq 1 15); do
