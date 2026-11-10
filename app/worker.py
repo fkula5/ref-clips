@@ -9,7 +9,7 @@ import time
 from sqlalchemy import and_, case, exists, or_, select, update
 from sqlalchemy.orm import Session
 
-from app import config, health, retention, services, uploads, video as vid
+from app import config, health, notify, retention, services, uploads, video as vid
 from app.db import SessionLocal
 from app.models import Clip, Job, Video
 from app.storage import storage
@@ -145,10 +145,10 @@ def recover_interrupted() -> None:
 
 def run_maintenance() -> None:
     """Hourly and right after start: abandoned uploads, orphan clip and recording files, leftover ZIPs
-    in `tmp`, old rejection entries, and retention (once a day; `retention.run_if_due` guards against
-    a restart or second worker running it twice). A failing step does not stop the others.
+    in `tmp`, old rejection entries and notifications, and retention (once a day; `retention.run_if_due`
+    guards against a restart or second worker running it twice). A failing step does not stop the others.
     """
-    steps = (uploads.cleanup_stale, uploads.prune_rejections, retention.run_if_due,
+    steps = (uploads.cleanup_stale, uploads.prune_rejections, notify.prune_notifications, retention.run_if_due,
              retention.cleanup_orphan_clips, retention.cleanup_orphan_videos, retention.cleanup_tmp)
     for step in steps:
         try:

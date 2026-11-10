@@ -70,7 +70,7 @@ def edit_rating(request: Request, db: Session = Depends(get_db), clip: Clip = De
                 user: User = require(permissions.can_edit_rating, get_clip_rating),
                 verdict: str = Form(""), comment: str = Form("")):
     return _save_rating(request, db, clip, verdict, comment,
-                        lambda: feedback.edit_rating(rating, verdict, comment), rating.id)
+                        lambda: feedback.edit_rating(db, rating, verdict, comment, user.id), rating.id)
 
 
 @router.post("/clips/{clip_id}/ratings/{rating_id}/delete")
