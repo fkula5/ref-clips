@@ -11,7 +11,7 @@
 </div>
 <h1>Arkusz oceny sędziów</h1>
 <p class="muted">
-  {% if sheet.is_published %}Opublikowany {{ sheet.published_at|local("%d.%m.%Y %H:%M") }}{% if sheet.edited_after_publishing %} · zmieniono {{ sheet.updated_at|local("%d.%m.%Y %H:%M") }}{% endif %}. Poprawki są widoczne od razu.
+  {% if sheet.is_published %}<span class="meta-list"><span>Opublikowany {{ sheet.published_at|local("%d.%m.%Y %H:%M") }}</span>{% if sheet.edited_after_publishing %}<span>zmieniono {{ sheet.updated_at|local("%d.%m.%Y %H:%M") }}</span>{% endif %}</span>. Poprawki są widoczne od razu.
   {% else %}<span class="badge state-uploading">szkic</span> Widoczny tylko dla Ciebie, dopóki go nie opublikujesz. Puste pola są dozwolone.{% endif %}
 </p>
 

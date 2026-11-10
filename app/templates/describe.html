@@ -4,10 +4,12 @@
 <div class="row between">
   <div>
     <h1>Opisywanie znaczników</h1>
-    <a href="/matches/{{ match.id }}">{{ match.title }}</a>
-    {% if scope %}<span class="muted">· nagranie: {{ scope.display_name }}</span>
-      · <a href="/matches/{{ match.id }}/describe">cały mecz</a>
-      · <a href="/videos/{{ scope.id }}">odtwarzacz</a>{% endif %}
+    <ul class="meta-list">
+      <li><a href="/matches/{{ match.id }}">{{ match.title }}</a></li>
+      {% if scope %}<li class="muted">nagranie: {{ scope.display_name }}</li>
+      <li><a href="/matches/{{ match.id }}/describe">cały mecz</a></li>
+      <li><a href="/videos/{{ scope.id }}">odtwarzacz</a></li>{% endif %}
+    </ul>
   </div>
   <a class="btn" href="/matches/{{ match.id }}#klipy">Klipy meczu</a>
 </div>
@@ -26,8 +28,10 @@
 <div class="player-layout" id="describe" data-clip="{{ current.id }}">
   <section>
     <p class="muted" id="describe-position">
-      {% if position %}Znacznik {{ position }} z {{ queue|length }}{% else %}Ten klip jest już opisany — zmiany zapiszesz jak edycję opisu.{% endif %}
-      · {{ current.time_sec|clock }} w nagraniu{% if many_videos %} ({{ current.video.display_name }}){% endif %}
+      <span class="meta-list">
+        <span>{% if position %}Znacznik {{ position }} z {{ queue|length }}{% else %}Ten klip jest już opisany — zmiany zapiszesz jak edycję opisu.{% endif %}</span>
+        <span>{{ current.time_sec|clock }} w nagraniu{% if many_videos %} ({{ current.video.display_name }}){% endif %}</span>
+      </span>
     </p>
 
     {% if preview.kind == 'file' %}
@@ -78,8 +82,12 @@
       <a class="btn small" href="/clips/{{ current.id }}">Strona klipu</a>
     </div>
     <p class="muted shortcuts">
-      <kbd>1</kbd> CC · <kbd>2</kbd> U1 · <kbd>3</kbd> U2 · <kbd>0</kbd> cały zespół · <kbd>K</kbd> kategoria · <kbd>D</kbd> opis ·
-      <kbd>Spacja</kbd> odtwórz/pauza · <kbd>R</kbd> od początku · <kbd>Enter</kbd> zapisz i dalej. Skróty nie działają w polach tekstowych.
+      <span class="meta-list">
+        <span><kbd>1</kbd> CC</span><span><kbd>2</kbd> U1</span><span><kbd>3</kbd> U2</span><span><kbd>0</kbd> cały zespół</span>
+        <span><kbd>K</kbd> kategoria</span><span><kbd>D</kbd> opis</span><span><kbd>Spacja</kbd> odtwórz/pauza</span>
+        <span><kbd>R</kbd> od początku</span><span><kbd>Enter</kbd> zapisz i dalej</span>
+      </span>
+      Skróty nie działają w polach tekstowych.
     </p>
   </section>
 

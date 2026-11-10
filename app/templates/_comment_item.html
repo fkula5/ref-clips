@@ -20,7 +20,7 @@
 <div class="comment" id="comment-{{ cm.id }}">
   <div class="meta">
     <strong>{{ cm.author.name }}</strong>
-    <span class="muted">{{ cm.created_at|local("%d.%m.%Y %H:%M") if cm.created_at }}{% if cm.edited_at %} · edytowano {{ cm.edited_at|local("%d.%m.%Y %H:%M") }}{% endif %}</span>
+    <span class="muted meta-list"><span>{{ cm.created_at|local("%d.%m.%Y %H:%M") if cm.created_at }}</span>{% if cm.edited_at %}<span>edytowano {{ cm.edited_at|local("%d.%m.%Y %H:%M") }}</span>{% endif %}</span>
   </div>
   <div class="body">{{ cm.body }}</div>
   {% if perm.can_edit_comment(user, cm) or perm.can_delete_comment(user, cm) %}

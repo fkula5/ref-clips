@@ -131,8 +131,9 @@
       where.title = d.period ? "Kwarta i czas od jej początku w czasie nagrania" : "Ustaw początki kwart";
       if (!d.period) where.className = "muted";
       li.append(t, " ", where);
-      const meta = [d.official, d.category].filter(Boolean).join(" · ");
-      if (meta) { const m = document.createElement("span"); m.className = "muted"; m.textContent = meta; li.append(" ", m); }
+      [d.official, d.category].filter(Boolean).forEach((text) => {
+        const m = document.createElement("span"); m.className = "muted"; m.textContent = text; li.append(" ", m);
+      });
       const st = document.createElement("span");
       st.className = `badge ${d.status}`; st.textContent = CUT_LABELS[d.status] || d.status;
       if (d.error) st.title = d.error;
