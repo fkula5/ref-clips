@@ -1,8 +1,5 @@
-"""Qualifier assessment sheets: opening, editing (draft and published), reading and deleting.
-
-Every state-changing route goes through CSRF (the router is included with `PROTECTED`). A sheet the user may
-not see is answered with 404, never 403, so that its existence is not revealed (a referee outside the crew
-knows the match but must not learn that a sheet exists). Success is POST -> 303 -> GET with a one-time notice.
+"""A sheet the user may not see is answered with 404, never 403, so its existence is not revealed (a
+referee outside the crew knows the match but must not learn that a sheet exists).
 """
 from __future__ import annotations
 
@@ -25,8 +22,9 @@ NOT_FOUND = "Nie ma takiego arkusza"
 
 
 def sheet_for(check: Callable[[User, Sheet], bool], *, gate: Callable[[User, Sheet], bool] = permissions.can_view_sheet):
-    """Loads the sheet from the path. 404 when the user fails `gate` (default: may not see the sheet) or the sheet
-    does not exist, so both look the same; then 403 when `check` fails for someone who passed the gate."""
+    """404 when the user fails `gate` or the sheet does not exist, so both look the same; 403 only when
+    `check` fails for someone who passed the gate.
+    """
     def dependency(sheet_id: int, db: Session = Depends(get_db), user: User = Depends(current_user)) -> Sheet:
         sheet = db.get(Sheet, sheet_id)
         if sheet is None or not gate(user, sheet):
@@ -47,13 +45,12 @@ delete_sheet_dep = sheet_for(permissions.can_delete_sheet, gate=can_see_or_delet
 
 
 async def posted_values(request: Request) -> dict[str, str]:
-    """The submitted form as plain strings (the fields have dynamic names, one per cell)."""
     return {k: v for k, v in (await request.form()).items() if isinstance(v, str)}
 
 
 def render_form(request: Request, db: Session, sheet: Sheet, *, values: dict[str, str] | None = None,
                 errors: list[str] | None = None, status_code: int = 200):
-    """The edit form. After a failed save `values` is what the user typed: it is shown instead of the stored text."""
+    """After a failed save `values` is what the user typed; it is shown instead of the stored text."""
     shown = {**sheets.form_values(sheet), **(values or {})}
     return render(request, "sheet_form.html", status_code=status_code, sheet=sheet, match=sheet.match,
                   grid=sheets.grid(sheet), values=shown, errors=errors or [], unsaved=bool(errors),
@@ -63,7 +60,6 @@ def render_form(request: Request, db: Session, sheet: Sheet, *, values: dict[str
 @router.post("/matches/{match_id}/sheets")
 def open_sheet(db: Session = Depends(get_db), match: Match = Depends(get_match),
                user: User = require(permissions.can_create_sheet)):
-    """Starts the coach's sheet of the match, or reopens the existing one for editing."""
     try:
         sheet, created = sheets.create(db, match, user)
     except SheetError as exc:
@@ -86,10 +82,10 @@ def edit_form(request: Request, db: Session = Depends(get_db), sheet: Sheet = ed
 @router.post("/sheets/{sheet_id}/edit")
 def save_sheet(request: Request, db: Session = Depends(get_db), sheet: Sheet = edit_sheet,
                user: User = Depends(current_user), posted: dict[str, str] = Depends(posted_values)):
-    """One form, three buttons: `action` is save (draft or correction), publish, or refresh (crew of a draft)."""
+    """`action` is save, publish, or refresh (crew of a draft)."""
     action = posted.get("action", "save")
     if action == "refresh" and sheet.is_published:
-        action = "save"   # the crew of a published sheet is frozen
+        action = "save"  # the crew of a published sheet is frozen
     if action == "publish" and not permissions.can_publish_sheet(user, sheet):
         raise HTTPException(403, "Brak uprawnień do tej operacji")
     try:

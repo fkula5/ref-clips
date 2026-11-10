@@ -1,9 +1,5 @@
-"""Słownik kategorii (panel admina): walidacja nazw i aliasów, kolejność, aktywacja, usuwanie.
-
-Parser notatek (`app/notes_parser.py`) rozpoznaje kategorię po nazwie i aliasach z aktywnych
-kategorii, porównując bez względu na wielkość liter i polskie znaki. Gdyby dwie kategorie miały
-ten sam alias, parser wybrałby pierwszą po kolejności i nikt by o tym nie wiedział, więc takie
-konflikty odrzucamy już przy zapisie (z nazwą kategorii, z którą się pokrywają).
+"""Conflicting aliases are rejected on save: the notes parser would silently pick the first category by
+order.
 """
 from __future__ import annotations
 
@@ -15,10 +11,9 @@ from sqlalchemy.orm import Session
 from app.models import Category, Clip
 from app.textutil import normalize
 
-# Grupy słownika w kolejności wyświetlania (specyfikacja); nietypowe grupy z bazy idą na koniec.
 GROUPS = ["Faule", "Naruszenia", "Bez gwizdka", "Mechanika", "Inne"]
 NAME_MAX, ALIAS_MAX, ALIASES_MAX = 100, 60, 1000
-# Pierwsze słowo linii notatek jest najpierw dopasowywane do funkcji sędziego, więc taki alias nigdy by nie zadziałał.
+# The first word is matched against referee functions first, so such an alias would never fire.
 RESERVED_ALIASES = {"cc", "u1", "u2"}
 
 
@@ -26,12 +21,10 @@ _HAS_WORD_CHAR = re.compile(r"[^\W_]")
 
 
 def _meaningful(text: str) -> bool:
-    """Tekst zawiera przynajmniej jedną literę lub cyfrę (parser dopasowuje po takich znakach)."""
     return bool(_HAS_WORD_CHAR.search(normalize(text)))
 
 
 class CategoryError(ValueError):
-    """Niepoprawna zmiana słownika kategorii (komunikat po polsku; HTTP 422, 409 przy konflikcie z danymi)."""
     status_code = 422
 
 
@@ -44,12 +37,10 @@ def _group_rank(group: str) -> tuple[int, str]:
 
 
 def ordered(db: Session) -> list[Category]:
-    """Wszystkie kategorie: grupy w kolejności słownika, wewnątrz grupy wg `sort`."""
     return sorted(db.scalars(select(Category)), key=lambda c: (_group_rank(c.group_name), c.sort, c.id))
 
 
 def grouped(db: Session) -> list[tuple[str, list[Category]]]:
-    """Kategorie pogrupowane do listy w panelu; puste standardowe grupy też są pokazane (dodawanie)."""
     found: dict[str, list[Category]] = {g: [] for g in GROUPS}
     for category in ordered(db):
         found.setdefault(category.group_name, []).append(category)
@@ -62,14 +53,12 @@ def available_groups(db: Session) -> list[str]:
 
 
 def usage_counts(db: Session) -> dict[int, int]:
-    """Liczba klipów używających każdej kategorii (id -> liczba)."""
     return {cid: n for cid, n in db.execute(
         select(Clip.category_id, func.count()).where(Clip.category_id.is_not(None)).group_by(Clip.category_id))}
 
 
 def renumber(db: Session) -> list[Category]:
-    """Przypisuje `sort` 10, 20, ... zgodnie z kolejnością grup, żeby grupy były ciągłe (listy
-    w formularzach grupują kolejne kategorie jednej grupy)."""
+    """Keeps groups contiguous: form lists group consecutive categories of one group."""
     items = ordered(db)
     for index, category in enumerate(items, start=1):
         category.sort = index * 10
@@ -78,7 +67,6 @@ def renumber(db: Session) -> list[Category]:
 
 
 def clean_aliases(raw: str) -> list[str]:
-    """Aliasy z pola tekstowego (po przecinku): bez pustych i powtórzeń (po normalizacji)."""
     found: dict[str, str] = {}
     for part in (raw or "").replace("\n", ",").split(","):
         alias = " ".join(part.split())
@@ -107,8 +95,7 @@ def _check_fields(db: Session, name: str, group: str, aliases: list[str], own_id
         raise CategoryError(f"Aliasy: najwyżej {ALIASES_MAX} znaków łącznie.")
     if normalize(name) in RESERVED_ALIASES:
         raise CategoryError(f"Nazwa „{name}” jest zarezerwowana: CC, U1 i U2 oznaczają sędziów w notatkach.")
-    # Nazwa i aliasy jednej kategorii nie mogą pokrywać się z nazwą ani aliasem innej (także nieaktywnej —
-    # po jej aktywowaniu parser miałby ten sam konflikt).
+    # Inactive categories count too: activating one later would create the same conflict.
     taken: dict[str, str] = {}
     for other in db.scalars(select(Category).where(Category.id != own_id) if own_id else select(Category)):
         for text in (other.name, *other.alias_list):
@@ -127,7 +114,7 @@ def create(db: Session, name: str, group: str, aliases: str) -> Category:
     alias_list = clean_aliases(aliases)
     name = _check_fields(db, name, group, alias_list, None)
     category = Category(group_name=group, name=name, aliases=", ".join(alias_list), is_active=True,
-                        is_custom=False, sort=10 ** 6)  # na koniec; renumber ustawi miejsce w grupie
+                        is_custom=False, sort=10 ** 6)  # last for now; renumber() places it in its group
     db.add(category)
     db.flush()
     renumber(db)
@@ -136,8 +123,7 @@ def create(db: Session, name: str, group: str, aliases: str) -> Category:
 
 
 def update(db: Session, category: Category, name: str, group: str, aliases: str) -> None:
-    """Zmiana nazwy, grupy i aliasów. Klipy wskazują kategorię przez id, więc zmiana nazwy
-    od razu widoczna jest we wszystkich klipach. Zmiana grupy przenosi kategorię na koniec nowej grupy."""
+    """Changing the group moves the category to the end of the new group."""
     alias_list = clean_aliases(aliases)
     name = _check_fields(db, name, group, alias_list, category.id)
     if group != category.group_name:
@@ -156,7 +142,7 @@ def set_active(db: Session, category: Category, active: bool) -> None:
 
 
 def delete(db: Session, category: Category) -> None:
-    """Usuwa kategorię, której nie używa żaden klip. Używaną można tylko dezaktywować."""
+    """A used category can only be deactivated."""
     if category.is_custom:
         raise CategoryError("Kategorii „własna” nie można usunąć.")
     used = usage_counts(db).get(category.id, 0)
@@ -171,7 +157,6 @@ def delete(db: Session, category: Category) -> None:
 
 
 def move(db: Session, category: Category, direction: str) -> None:
-    """Przesuwa kategorię o jedno miejsce wyżej lub niżej w obrębie jej grupy."""
     if direction not in ("up", "down"):
         raise CategoryError("Nieznany kierunek przesunięcia.")
     siblings = [c for c in renumber(db) if c.group_name == category.group_name]

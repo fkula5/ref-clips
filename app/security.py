@@ -1,4 +1,3 @@
-"""Hasła (argon2) i tokeny (losowe, w bazie tylko ich hash SHA-256)."""
 from __future__ import annotations
 
 import hashlib
@@ -29,7 +28,7 @@ def needs_rehash(password_hash: str) -> bool:
 
 @lru_cache(maxsize=1)
 def dummy_hash() -> str:
-    """Hash do „pustej” weryfikacji, żeby nieznany e-mail trwał tyle samo co zły hasło."""
+    """Hash for a dummy verification, so an unknown e-mail takes as long as a wrong password."""
     return hash_password(secrets.token_urlsafe(16))
 
 

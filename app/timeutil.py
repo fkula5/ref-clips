@@ -1,4 +1,6 @@
-"""Czas: w bazie zawsze UTC jako „naiwny” datetime (tak zapisuje go SQLite); strefa lokalna tylko do wyświetlania."""
+"""The DB always holds UTC as a naive datetime (how SQLite stores it); the local timezone is only for
+display.
+"""
 from datetime import UTC, date, datetime
 from functools import lru_cache
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -17,7 +19,7 @@ def _zone(name: str) -> ZoneInfo:
     try:
         return ZoneInfo(name)
     except (ZoneInfoNotFoundError, ValueError):
-        # Błędna nazwa w REFCLIPS_TIMEZONE nie może wywrócić stron — wracamy do domyślnej strefy.
+        # A bad name in REFCLIPS_TIMEZONE must not break pages: fall back to the default zone.
         return ZoneInfo("Europe/Warsaw")
 
 
@@ -26,14 +28,12 @@ def local_tz() -> ZoneInfo:
 
 
 def to_local(value: datetime) -> datetime:
-    """Chwila z bazy (UTC; naiwna traktowana jako UTC) w strefie z konfiguracji, z czasem letnim/zimowym."""
     aware = value.replace(tzinfo=UTC) if value.tzinfo is None else value
     return aware.astimezone(local_tz())
 
 
 def local(value: datetime | date | None, fmt: str = DEFAULT_LOCAL_FORMAT) -> str:
-    """Filtr szablonów: `{{ x.created_at|local("%d.%m.%Y %H:%M") }}`. Pusta wartość daje pusty napis.
-    Sama data (`date`, np. data meczu) nie ma godziny, więc nie jest przeliczana."""
+    """A plain `date` (e.g. the match date) has no time, so it is not converted."""
     if value is None:
         return ""
     if isinstance(value, datetime):

@@ -1,8 +1,6 @@
-"""Zakłada pierwszego administratora: python -m app.create_admin
-
-Bez argumentów pyta o dane interaktywnie. Dla istniejącego konta (ten sam e-mail) nadaje rolę
-administratora i ustawia nowe hasło — to także sposób na odzyskanie dostępu, gdy nikt nie
-pamięta hasła admina.
+"""Usage: python -m app.create_admin
+An existing e-mail is promoted to admin and gets a new password, which is also the way to recover
+admin access.
 """
 from __future__ import annotations
 

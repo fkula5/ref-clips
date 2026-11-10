@@ -1,4 +1,3 @@
-"""Worker: pętla wykonująca zadania z tabeli jobs. Uruchomienie: python -m app.worker"""
 from __future__ import annotations
 
 import logging
@@ -22,8 +21,9 @@ POLL_SECONDS = 2.0
 
 
 def claim_next(db: Session) -> Job | None:
-    """Pobiera oczekujące zadanie: najpierw cięcia (krótkie), potem konwersje, w obrębie typu
-    najstarsze. Cięcie czeka, aż nagranie będzie gotowe."""
+    """Cuts first (short), then conversions, oldest first within a type. A cut waits until the recording
+    is ready.
+    """
     ready_video = exists().where(and_(Video.id == Job.video_id, Video.status == "ready"))
     candidate = db.scalar(
         select(Job.id)
@@ -61,7 +61,7 @@ def run_transcode(db: Session, job: Job) -> None:
     proxy = storage.local_path(proxy_key)
     vid.transcode_to_proxy(src, proxy, video.duration, on_progress, src_fps=info.get("max_fps"))
     try:
-        final = vid.verify_conversion(info, proxy)  # czas trwania wersji roboczej jest wiążący
+        final = vid.verify_conversion(info, proxy)  # the draft's duration is authoritative
     except vid.FFmpegError as exc:
         proxy.unlink(missing_ok=True)
         raise vid.FFmpegError(f"Wynik konwersji odrzucony: {exc}. Oryginał zostaje — można ponowić.") from exc
@@ -72,7 +72,7 @@ def run_transcode(db: Session, job: Job) -> None:
     original_key, video.original_path = video.original_path, None
     video.status = "ready"
     db.commit()
-    try:  # retencja: oryginał znika po udanej konwersji i sprawdzeniu wyniku
+    try:  # retention: the original is removed after a successful conversion and check
         storage.delete(original_key)
     except OSError:
         log.warning("Nie udało się usunąć oryginału %s", original_key)
@@ -84,10 +84,10 @@ def run_cut(db: Session, job: Job) -> None:
         return
     video = clip.video
     if video.purged_at is not None or not video.proxy_path or not storage.exists(video.proxy_path):
-        # np. nagranie usunięte (retencja, panel admina) między dodaniem znacznika a cięciem
+        # e.g. recording deleted (retention, admin panel) between marking and cutting
         raise FileNotFoundError("Pełne nagranie zostało usunięte przed wycięciem klipu.")
     if video.duration is not None and clip.time_sec > video.duration + config.CUT_OUTSIDE_TOLERANCE:
-        # np. moment z notatek wpisanych przy wgrywaniu, zanim znaliśmy długość nagrania
+        # e.g. a moment from notes typed at upload, before the recording length was known
         raise ValueError(f"Moment poza nagraniem: {format_clock(clip.time_sec)} "
                          f"(nagranie trwa {format_clock(video.duration)})")
     start, end = services.clip_range(clip)
@@ -109,7 +109,7 @@ def process_job(db: Session, job: Job) -> None:
     try:
         HANDLERS[job.type](db, job)
         job.status, job.progress, job.error = "done", 1.0, None
-    except Exception as exc:  # noqa: BLE001 - błąd zadania nie może zabić workera
+    except Exception as exc:  # noqa: BLE001 - a task error must not kill the worker
         log.exception("Zadanie %s nie powiodło się", job.id)
         db.rollback()
         job = db.get(Job, job.id)
@@ -123,9 +123,8 @@ def process_job(db: Session, job: Job) -> None:
 
 
 def run_once() -> bool:
-    """Wykonuje jedno zadanie, jeśli jest dostępne. Zwraca True, gdy coś zrobiono."""
     if not vid.ffmpeg_available():
-        return False  # zadania czekają w kolejce, aż ffmpeg będzie zainstalowany
+        return False  # jobs wait in the queue until ffmpeg is installed
     with SessionLocal() as db:
         job = claim_next(db)
         if job is None:
@@ -136,7 +135,6 @@ def run_once() -> bool:
 
 
 def recover_interrupted() -> None:
-    """Zadania przerwane przez zatrzymanie workera wracają do kolejki."""
     with SessionLocal() as db:
         for job in db.scalars(select(Job).where(Job.status == "running")):
             job.status, job.progress = "pending", 0.0
@@ -146,10 +144,10 @@ def recover_interrupted() -> None:
 
 
 def run_maintenance() -> None:
-    """Okresowe sprzątanie (co godzinę, także zaraz po starcie): porzucone uploady (> 24 h bez
-    aktywności), osierocone pliki klipów i nagrań, pozostałości paczek ZIP w `tmp`, stare wpisy o odrzuconych uploadach oraz retencja —
-    usuwanie wersji roboczych po terminie, raz na dobę (`retention.run_if_due` pilnuje, żeby restart
-    ani drugi worker nie uruchomił jej drugi raz). Błąd jednego kroku nie wstrzymuje pozostałych."""
+    """Hourly and right after start: abandoned uploads, orphan clip and recording files, leftover ZIPs
+    in `tmp`, old rejection entries, and retention (once a day; `retention.run_if_due` guards against
+    a restart or second worker running it twice). A failing step does not stop the others.
+    """
     steps = (uploads.cleanup_stale, uploads.prune_rejections, retention.run_if_due,
              retention.cleanup_orphan_clips, retention.cleanup_orphan_videos, retention.cleanup_tmp)
     for step in steps:
@@ -161,9 +159,9 @@ def run_maintenance() -> None:
 
 
 def heartbeat_loop(stop: threading.Event, interval: float = config.WORKER_HEARTBEAT_SECONDS) -> None:
-    """Odnawia znacznik życia (`/health`) co `interval` s do zatrzymania. Działa w osobnym wątku,
-    bo konwersja ffmpeg blokuje pętlę główną nawet na godzinę. Błąd zapisu (np. zablokowana baza)
-    nie zabija wątku; do logu trafia tylko pierwszy z serii błędów, żeby nie zasypywać dziennika."""
+    """Runs in a separate thread because an ffmpeg conversion can block the main loop for an hour. A
+    write error (e.g. locked DB) does not kill the thread; only the first of a series is logged.
+    """
     failing = False
     while True:
         try:
@@ -181,8 +179,7 @@ def heartbeat_loop(stop: threading.Event, interval: float = config.WORKER_HEARTB
 
 
 def _on_sigterm(signum, frame) -> None:
-    """Zatrzymanie workera (docker stop, systemd): zabija trwający ffmpeg i kończy proces. Przerwane
-    zadanie zostaje w bazie jako `running` i wraca do kolejki przy następnym starcie (`recover_interrupted`)."""
+    """docker stop / systemd: kills a running ffmpeg and exits. The interrupted job stays `running` in the DB and returns to the queue at the next start (`recover_interrupted`)."""
     vid.terminate_active()
     sys.exit(128 + signum)
 

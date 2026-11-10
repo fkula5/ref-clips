@@ -1,5 +1,3 @@
-"""Lista klipów: filtry z adresu (GET) wspólne dla zakładki „Klipy” meczu, globalnej listy /clips
-i nawigacji poprzedni/następny na stronie klipu."""
 from __future__ import annotations
 
 from collections.abc import Mapping
@@ -12,11 +10,11 @@ from sqlalchemy.orm import Session, selectinload
 from app import feedback, services
 from app.models import PERIODS, RATING_VERDICTS, Clip, MatchOfficial, Rating, Video
 
-TEAM = "team"           # filtr sędziego: klipy „cały zespół”
-NO_PERIOD = "none"      # filtr kwarty: kwarta nieustalona
+TEAM = "team"
+NO_PERIOD = "none"
 DESCRIBED_YES, DESCRIBED_NO = "1", "0"
-RATING_ANY, RATING_NONE = "any", "none"   # filtr ocen: z dowolną oceną / bez ocen (poza werdyktami)
-# Wybór w filtrze „Oceny”: (wartość, etykieta); werdykt oznacza „ma co najmniej jedną taką ocenę”.
+RATING_ANY, RATING_NONE = "any", "none"
+# A verdict means "has at least one such rating".
 RATING_CHOICES = [(RATING_ANY, "z oceną (dowolną)"),
                   *((v, f"ma ocenę: {label}") for v, label in RATING_VERDICTS.items()),
                   (RATING_NONE, "bez ocen")]
@@ -31,11 +29,11 @@ def _int(raw: str | None) -> int | None:
 class ClipFilters:
     match_id: int | None = None
     video_id: int | None = None
-    person: str = ""       # "u<id konta>", "n<znormalizowane nazwisko>" albo "team" (cały zespół)
+    person: str = ""  # "u<account id>", "n<normalised name>" or "team"
     category_id: int | None = None
-    period: str = ""       # Q1..OT3 albo "none" (nieustalona)
-    described: str = ""    # "1" opisane, "0" nieopisane, "" wszystkie
-    rating: str = ""       # werdykt, "any" (ma ocenę) albo "none" (bez ocen)
+    period: str = ""
+    described: str = ""
+    rating: str = ""
 
     def pairs(self, *, scope: bool) -> list[tuple[str, str]]:
         pairs = [("person", self.person),
@@ -47,8 +45,7 @@ class ClipFilters:
         return [(k, v) for k, v in pairs if v]
 
     def query(self, *, scope: bool = True) -> str:
-        """Parametry adresu (bez pustych). `scope=False` pomija mecz i nagranie — tylko filtry
-        zakładki meczu i nawigacji po klipach."""
+        """`scope=False` omits match and recording (match-tab and clip-navigation filters only)."""
         return urlencode(self.pairs(scope=scope))
 
     @property
@@ -57,7 +54,6 @@ class ClipFilters:
 
 
 def parse_filters(params: Mapping[str, str]) -> ClipFilters:
-    """Filtry z parametrów adresu; niepoprawne wartości są pomijane."""
     period = (params.get("period") or "").strip()
     described = (params.get("described") or "").strip()
     rating = (params.get("rating") or "").strip()
@@ -72,8 +68,6 @@ def parse_filters(params: Mapping[str, str]) -> ClipFilters:
 
 def query_clips(db: Session, *, match_id=None, video_id=None, person=None, category_id=None,
                 period=None, described=None, rating=None, ids=None, with_comments=False) -> list[Clip]:
-    """Klipy po filtrach w kolejności mecz (od najnowszego) -> nagranie -> czas. Liczby ocen i komentarzy
-    do tabeli daje `clip_stats` (zapytania zbiorcze); `with_comments` wczytuje treści (eksport)."""
     stmt = (select(Clip)
             .options(selectinload(Clip.video).selectinload(Video.marks),
                      selectinload(Clip.official).selectinload(MatchOfficial.user))
@@ -107,7 +101,7 @@ def query_clips(db: Session, *, match_id=None, video_id=None, person=None, categ
             if services.person_key(user_id, name, accounts) == person]
         stmt = stmt.where(Clip.official_id.in_(official_ids))
     clips = list(db.scalars(stmt))
-    if period:  # kwarta jest wyliczana ze znaczników, więc filtrujemy w Pythonie
+    if period:  # period is derived from markers, so filter in Python
         wanted = "" if period == NO_PERIOD else period
         clips = [c for c in clips if (services.period_for(c.video.marks, c.time_sec) or "") == wanted]
     return clips
@@ -122,19 +116,16 @@ def select_clips(db: Session, filters: ClipFilters, *, match_id: int | None = No
 
 @dataclass
 class ClipStats:
-    """Podsumowanie klipu w tabeli: oceny [(werdykt, liczba)] i liczba komentarzy."""
     ratings: list[tuple[str, int]]
     comments: int
 
 
 def clip_stats(db: Session, clips: list[Clip]) -> dict[int, ClipStats]:
-    """Oceny i komentarze wszystkich klipów listy dwoma zapytaniami (bez N+1)."""
     ids = [c.id for c in clips]
     ratings, comments = feedback.rating_counts(db, ids), feedback.comment_counts(db, ids)
     return {i: ClipStats(ratings.get(i, []), comments.get(i, 0)) for i in ids}
 
 
 def match_people(db: Session, match) -> list[tuple[str, str]]:
-    """Sędziowie z obsady jednego meczu do filtra: (klucz osoby, „CC · Imię Nazwisko”)."""
     accounts = services.account_names(db)
     return [(services.person_key(o.user_id, o.name, accounts), o.label) for o in match.officials]

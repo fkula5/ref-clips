@@ -1,4 +1,3 @@
-"""Aplikacja FastAPI: ref-clips (wycinanie i analiza decyzji sędziowskich)."""
 from contextlib import asynccontextmanager
 from urllib.parse import quote
 
@@ -23,7 +22,7 @@ from app.routers import (admin, auth, clips, clips_v2, describe, feedback, match
 from app.web import BASE, back_url, render
 
 
-logfilter.install()   # adresy z tokenami zaproszeń nie mogą zostawać w dzienniku dostępu
+logfilter.install()
 
 
 @asynccontextmanager
@@ -32,22 +31,21 @@ async def lifespan(_app: FastAPI):
     yield
 
 
-# Bez publicznej dokumentacji API: każda strona poza logowaniem wymaga sesji.
+# No public API docs: every page except login needs a session.
 app = FastAPI(title="ref-clips", lifespan=lifespan, docs_url=None, redoc_url=None, openapi_url=None)
 app.add_middleware(SessionRefreshMiddleware)
-app.add_middleware(SharePrivacyHeadersMiddleware)   # nagłówki prywatności pod /s/ (strony linków bez konta)
+app.add_middleware(SharePrivacyHeadersMiddleware)
 app.mount("/static", StaticFiles(directory=BASE / "static"), name="static")
 
-# Poza logowaniem i ustawieniem hasła każda trasa wymaga sesji i tokenu CSRF (dla POST/DELETE).
 app.include_router(auth.public_router, dependencies=PUBLIC)
-app.include_router(share.router)   # publiczne linki do klipów (/s/<kod>): bez sesji i CSRF, tylko odczyt
+app.include_router(share.router)  # no session or CSRF: read-only public links
 app.include_router(auth.router, dependencies=PROTECTED)
 app.include_router(admin.router, dependencies=PROTECTED)
 app.include_router(matches.router, dependencies=PROTECTED)
 app.include_router(describe.router, dependencies=PROTECTED)
 app.include_router(videos.router, dependencies=PROTECTED)
 app.include_router(uploads.router, dependencies=PROTECTED)
-if config.ENABLE_V2_FEATURES:  # przed clips: /clips/export.zip nie może trafić w /clips/{clip_id}
+if config.ENABLE_V2_FEATURES:  # before clips: /clips/export.zip must not match /clips/{clip_id}
     app.include_router(clips_v2.router, dependencies=PROTECTED)
 app.include_router(clips.router, dependencies=PROTECTED)
 app.include_router(feedback.router, dependencies=PROTECTED)
@@ -56,7 +54,6 @@ app.include_router(sheets.router, dependencies=PROTECTED)
 
 
 def _wants_page(request: Request) -> bool:
-    """Nawigacja w przeglądarce (a nie API, HTMX ani pobieranie pliku)."""
     return (request.method == "GET" and not request.url.path.startswith("/api/")
             and "hx-request" not in request.headers)
 
@@ -74,7 +71,6 @@ ERROR_MESSAGES = {404: "Nie ma takiej strony lub została usunięta.",
 
 
 def error_page(request: Request, status_code: int, detail: str | None = None):
-    """Strona błędu dla nawigacji w przeglądarce (nie dla formularzy, które pokazują błędy u siebie)."""
     generic = not detail or detail in ("Not Found", "Method Not Allowed")
     message = ERROR_MESSAGES.get(status_code, "Nie można wykonać operacji.") if generic else detail
     return render(request, "error.html", status_code=status_code, message=message,
@@ -84,8 +80,7 @@ def error_page(request: Request, status_code: int, detail: str | None = None):
 
 @app.exception_handler(RequestValidationError)
 async def validation_error(request: Request, exc: RequestValidationError):
-    """Niepoprawne parametry (np. id w adresie): w przeglądarce strona błędu, w API JSON."""
-    if request.url.path.startswith("/s/"):   # publiczne linki: zawsze ta sama prosta strona, bez ciasteczek
+    if request.url.path.startswith("/s/"):  # public links: always the same plain page, no cookies
         return share.gone_response(request)
     if _is_browser_form(request):
         return error_page(request, 422)
@@ -94,8 +89,7 @@ async def validation_error(request: Request, exc: RequestValidationError):
 
 @app.exception_handler(HTTPException)
 async def http_error(request: Request, exc: HTTPException):
-    """401 na stronie przekierowuje na logowanie; w API zostaje kod błędu (JSON)."""
-    if request.url.path.startswith("/s/"):   # publiczne linki: każdy błąd (404, 405) wygląda tak samo
+    if request.url.path.startswith("/s/"):  # public links: every error (404, 405) looks the same
         return share.gone_response(request)
     if exc.status_code == 401:
         if _wants_page(request):
@@ -111,8 +105,7 @@ async def http_error(request: Request, exc: HTTPException):
 
 @app.api_route("/health", methods=["GET", "HEAD"])
 def health_check():
-    """Monitoring (np. zewnętrzny ping): bez logowania i CSRF, poza nawigacją. 200 {"status":"ok"} albo
-    503 z samymi nazwami i stanami sprawdzeń (baza, worker, dysk); nigdy ścieżek, liczb ani wyjątków."""
+    """Public: no login or CSRF. Only names and states, never paths, numbers or exceptions."""
     checks = health.run_checks()
     ok = health.is_healthy(checks)
     body = {"status": "ok"} if ok else {"status": "error", "checks": checks}

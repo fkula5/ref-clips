@@ -1,5 +1,3 @@
-"""Oceny szkoleniowców i komentarze: walidacja treści, zapis oceny (jedna na parę klip–szkoleniowiec),
-liczniki do tabeli klipów. Reguły uprawnień są w `permissions`, trasy w `routers/feedback.py`."""
 from __future__ import annotations
 
 from collections.abc import Iterable
@@ -14,13 +12,11 @@ from app.timeutil import utcnow
 
 
 class FeedbackError(Exception):
-    """Błąd walidacji treści oceny lub komentarza (HTTP 422); komunikat trafia do formularza."""
     status_code = 422
 
 
 def clean_text(raw: str, *, label: str, required: bool) -> str:
-    """Treść po usunięciu białych znaków z brzegów, z ujednoliconymi końcami linii; limit znaków
-    liczymy po normalizacji (przeglądarka wysyła nową linię jako \\r\\n)."""
+    """The character limit is counted after normalising line endings (browsers send CRLF)."""
     text = raw.replace("\r\n", "\n").replace("\r", "\n").strip()
     if required and not text:
         raise FeedbackError(f"{label}: wpisz treść.")
@@ -36,9 +32,7 @@ def clean_verdict(raw: str) -> str:
     return verdict
 
 
-# --- komentarze -----------------------------------------------------------------
 def comments_of(db: Session, *, clip_id: int | None = None, match_id: int | None = None) -> list[Comment]:
-    """Komentarze klipu albo meczu od najstarszego, z autorami (bez N+1)."""
     column = Comment.clip_id if clip_id is not None else Comment.match_id
     return list(db.scalars(select(Comment).options(selectinload(Comment.author))
                            .where(column == (clip_id if clip_id is not None else match_id))
@@ -55,14 +49,13 @@ def create_comment(db: Session, author_id: int, body: str, *, clip_id: int | Non
 
 
 def edit_comment(comment: Comment, body: str) -> None:
-    """Zmienia treść; `edited_at` ustawiamy tylko, gdy treść faktycznie się zmieniła."""
+    """`edited_at` changes only when the text really changed."""
     text = clean_text(body, label="Komentarz", required=True)
     if text != comment.body:
         comment.body = text
         comment.edited_at = utcnow()
 
 
-# --- oceny ----------------------------------------------------------------------
 def ratings_of(db: Session, clip: Clip) -> list[Rating]:
     return list(db.scalars(select(Rating).options(selectinload(Rating.coach))
                            .where(Rating.clip_id == clip.id).order_by(Rating.id)))
@@ -73,8 +66,9 @@ def _own_rating(db: Session, clip_id: int, coach_id: int) -> Rating | None:
 
 
 def edit_rating(rating: Rating, verdict: str, comment: str) -> None:
-    """Zmiana oceny. Autor (`coach_id`) zostaje bez zmian także wtedy, gdy edytuje administrator;
-    `updated_at` ruszamy tylko przy faktycznej zmianie, bo na nim opiera się „zmieniona”."""
+    """The author (`coach_id`) stays unchanged even when an admin edits; `updated_at` moves only on a
+    real change because "changed" relies on it.
+    """
     verdict = clean_verdict(verdict)
     comment = clean_text(comment, label="Komentarz do oceny", required=False)
     if (verdict, comment) != (rating.verdict, rating.comment):
@@ -83,9 +77,9 @@ def edit_rating(rating: Rating, verdict: str, comment: str) -> None:
 
 
 def save_own_rating(db: Session, clip: Clip, coach_id: int, verdict: str, comment: str) -> Rating:
-    """Własna ocena szkoleniowca: nowa albo aktualizacja istniejącej (jedna na parę klip–szkoleniowiec).
-    Wyścig dwóch żądań kończy się naruszeniem unikalności przy `flush`; wtedy wczytujemy ocenę
-    założoną przez drugie żądanie i ją aktualizujemy (bez duplikatu i bez błędu 500)."""
+    """A race between two requests ends in a uniqueness violation on flush; the rating created by the
+    other request is then loaded and updated (no duplicate, no 500).
+    """
     verdict = clean_verdict(verdict)
     comment = clean_text(comment, label="Komentarz do oceny", required=False)
     rating = _own_rating(db, clip.id, coach_id)
@@ -110,9 +104,7 @@ def is_edited(rating: Rating) -> bool:
     return rating.updated_at > rating.created_at
 
 
-# --- liczniki do tabeli klipów (dwa zapytania na całą listę) ------------------------
 def rating_counts(db: Session, clip_ids: Iterable[int]) -> dict[int, list[tuple[str, int]]]:
-    """Klip -> [(werdykt, liczba)] w stałej kolejności prawidłowa, nieprawidłowa, dyskusyjna."""
     ids = list(clip_ids)
     counts: dict[int, dict[str, int]] = {}
     if ids:

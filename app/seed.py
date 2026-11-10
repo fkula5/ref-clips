@@ -1,14 +1,12 @@
-"""Dane początkowe: słownik kategorii ze specyfikacji i ustawienia domyślne.
-
-Aliasy czyta parser notatek (wielkość liter i polskie znaki nie mają znaczenia, poza
-jednoliterowymi skrótami T/U/D, które muszą być wielką literą). Skrótu „PTS” nie zgadujemy.
+"""Aliases are read by the notes parser (case and Polish diacritics are ignored, except the one-letter
+T/U/D, which must be capitals). The abbreviation "PTS" is deliberately not guessed.
 """
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models import Category, Setting
 
-# (grupa, [(nazwa, aliasy po przecinku, czy „własna”), ...])
+# (group, [(name, comma-separated aliases, is_custom), ...])
 DEFAULT_CATEGORIES: list[tuple[str, list[tuple[str, str, bool]]]] = [
     ("Faule", [
         ("osobisty", "faul osobisty, osobistego", False),
@@ -48,7 +46,7 @@ DEFAULT_SETTINGS = {"retention_days": "30"}
 
 
 def seed(db: Session) -> None:
-    """Uzupełnia dane początkowe tylko wtedy, gdy ich jeszcze nie ma (nie nadpisuje zmian admina)."""
+    """Only when absent: admin changes are not overwritten."""
     if db.scalar(select(Category.id).limit(1)) is None:
         sort = 0
         for group, items in DEFAULT_CATEGORIES:

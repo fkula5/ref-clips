@@ -1,10 +1,3 @@
-"""Zajętość dysku dla panelu admina: pełne nagrania, oryginały i niedokończone uploady, klipy,
-wolne i zarezerwowane miejsce oraz lista nagrań z terminami usunięcia.
-
-Rozmiary pochodzą z bazy (`Video.proxy_bytes`, `Video.size_bytes`, `UploadSession.offset_bytes`);
-jedyne przejście po dysku to jeden odczyt katalogu klipów. Rozmiar wersji roboczej starszych
-nagrań (sprzed migracji mvp0004) uzupełnia się leniwie przy pierwszym otwarciu panelu.
-"""
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -21,19 +14,19 @@ from app.timeutil import utcnow
 
 @dataclass
 class DiskUsage:
-    drafts: int          # wersje robocze pełnych nagrań
-    originals: int       # oryginały czekające na konwersję lub po błędzie konwersji
-    partial: int         # niedokończone uploady (pliki .part)
-    clips: int           # pliki klipów
+    drafts: int
+    originals: int
+    partial: int
+    clips: int
     clip_files: int
     free: int
     total: int
-    reserved: int        # miejsce obiecane trwającym uploadom i konwersjom
-    acceptable: int      # największy plik, jaki nowy upload mógłby teraz zająć
+    reserved: int  # space promised to running uploads and conversions
+    acceptable: int  # largest file a new upload could take now
 
 
 def fill_proxy_sizes(db: Session) -> None:
-    """Uzupełnia `proxy_bytes` nagrań, które go nie mają (starsze wiersze); brak pliku zostawia puste."""
+    """Backfills `proxy_bytes` lazily for older rows; a missing file stays empty."""
     changed = False
     for video in db.scalars(select(Video).where(Video.proxy_path.is_not(None), Video.proxy_bytes.is_(None))):
         if storage.exists(video.proxy_path):
@@ -68,12 +61,10 @@ class VideoRow:
 
     @property
     def size(self) -> int:
-        """Miejsce zajmowane przez nagranie: wersja robocza i ewentualny oryginał."""
         return (self.video.proxy_bytes or 0) + (self.video.size_bytes if self.video.original_path else 0)
 
 
 def video_rows(db: Session, now: datetime | None = None) -> list[VideoRow]:
-    """Nagrania z plikami na dysku (bez usuniętych), od najbliższego terminu usunięcia; bez terminu na końcu."""
     now = now or utcnow()
     videos = db.scalars(select(Video).where(Video.purged_at.is_(None)).options(
         selectinload(Video.match))).all()
@@ -89,7 +80,6 @@ def video_rows(db: Session, now: datetime | None = None) -> list[VideoRow]:
 
 
 def recent_rejections(db: Session, now: datetime | None = None) -> list[UploadRejection]:
-    """Uploady odrzucone z braku miejsca w ostatnich `REJECTION_WARN_DAYS` dniach, od najnowszego."""
     since = (now or utcnow()) - timedelta(days=config.REJECTION_WARN_DAYS)
     return list(db.scalars(select(UploadRejection).where(UploadRejection.created_at >= since)
                            .options(selectinload(UploadRejection.user))

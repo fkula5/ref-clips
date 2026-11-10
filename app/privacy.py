@@ -1,10 +1,8 @@
-"""Nagłówki prywatności dla publicznych stron linków (`/s/*`).
-
-Dokładane do KAŻDEJ odpowiedzi pod `/s/` (strona, plik, ZIP, błędy), niezależnie od trasy:
-- `X-Robots-Tag: noindex, nofollow` — wyszukiwarki nie indeksują linków,
-- `Referrer-Policy: no-referrer` — kod linku nie trafia dalej w nagłówku Referer (Caddy nie nadpisuje go
-  dla `/s/*`, patrz `deploy/Caddyfile`),
-- `Cache-Control: no-store` — domyślnie; trasa może ustawić własną wartość (plik wideo: `private, no-store`).
+"""Added to EVERY response under `/s/` (page, file, ZIP, errors), whatever the route:
+- `X-Robots-Tag: noindex, nofollow`: search engines do not index links.
+- `Referrer-Policy: no-referrer`: the link code must not leak in Referer (Caddy does not override it
+for `/s/*`, see `deploy/Caddyfile`).
+- `Cache-Control: no-store` by default; a route may set its own (video: `private, no-store`).
 """
 from __future__ import annotations
 

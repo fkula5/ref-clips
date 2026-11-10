@@ -1,7 +1,4 @@
-"""Warstwa magazynu plików. Teraz dysk lokalny; później można dodać S3/Backblaze.
-
-W bazie zapisujemy wyłącznie ścieżki względne (klucze magazynu).
-"""
+"""Only relative paths (storage keys) are stored in the DB."""
 from __future__ import annotations
 
 import os
@@ -17,14 +14,14 @@ from app import config
 class Storage(ABC):
     @abstractmethod
     def local_path(self, key: str) -> Path:
-        """Ścieżka lokalna pliku (dla ffmpeg/serwowania). Zdalne magazyny pobiorą plik do cache."""
+        """Local path of the file (for ffmpeg and serving). Remote stores would download it to a cache."""
 
     @abstractmethod
     def open_write(self, key: str) -> BinaryIO: ...
 
     @abstractmethod
     def open_update(self, key: str) -> BinaryIO:
-        """Otwiera istniejący (albo nowy) plik do zapisu w dowolnym miejscu, bez obcinania."""
+        """Opens an existing (or new) file for writing at any position, without truncating."""
 
     @abstractmethod
     def exists(self, key: str) -> bool: ...
@@ -37,8 +34,9 @@ class Storage(ABC):
 
     @abstractmethod
     def iter_files(self, prefix: str) -> Iterator[tuple[str, int, float]]:
-        """Pliki bezpośrednio w „katalogu” `prefix` jako (klucz, rozmiar w bajtach, czas modyfikacji
-        w sekundach epoki) — jedno przejście po katalogu, bez osobnych zapytań o każdy plik."""
+        """Files directly in the "directory" `prefix` as (key, size in bytes, mtime in epoch seconds):
+        one directory pass, no per-file queries.
+        """
 
 
 class LocalStorage(Storage):
@@ -82,7 +80,7 @@ class LocalStorage(Storage):
                     if entry.is_file(follow_symlinks=False):
                         stat = entry.stat(follow_symlinks=False)
                         yield f"{prefix.rstrip('/')}/{entry.name}", stat.st_size, stat.st_mtime
-                except FileNotFoundError:  # plik zniknął w trakcie przeglądania katalogu
+                except FileNotFoundError:  # file vanished while listing the directory
                     continue
 
     def free_bytes(self) -> int:

@@ -1,10 +1,8 @@
-"""Linki udostępniające klipy osobom bez konta (`/s/<kod>`): tworzenie, wyszukiwanie ważnego linku,
-to, co widać publicznie, i paczka ZIP (logika bez FastAPI).
-
-Zasada: osoba z linkiem widzi tylko wideo, ligę (`Match.level`) i kategorię decyzji
-(`Clip.category_label`). Nazwisk sędziów, drużyn, dat, opisów, ocen ani komentarzy tu nie czytamy,
-więc nie mają jak trafić na stronę, do nazwy pliku ani do paczki.
-Kod linku to `security.new_token()` (256 bitów); w bazie jest tylko jego skrót SHA-256."""
+"""People with a link see only the video, the league (`Match.level`) and the decision category
+(`Clip.category_label`). Referee names, teams, dates, descriptions, ratings and comments are never
+read here, so they cannot reach the page, file name or ZIP.
+The link code is `security.new_token()` (256 bits); only its SHA-256 hash is stored.
+"""
 from __future__ import annotations
 
 import os
@@ -31,19 +29,16 @@ from app.storage import storage
 from app.textutil import format_clock
 from app.timeutil import utcnow
 
-CODE_FORMAT = re.compile(r"^[A-Za-z0-9_-]{43}$")   # token_urlsafe(32); inny kształt nie trafia nawet do bazy
-LISTED_MAX = 5                                     # ile klipów wymieniamy w komunikacie o odmowie
+CODE_FORMAT = re.compile(r"^[A-Za-z0-9_-]{43}$")  # token_urlsafe(32); other shapes never reach the DB
+LISTED_MAX = 5
 
 
 class ShareError(ValueError):
-    """Błąd tworzenia linku widoczny dla użytkownika (komunikat po polsku) z kodem odpowiedzi HTTP."""
-
     def __init__(self, message: str, status_code: int = 422):
         super().__init__(message)
         self.status_code = status_code
 
 
-# --- tworzenie ------------------------------------------------------------------------
 def parse_days(raw: str | None) -> int:
     try:
         days = int((raw or "").strip())
@@ -56,7 +51,6 @@ def parse_days(raw: str | None) -> int:
 
 
 def parse_clip_ids(raw: list[str]) -> list[int]:
-    """Id klipów z formularza: bez powtórzeń, w kolejności podania; niepoprawna wartość odrzuca całość."""
     ids: list[int] = []
     for value in raw:
         value = value.strip()
@@ -73,12 +67,11 @@ def parse_clip_ids(raw: list[str]) -> list[int]:
 
 
 def has_file(clip: Clip) -> bool:
-    """Klip wycięty i z plikiem na dysku (w trakcie ponownego cięcia ma status inny niż „wycięty”)."""
+    """A clip being re-cut does not count: its status is not the cut one."""
     return clip.status == "cut" and bool(clip.clip_path) and storage.exists(clip.clip_path)
 
 
 def _label(clip: Clip) -> str:
-    """Opis klipu w komunikacie dla zalogowanego (mecz i czas w nagraniu)."""
     return f"{clip.match.title} · {format_clock(clip.time_sec)}"
 
 
@@ -88,8 +81,9 @@ def _listed(clips: list[Clip]) -> str:
 
 
 def create_link(db: Session, user: User, clip_ids: list[str], days: str) -> tuple[ShareLink, str]:
-    """Tworzy link do zaznaczonych klipów i zwraca go razem z jawnym kodem (jedyny raz, kiedy istnieje).
-    Wszystko albo nic: jeden niedozwolony albo niewycięty klip odrzuca cały formularz."""
+    """Returns the link with the plain code (the only time it exists). All or nothing: one disallowed or
+    uncut clip rejects the whole form.
+    """
     valid_days = parse_days(days)
     ids = parse_clip_ids(clip_ids)
     found = {c.id: c for c in db.scalars(select(Clip).where(Clip.id.in_(ids)))}
@@ -111,26 +105,22 @@ def create_link(db: Session, user: User, clip_ids: list[str], days: str) -> tupl
     db.add(link)
     try:
         db.commit()
-    except IntegrityError:  # klip usunięty między sprawdzeniem a zapisem
+    except IntegrityError:  # clip deleted between the check and the write
         db.rollback()
         raise ShareError("Któryś z klipów został właśnie usunięty — spróbuj jeszcze raz.", 409) from None
     return link, code
 
 
 def offerable(user: User, clip: Clip) -> bool:
-    """Czy interfejs pokazuje przy klipie udostępnianie (reguła + klip wycięty). Serwer i tak sprawdza
-    wszystko przy tworzeniu linku, łącznie z plikiem na dysku."""
+    """The server rechecks everything on creation, including the file on disk."""
     return clip.status == "cut" and bool(clip.clip_path) and permissions.can_share_clip(user, clip)
 
 
 def public_url(request: Request, code: str) -> str:
-    """Pełny adres publiczny linku (z `REFCLIPS_PUBLIC_URL`, jak w zaproszeniach)."""
     return f"{config.PUBLIC_URL or str(request.base_url).rstrip('/')}/s/{code}"
 
 
-# --- zalogowani: linki klipu ----------------------------------------------------------
 def active_links(db: Session, clip_id: int, now: datetime | None = None) -> list[ShareLink]:
-    """Nieunieważnione i niewygasłe linki zawierające klip, od najpóźniej wygasających."""
     return list(db.scalars(
         select(ShareLink).join(ShareLinkClip).where(
             ShareLinkClip.clip_id == clip_id, ShareLink.revoked_at.is_(None),
@@ -146,18 +136,16 @@ def revoke(db: Session, link: ShareLink) -> None:
 
 
 def public_title(clip: Clip) -> str:
-    """Jedyne opisy widoczne publicznie: liga i kategoria decyzji."""
     return " · ".join(p for p in (clip.match.level.strip(), clip.category_label.strip()) if p)
 
 
-# --- strona publiczna ------------------------------------------------------------------
 @dataclass
 class SharedClip:
-    position: int       # trwała pozycja w linku (w adresach zamiast id klipu)
+    position: int
     clip: Clip
     level: str
     category: str
-    filename: str       # bez nazwiska sędziego
+    filename: str  # without the referee's name
 
 
 @dataclass
@@ -176,8 +164,7 @@ class SharedView:
 
 
 def open_link(db: Session, code: str, now: datetime | None = None) -> SharedView | None:
-    """Ważny link z klipami, które da się pokazać. Nieistniejący, wygasły, unieważniony i bez klipów dają
-    to samo (None), więc odpowiedź nie zdradza, który z tych przypadków zaszedł."""
+    """Missing, expired, revoked and empty links all give None, so the response does not reveal which."""
     if not CODE_FORMAT.match(code):
         return None
     link = db.scalar(select(ShareLink).where(ShareLink.token_hash == hash_token(code)).options(
@@ -191,18 +178,17 @@ def open_link(db: Session, code: str, now: datetime | None = None) -> SharedView
 
 
 def count_view(db: Session, link_id: int) -> None:
-    """Wejście na stronę linku: atomowy UPDATE (równoległe wejścia się nie gubią)."""
+    """Atomic UPDATE, so parallel visits are not lost."""
     db.execute(update(ShareLink).where(ShareLink.id == link_id).values(view_count=ShareLink.view_count + 1))
     db.commit()
 
 
-# --- paczka ZIP --------------------------------------------------------------------------
 class ZipBusy(Exception):
-    """Trwa już maksymalna liczba budowanych paczek."""
+    pass
 
 
 class ZipNoSpace(Exception):
-    """Za mało wolnego miejsca na dysku na paczkę."""
+    pass
 
 
 _zip_lock = threading.Lock()
@@ -211,7 +197,7 @@ _zips_running = 0
 
 @contextmanager
 def zip_slot() -> Iterator[None]:
-    """Miejsce na budowaną paczkę; gdy zajęte, od razu ZipBusy (bez czekania w kolejce)."""
+    """When taken, ZipBusy at once (no queueing)."""
     global _zips_running
     with _zip_lock:
         if _zips_running >= config.SHARE_ZIP_MAX_PARALLEL:
@@ -225,9 +211,10 @@ def zip_slot() -> Iterator[None]:
 
 
 def build_zip(clips: list[SharedClip]) -> Path:
-    """Paczka ZIP (bez kompresji, bez CSV i metadanych) w `DATA_DIR/tmp`. Usunięcie pliku po wysłaniu
-    należy do wołającego; przy błędzie budowy plik znika tutaj. Pozostałości po awarii sprząta worker
-    (`retention.cleanup_tmp`). Daty w paczce są stałe, żeby nie zdradzały czasu cięcia."""
+    """ZIP (no compression, no CSV or metadata) in `DATA_DIR/tmp`. The caller deletes the file after
+    sending; on a build error it is removed here; leftovers after a crash are cleaned by the worker
+    (`retention.cleanup_tmp`). Dates in the archive are fixed so they do not reveal the cut time.
+    """
     with zip_slot():
         needed = sum(storage.size(c.clip.clip_path) for c in clips)
         if storage.free_bytes() < needed + config.DISK_SAFETY_BYTES:

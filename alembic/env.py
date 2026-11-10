@@ -2,7 +2,7 @@ from alembic import context
 from sqlalchemy import create_engine
 
 from app import config as app_config
-from app import models  # noqa: F401  (rejestracja modeli)
+from app import models  # noqa: F401 (registers models)
 from app.db import Base
 
 config = context.config

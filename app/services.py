@@ -1,4 +1,3 @@
-"""Logika biznesowa: obsada, kwarty, granice klipów, nazwy plików, tworzenie klipów, kolejka."""
 from __future__ import annotations
 
 import threading
@@ -19,16 +18,14 @@ from app.timeutil import utcnow
 
 
 class MatchFormError(ValueError):
-    """Niepoprawne dane w formularzu meczu (komunikat po polsku); w formularzu to HTTP 422."""
     status_code = 422
 
 
 class MatchForbiddenError(MatchFormError):
-    """Odmowa reguły „sędzia musi być w obsadzie własnego meczu” (HTTP 403, ale w formularzu)."""
+    """HTTP 403, but shown in the form"""
     status_code = 403
 
 
-# --- ustawienia -----------------------------------------------------------------
 def get_setting(db: Session, key: str, default: str = "") -> str:
     row = db.get(Setting, key)
     return row.value if row is not None else default
@@ -50,19 +47,16 @@ def retention_days(db: Session) -> int:
 
 
 def video_expiry(db: Session):
-    """Koniec retencji pełnego nagrania wgranego teraz."""
     return utcnow() + timedelta(days=retention_days(db))
 
 
-# --- tożsamość osób w obsadzie -----------------------------------------------------
 Identity = tuple[str, object]
 
 
 def account_names(db: Session) -> dict[str, int]:
-    """Znormalizowane imię i nazwisko -> id konta, tylko gdy nazwa jest jednoznaczna.
-
-    Dwa konta o tym samym imieniu i nazwisku (także nieaktywne) nie trafiają do słownika:
-    wpisane nazwisko nie może wtedy być przypisane do żadnego z nich."""
+    """Two accounts with the same name (even inactive) are left out, so a typed name cannot be assigned
+    to either.
+    """
     found: dict[str, int | None] = {}
     for user_id, name in db.execute(select(User.id, User.name)):
         key = normalize(name)
@@ -71,9 +65,9 @@ def account_names(db: Session) -> dict[str, int]:
 
 
 def identity(user_id: int | None, name: str | None, accounts: Mapping[str, int]) -> Identity:
-    """Tożsamość osoby: konto albo znormalizowane wpisane nazwisko. Wpisane nazwisko zgodne
-    z nazwą jednoznacznego konta to TA SAMA osoba co konto (sędzia wpisany ręcznie, który
-    dostał później konto)."""
+    """A typed name matching a unique account's name is the SAME person as the account (a referee typed
+    by hand who later got an account).
+    """
     if user_id:
         return ("u", user_id)
     key = normalize(name or "")
@@ -81,14 +75,12 @@ def identity(user_id: int | None, name: str | None, accounts: Mapping[str, int])
 
 
 def person_key(user_id: int | None, name: str | None, accounts: Mapping[str, int]) -> str:
-    """Klucz osoby do filtrów: "u<id konta>" albo "n<znormalizowane imię i nazwisko>"."""
+    """Person key: "u<account id>" or "n<normalised name>" (for filters)."""
     kind, value = identity(user_id, name, accounts)
     return f"{kind}{value}"
 
 
 def people(db: Session) -> list[tuple[str, str]]:
-    """Sędziowie z obsad (konto albo wpisane nazwisko) do filtrów: (klucz, nazwa), alfabetycznie.
-    Wpisane nazwisko zgodne z kontem jest tą samą osobą i pokazuje się pod nazwą konta."""
     accounts = account_names(db)
     user_names = {uid: name for uid, name in db.execute(select(User.id, User.name))}
     found: dict[str, str] = {}
@@ -98,20 +90,17 @@ def people(db: Session) -> list[tuple[str, str]]:
     return sorted(found.items(), key=lambda kv: normalize(kv[1]))
 
 
-# --- obsada meczu -----------------------------------------------------------------
 def referee_candidates(db: Session) -> list[User]:
-    """Konta, które można wybrać w obsadzie: aktywne, z rolą sędziego."""
     users = db.scalars(select(User).where(User.is_active.is_(True)).order_by(User.name)).all()
     return [u for u in users if "referee" in u.roles]
 
 
 def officials_from_form(db: Session, form: dict[str, str]) -> list[tuple[str, int | None, str | None]]:
-    """Czyta pola `<fn>_user` / `<fn>_name` (fn = cc, u1, u2) z formularza meczu.
-
-    Zwraca listę (funkcja, user_id, wpisane imię i nazwisko) dla wypełnionych pozycji.
-    Konto ma pierwszeństwo przed wpisanym imieniem. CC i U1 są wymagane, U2 opcjonalna.
-    Ta sama osoba nie może zająć dwóch pozycji: to samo konto, to samo wpisane nazwisko
-    (po normalizacji) ani konto i wpisane nazwisko tej samej osoby.
+    """Reads `<fn>_user` / `<fn>_name` (fn = cc, u1, u2) from the match form; returns (function,
+    user_id, typed name) for filled slots.
+    An account takes precedence over a typed name. CC and U1 are required, U2 optional. The same
+    person cannot hold two slots (same account, same normalised typed name, or an account plus a
+    typed name of that same person).
     """
     allowed = {u.id for u in referee_candidates(db)}
     accounts = account_names(db)
@@ -145,46 +134,45 @@ def officials_from_form(db: Session, form: dict[str, str]) -> list[tuple[str, in
 
 
 def set_officials(db: Session, match: Match, officials: list[tuple[str, int | None, str | None]]) -> None:
-    """Zastępuje obsadę meczu, zachowując powiązanie klipów z OSOBĄ, a nie z pozycją.
+    """Replaces the crew while keeping clips linked to the PERSON, not the slot.
 
-    Istniejące pozycje dopasowujemy po tożsamości (konto albo imię i nazwisko; wpisane
-    nazwisko zgodne z jednoznacznym kontem to ta sama osoba, w obie strony). Osoba, która
-    zostaje, zachowuje klipy także przy zmianie funkcji (np. zamiana CC z U1) i zmianie
-    sposobu zapisu (nazwisko -> konto); nowa osoba to nowa pozycja; usunięta osoba traci
-    pozycję, a jej klipy zostają bez przypisania (official_id = NULL). Unikalność (mecz,
-    funkcja) jest zachowana: pozycje zmieniające funkcję są najpierw usuwane (z zapamiętaniem
-    klipów), potem zakładane od nowa.
+    Existing slots are matched by identity (account or name; a typed name matching a unique account
+    is the same person, both ways). A person who stays keeps their clips even when the function
+    changes (e.g. CC and U1 swap) or the way they are recorded (name -> account); a new person is a
+    new slot; a removed person loses the slot and their clips stay unassigned (official_id = NULL).
+    (match, function) uniqueness holds: slots changing function are deleted first (clips remembered),
+    then recreated.
     """
     accounts = account_names(db)
     incoming = {identity(user_id, name, accounts): (function, user_id, name)
                 for function, user_id, name in officials}
-    # klipy pobieramy przed usuwaniem pozycji: usunięcie (autoflush) zeruje official_id w bazie
+    # fetch the clips before deleting slots: the deletion (autoflush) sets official_id to NULL in the DB
     clips_of: dict[int, list[int]] = {}
     old_ids = [o.id for o in match.officials if o.id is not None]
     if old_ids:
         for clip_id, official_id in db.execute(
                 select(Clip.id, Clip.official_id).where(Clip.official_id.in_(old_ids))):
             clips_of.setdefault(official_id, []).append(clip_id)
-    moved: list[tuple[int, tuple[str, int | None, str | None]]] = []  # (stare id pozycji, nowe dane)
+    moved: list[tuple[int, tuple[str, int | None, str | None]]] = []
     removed = False
     for official in list(match.officials):
         target = incoming.pop(identity(official.user_id, official.name, accounts), None)
         if target is None:
-            match.officials.remove(official)          # osoba usunięta z obsady
+            match.officials.remove(official)
             removed = True
         elif target[0] == official.function:
-            official.user_id, official.name = target[1], target[2]  # ewentualnie konto zamiast nazwiska
+            official.user_id, official.name = target[1], target[2]
         else:
             moved.append((official.id, target))
             match.officials.remove(official)
     if moved or removed:
-        db.flush()  # zwolnione funkcje przed wstawieniem nowych (unikalność sprawdzana per instrukcja)
+        db.flush()  # freed functions before inserting new ones (uniqueness is checked per statement)
     created: list[tuple[int, MatchOfficial]] = []
     for old_id, (function, user_id, name) in moved:
         fresh = MatchOfficial(function=function, user_id=user_id, name=name)
         match.officials.append(fresh)
         created.append((old_id, fresh))
-    for function, user_id, name in incoming.values():  # nowe osoby
+    for function, user_id, name in incoming.values():
         match.officials.append(MatchOfficial(function=function, user_id=user_id, name=name))
     if moved:
         db.flush()
@@ -193,7 +181,6 @@ def set_officials(db: Session, match: Match, officials: list[tuple[str, int | No
                 db.execute(update(Clip).where(Clip.id.in_(clips_of[old_id])).values(official_id=fresh.id))
 
 
-# --- stan meczu (lista meczów) --------------------------------------------------
 MATCH_STATES = {
     "none": "brak nagrania",
     "uploading": "wgrywanie",
@@ -203,7 +190,7 @@ MATCH_STATES = {
     "ready": "gotowy",
     "purged": "pełne nagranie usunięte",
 }
-FULL_MATCH_PERIODS = PERIODS[:4]  # cały mecz = Q1–Q4 (dogrywki opcjonalne)
+FULL_MATCH_PERIODS = PERIODS[:4]
 
 
 @dataclass(frozen=True)
@@ -217,16 +204,16 @@ class MatchState:
 
 
 def declared_periods(content: str | None) -> list[str] | None:
-    """Zawartość pliku ("full" albo "Q1,Q2") jako lista kwart; None = cały mecz.
-    Brak deklaracji traktujemy jak cały mecz."""
+    """A missing declaration counts as the whole match."""
     found = [p.strip().upper() for p in (content or "").split(",")]
     found = [p for p in PERIODS if p in found]
     return found or None
 
 
 def normalize_content(raw: str | None) -> str:
-    """Deklaracja zawartości pliku z formularza lub metadanych uploadu: "full" albo kwarty
-    w kolejności meczu po przecinku ("Q1", "Q2,Q3"). Nieznana kwarta to MatchFormError."""
+    """"full" or comma-separated quarters in match order ("Q1", "Q2,Q3"). An unknown quarter is a
+    MatchFormError.
+    """
     tokens = [t.strip().upper() for t in (raw or "").split(",") if t.strip()]
     if not tokens or tokens == ["FULL"]:
         return "full"
@@ -237,7 +224,6 @@ def normalize_content(raw: str | None) -> str:
 
 
 def content_from_form(kind: str, periods: Iterable[str]) -> str:
-    """Pola formularza: rodzaj ("full", kwarta albo "multi") + zaznaczone kwarty -> deklaracja."""
     if kind == "multi":
         content = normalize_content(",".join(periods))
         if content == "full" or len(content.split(",")) < 2:
@@ -250,7 +236,6 @@ def content_from_form(kind: str, periods: Iterable[str]) -> str:
 
 
 def content_label(content: str | None) -> str:
-    """Opis deklaracji do interfejsu: „cały mecz”, „kwarta Q2”, „kwarty Q1, Q2”."""
     declared = declared_periods(content)
     if declared is None:
         return "cały mecz"
@@ -258,15 +243,15 @@ def content_label(content: str | None) -> str:
 
 
 def allowed_periods(content: str | None) -> list[str]:
-    """Kwarty, które mogą mieć znacznik początku: cały mecz = Q1–Q4 i OT1–OT3, w pozostałych
-    przypadkach tylko zadeklarowane."""
+    """Whole match: Q1-Q4 and OT1-OT3; otherwise only the declared ones."""
     declared = declared_periods(content)
     return list(PERIODS) if declared is None else declared
 
 
 def required_periods(content: str | None) -> list[str]:
-    """Kwarty, którym musi być ustawiony znacznik: cały mecz Q1–Q4, kilka kwart wszystkie
-    zadeklarowane, jedna kwarta żadna (domyślnie zaczyna się od 0:00)."""
+    """Whole match: Q1-Q4; several quarters: all declared; one quarter: none (it starts at 0:00 by
+    default).
+    """
     declared = declared_periods(content)
     if declared is None:
         return list(FULL_MATCH_PERIODS)
@@ -274,28 +259,27 @@ def required_periods(content: str | None) -> list[str]:
 
 
 def missing_periods(content: str | None, marked: Iterable[str]) -> list[str]:
-    """Kwarty, którym brakuje znacznika początku (patrz `required_periods`)."""
     have = set(marked)
     return [p for p in required_periods(content) if p not in have]
 
 
 @dataclass
 class ContentChange:
-    """Skutki zmiany deklaracji zawartości dla znaczników kwart (ostrzeżenie przed zapisem)."""
-    add_default: str | None = None   # brak znaczników: dodajemy 0:00 dla jedynej kwarty
-    removed: list[PeriodMark] = field(default_factory=list)       # znaczniki ustawione przez użytkownika
+    add_default: str | None = None
+    removed: list[PeriodMark] = field(default_factory=list)
     renamed: list[tuple[PeriodMark, str]] = field(default_factory=list)
-    dropped_default: list[PeriodMark] = field(default_factory=list)  # automatyczne 0:00, bez ostrzeżenia
+    dropped_default: list[PeriodMark] = field(default_factory=list)  # automatic 0:00, no warning
 
     @property
     def needs_confirmation(self) -> bool:
-        """Ostrzegamy przed utratą znaczników; zmiana nazwy jedynego znacznika (z zachowaniem
-        czasu) i automatyczne 0:00 nie wymagają potwierdzenia."""
+        """Warns about losing markers; renaming the only marker (keeping its time) and the automatic
+        0:00 need no confirmation.
+        """
         return bool(self.removed)
 
     @property
     def token(self) -> str:
-        """Podpis planu: potwierdzenie dotyczy dokładnie tych znaczników, a nie innych."""
+        """The confirmation applies to exactly these markers."""
         return ",".join(sorted(f"x{m.id}" for m in self.removed))
 
     def warnings(self) -> list[str]:
@@ -304,12 +288,11 @@ class ContentChange:
 
 
 def plan_content_change(video: Video, content: str) -> ContentChange:
-    """Co zrobi zmiana deklaracji ze znacznikami kwart (bez zapisu).
-
-    Jedna kwarta: zostaje znacznik tej kwarty (inaczej najwcześniejszy, przemianowany), reszta
-    znika; bez znaczników powstaje 0:00. Cały mecz / kilka kwart: znikają znaczniki kwart spoza
-    deklaracji; samotny automatyczny 0:00 po pliku z jedną kwartą zostaje tylko dla pierwszej
-    kwarty nowej deklaracji (inaczej uniemożliwiłby ustawienie wcześniejszych kwart)."""
+    """One quarter: that quarter's marker stays (otherwise the earliest, renamed), the rest go; without
+    markers a 0:00 is created. Whole match / several quarters: markers outside the declaration go; a
+    lone automatic 0:00 left from a one-quarter file stays only for the first quarter of the new
+    declaration (otherwise it would block setting earlier quarters).
+    """
     content = normalize_content(content)
     old, new = declared_periods(video.content), declared_periods(content)
     marks = sorted(video.marks, key=lambda m: m.time_sec)
@@ -337,17 +320,15 @@ def plan_content_change(video: Video, content: str) -> ContentChange:
 
 
 def set_content(db: Session, video: Video, content: str) -> None:
-    """Zapisuje deklarację zawartości i dopasowuje do niej znaczniki kwart (`plan_content_change`).
-
-    Plik z jedną kwartą dostaje od razu znacznik startu 0:00 (spec: znacznik opcjonalny,
-    domyślnie 0:00; można go przesunąć), więc kwarta jego klipów jest znana bez ręcznych
-    znaczników."""
+    """A one-quarter file gets a 0:00 start marker right away (the marker is optional, default 0:00, can
+    be moved), so its clips' quarter is known without manual markers.
+    """
     content = normalize_content(content)
     change = plan_content_change(video, content)
     video.content = content
     for mark in [*change.removed, *change.dropped_default]:
         video.marks.remove(mark)
-    db.flush()  # usunięte okresy przed zmianą nazwy (unikalność video + kwarta)
+    db.flush()  # deleted periods before renaming (video + quarter uniqueness)
     for mark, period in change.renamed:
         mark.period = period
     if change.add_default:
@@ -355,11 +336,9 @@ def set_content(db: Session, video: Video, content: str) -> None:
 
 
 def match_state(videos: Iterable[Video], queue: Mapping[int, int] | None = None) -> MatchState:
-    """Stan meczu wyliczany z nagrań (czysta funkcja). Kolejność: błąd, wgrywanie/konwersja,
-    brak znaczników kwart, gotowy. Nagrania z usuniętą pełną wersją nie liczą się do stanu;
-    gdy wszystkie są usunięte, mecz ma stan „pełne nagranie usunięte”.
-
-    `queue` to pozycje zadań konwersji w kolejce (id nagrania -> numer od 1)."""
+    """Order: error, uploading/converting, no quarter markers, ready. Recordings whose full version was
+    removed are ignored; if all are, the match is in the "full recording removed" state.
+    """
     videos = list(videos)
     if not videos:
         return MatchState("none")
@@ -383,10 +362,9 @@ def match_state(videos: Iterable[Video], queue: Mapping[int, int] | None = None)
 
 
 def transcode_queue(db: Session) -> dict[int, int]:
-    """Pozycje w kolejce konwersji: id nagrania -> numer od 1 (trwające zadanie jest pierwsze)."""
     rows = db.execute(select(Job.video_id).where(
         Job.type == "transcode", Job.status.in_(("pending", "running")), Job.video_id.is_not(None))
-        .order_by(Job.status.desc(), Job.id))  # „running” przed „pending”
+        .order_by(Job.status.desc(), Job.id))  # running before pending
     queue: dict[int, int] = {}
     for (video_id,) in rows:
         queue.setdefault(video_id, len(queue) + 1)
@@ -394,14 +372,11 @@ def transcode_queue(db: Session) -> dict[int, int]:
 
 
 def known_levels(db: Session) -> list[str]:
-    """Ligi użyte wcześniej w meczach (bez powtórzeń, alfabetycznie) — podpowiedzi w formularzu."""
     levels = {lv.strip() for lv in db.scalars(select(Match.level).distinct()) if lv and lv.strip()}
     return sorted(levels, key=lambda lv: (normalize(lv), lv))
 
 
-# --- kwarty ---------------------------------------------------------------------
 def period_for(marks: list[PeriodMark], time_sec: float) -> str | None:
-    """Kwarta = ostatni znacznik początku, który wypada nie później niż czas klipu."""
     current = None
     for mark in sorted(marks, key=lambda m: m.time_sec):
         if mark.time_sec <= time_sec + 0.001:
@@ -410,7 +385,6 @@ def period_for(marks: list[PeriodMark], time_sec: float) -> str | None:
 
 
 def period_position(marks: list[PeriodMark], time_sec: float) -> tuple[str, float] | None:
-    """(kwarta, sekundy od jej początku w czasie nagrania) albo None, gdy kwarta nieustalona."""
     current = None
     for mark in sorted(marks, key=lambda m: m.time_sec):
         if mark.time_sec <= time_sec + 0.001:
@@ -419,7 +393,7 @@ def period_position(marks: list[PeriodMark], time_sec: float) -> tuple[str, floa
 
 
 def period_label(marks: list[PeriodMark], time_sec: float) -> str:
-    """np. „Q2 · 4:12 od początku kwarty (czas nagrania)”. To nie jest zegar meczowy."""
+    """Recording time since the quarter start, not the game clock."""
     pos = period_position(marks, time_sec)
     if pos is None:
         return "kwarta nieustalona (brak znaczników kwart)"
@@ -427,15 +401,15 @@ def period_label(marks: list[PeriodMark], time_sec: float) -> str:
 
 
 def period_short(marks: list[PeriodMark], time_sec: float) -> str:
-    """Krótko do tabel: „Q2 · 4:12” (czas od początku kwarty w czasie nagrania) albo „nieustalona”."""
     pos = period_position(marks, time_sec)
     return "nieustalona" if pos is None else f"{pos[0]} · {format_clock(pos[1])}"
 
 
 def next_period(marks: list[PeriodMark], content: str | None = "full") -> str | None:
-    """Następna kwarta bez znacznika według deklaracji zawartości: cały mecz Q1 -> Q2 -> Q3 -> Q4
-    -> OT1 ..., kilka kwart tylko zadeklarowane w kolejności, jedna kwarta tylko ta (Q przesuwa
-    jej znacznik). None, gdy wszystkie dozwolone kwarty mają już znacznik."""
+    """Next quarter without a marker per the declaration: whole match Q1 -> Q2 -> Q3 -> Q4 -> OT1 ...;
+    several quarters only the declared ones in order; one quarter only that one (Q moves its marker).
+    None when all allowed quarters have a marker.
+    """
     used = {m.period for m in marks}
     allowed = allowed_periods(content)
     for period in allowed:
@@ -445,13 +419,14 @@ def next_period(marks: list[PeriodMark], content: str | None = "full") -> str | 
 
 
 class PeriodMarkError(ValueError):
-    """Niepoprawny znacznik początku kwarty (komunikat po polsku; HTTP 422)."""
+    pass
 
 
 def check_period_mark(content: str | None, marks: Iterable[PeriodMark], period: str, time_sec: float,
                       duration: float | None = None) -> None:
-    """Kwarta dozwolona przez deklarację, czas w nagraniu i kolejność chronologiczna
-    (Q2 nie może zaczynać się przed Q1 itd.). Znacznik tej samej kwarty jest pomijany (przesuwanie)."""
+    """Allowed by the declaration, within the recording, chronological (Q2 cannot start before Q1). A
+    marker of the same quarter is skipped (moving).
+    """
     if period not in PERIODS:
         raise PeriodMarkError("Nieznana kwarta.")
     allowed = allowed_periods(content)
@@ -476,10 +451,8 @@ def check_period_mark(content: str | None, marks: Iterable[PeriodMark], period: 
                 "kwarty muszą następować po sobie w kolejności.")
 
 
-# --- granice klipu --------------------------------------------------------------
 def clip_bounds(time_sec: float, before: float, after: float,
                 duration: float | None) -> tuple[float, float]:
-    """Początek i koniec klipu obcięte do granic nagrania."""
     start = max(0.0, time_sec - before)
     end = time_sec + after
     if duration is not None:
@@ -492,8 +465,7 @@ def clip_range(clip: Clip) -> tuple[float, float]:
     return clip_bounds(clip.time_sec, clip.margin_before, clip.margin_after, clip.video.duration)
 
 
-# --- nazwy plików ---------------------------------------------------------------
-FILENAME_PART_MAX = 40  # liga i nazwa własnej kategorii bywają długie — w nazwie pliku je skracamy
+FILENAME_PART_MAX = 40  # league and custom category names can be long; shortened in the file name
 
 
 def _filename_part(text: str) -> str:
@@ -501,11 +473,12 @@ def _filename_part(text: str) -> str:
 
 
 def clip_filename(clip: Clip, *, with_referee: bool = True) -> str:
-    """kategoria-rozgrywek_nazwisko_decyzja.mp4, np. III-liga_Kowalski_blok-szarza.mp4
-    (nazwisko to ostatni wyraz nazwy sędziego, przy klipie całego zespołu „zespol”; puste części
-    są pomijane; tylko znaki ASCII; liczona na bieżąco, więc po zmianie opisu pobrany plik ma już
-    nową nazwę). `with_referee=False` (linki bez konta) pomija część z sędzią i nawet nie czyta obsady:
-    III-liga_blok-szarza.mp4. Nazwy mogą się powtarzać — paczki ZIP numeruje `unique_filenames`."""
+    """category-of-competition_surname_decision.mp4, e.g. III-liga_Kowalski_blok-szarza.mp4 (surname =
+    last word of the referee's name, "zespol" for whole-team clips; empty parts are skipped; ASCII
+    only; computed on the fly, so after a description change the downloaded file already has the new
+    name). `with_referee=False` (links without account) omits the referee and does not even read the
+    crew: III-liga_blok-szarza.mp4. Names may repeat; ZIPs are numbered by `unique_filenames`.
+    """
     referee = ""
     if with_referee:
         referee = "zespol" if clip.whole_team else ""
@@ -516,7 +489,7 @@ def clip_filename(clip: Clip, *, with_referee: bool = True) -> str:
 
 
 def unique_filenames(names: Iterable[str]) -> list[str]:
-    """Nazwy plików w jednej paczce bez powtórzeń: kolejne takie same dostają _2, _3 przed rozszerzeniem."""
+    """Later duplicates get _2, _3 before the extension."""
     used: set[str] = set()
     result = []
     for name in names:
@@ -529,14 +502,12 @@ def unique_filenames(names: Iterable[str]) -> list[str]:
     return result
 
 
-# --- słownik kategorii i kontekst parsera ------------------------------------------
 def active_categories(db: Session) -> list[Category]:
     return list(db.scalars(select(Category).where(Category.is_active.is_(True))
                            .order_by(Category.sort, Category.name)))
 
 
 def category_groups(categories: Iterable[Category]) -> list[tuple[str, list[Category]]]:
-    """Kategorie pogrupowane wg grup słownika (kolejność jak na liście wejściowej) — <optgroup> w formularzach."""
     groups: list[tuple[str, list[Category]]] = []
     for category in categories:
         if not groups or groups[-1][0] != category.group_name:
@@ -546,7 +517,7 @@ def category_groups(categories: Iterable[Category]) -> list[tuple[str, list[Cate
 
 
 def categories_for(db: Session, clip: Clip) -> list[Category]:
-    """Kategorie do wyboru w formularzu opisu: aktywne oraz (gdy już nieaktywna) obecna kategoria klipu."""
+    """Active ones plus the clip's current category when it is inactive."""
     found = active_categories(db)
     if clip.category is not None and not clip.category.is_active:
         found = sorted([*found, clip.category], key=lambda c: (c.sort, c.name))
@@ -554,7 +525,7 @@ def categories_for(db: Session, clip: Clip) -> list[Category]:
 
 
 def all_categories(db: Session) -> list[Category]:
-    """Wszystkie kategorie (także nieaktywne) — do filtrów, żeby stare klipy dało się znaleźć."""
+    """Includes inactive ones, so old clips can be found."""
     return list(db.scalars(select(Category).order_by(Category.sort, Category.name)))
 
 
@@ -567,11 +538,10 @@ def referee_defs(match: Match) -> list[RefereeDef]:
 
 
 class NotesTooLong(ValueError):
-    """Notatki przekraczają limit długości (HTTP 413)."""
+    pass
 
 
 def clean_notes(text: str | None) -> str:
-    """Notatki z formularza lub uploadu: jednolite końce linii i limit długości."""
     text = (text or "").replace("\r\n", "\n").replace("\r", "\n").rstrip()
     if len(text) > config.NOTES_MAX_CHARS:
         raise NotesTooLong(f"Notatki są za długie (maksymalnie {config.NOTES_MAX_CHARS} znaków).")
@@ -590,7 +560,6 @@ def category_by_name(db: Session, name: str | None) -> Category | None:
     return db.scalar(select(Category).where(Category.name == name))
 
 
-# --- kolejka zadań --------------------------------------------------------------
 def enqueue(db: Session, job_type: str, *, video_id: int | None = None,
             clip_id: int | None = None) -> Job:
     job = Job(type=job_type, status="pending", video_id=video_id, clip_id=clip_id)
@@ -600,7 +569,7 @@ def enqueue(db: Session, job_type: str, *, video_id: int | None = None,
 
 
 def queue_cut(db: Session, clip: Clip) -> None:
-    """Zleca (ponowne) wycięcie klipu; stare oczekujące zadania cięcia tego klipu są usuwane."""
+    """Removes the clip's older pending cut jobs."""
     for job in db.scalars(select(Job).where(Job.clip_id == clip.id, Job.type == "cut",
                                             Job.status == "pending")):
         db.delete(job)
@@ -615,21 +584,19 @@ def queue_transcode(db: Session, video: Video) -> None:
     enqueue(db, "transcode", video_id=video.id)
 
 
-# --- tworzenie klipów -----------------------------------------------------------
 def create_clip(db: Session, video: Video, author: User | None, *, time_sec: float,
                 official_id: int | None = None, category_id: int | None = None,
                 description: str = "",
                 margin_before: float = config.DEFAULT_MARGIN_BEFORE,
                 margin_after: float = config.DEFAULT_MARGIN_AFTER,
                 cut: bool = True) -> Clip:
-    """Klip ze znacznika. Jest „nieopisany” (described_at = None), dopóki ktoś go nie opisze."""
     if official_id is not None and not any(o.id == official_id for o in video.match.officials):
         official_id = None
     clip = Clip(
         match_id=video.match_id, video_id=video.id, author_id=author.id if author else None,
         official_id=official_id, category_id=category_id, time_sec=time_sec,
         description=description, margin_before=margin_before, margin_after=margin_after,
-        status="new", created_at=utcnow())  # z mikrosekundami: ochrona przed podwójnym kliknięciem
+        status="new", created_at=utcnow())  # with microseconds: protection against a double click
     db.add(clip)
     db.flush()
     if cut:
@@ -637,12 +604,10 @@ def create_clip(db: Session, video: Video, author: User | None, *, time_sec: flo
     return clip
 
 
-# --- znaczniki („Zaznacz”) --------------------------------------------------------
-MARKER_LOCK = threading.Lock()  # sprawdzenie podwójnego kliknięcia + zapis w jednym kroku
+MARKER_LOCK = threading.Lock()  # double-click check + write in one step
 
 
 def recent_clip(db: Session, video: Video, user: User) -> Clip | None:
-    """Klip tego autora w tym nagraniu dodany przed chwilą (podwójne kliknięcie)."""
     since = utcnow() - timedelta(seconds=config.MARKER_DEBOUNCE_SECONDS)
     return db.scalar(select(Clip).where(
         Clip.video_id == video.id, Clip.author_id == user.id, Clip.created_at > since)
@@ -650,9 +615,7 @@ def recent_clip(db: Session, video: Video, user: User) -> Clip | None:
 
 
 def add_marker(db: Session, video: Video, user: User, time_sec: float) -> tuple[Clip, bool]:
-    """Znacznik = nieopisany klip w podanym czasie nagrania (cięcie od razu w kolejce).
-    Drugi znacznik tego samego autora w odstępie krótszym niż sekunda jest ignorowany:
-    zwraca (klip, utworzono)."""
+    """A second marker by the same author within a second is ignored: returns (clip, created)."""
     with MARKER_LOCK:
         recent = recent_clip(db, video, user)
         if recent is not None:
@@ -668,7 +631,6 @@ def clamp_time(time_sec: float, duration: float | None) -> float:
 
 
 def undo_marker(db: Session, video: Video, user: User) -> Clip | None:
-    """Usuwa ostatni własny nieopisany znacznik w nagraniu (wraz z plikiem klipu); None, gdy brak."""
     clip = db.scalar(select(Clip).where(
         Clip.video_id == video.id, Clip.author_id == user.id, Clip.described_at.is_(None))
         .order_by(Clip.id.desc()))
@@ -691,19 +653,16 @@ def remove_video_files(video: Video) -> None:
         remove_clip_files(clip)
 
 
-# --- opisywanie klipów ------------------------------------------------------------
-CUSTOM_CATEGORY_MAX = 100   # nazwa kategorii „własna”
-DESCRIPTION_MAX = 2000      # opis tekstowy klipu
+CUSTOM_CATEGORY_MAX = 100
+DESCRIPTION_MAX = 2000
 
 
 class ClipDescribeError(ValueError):
-    """Niepoprawny opis klipu (komunikat po polsku; HTTP 422)."""
     status_code = 422
 
 
 @dataclass(frozen=True)
 class DescribeBlock:
-    """Powód, dla którego klipu nie da się opisać (kwarta nieustalona), z linkiem do naprawy."""
     message: str
     url: str | None = None
     link_text: str = ""
@@ -716,13 +675,14 @@ class ClipBlockedError(ClipDescribeError):
 
 
 def describe_block(clip: Clip) -> DescribeBlock | None:
-    """Klip z nagrania, które wymaga znaczników kwart, a ich nie ma (kwarta nieustalona), nie może
-    być opisany (spec). Dotyczy też momentu przed początkiem pierwszej kwarty."""
+    """A clip from a recording that needs quarter markers but has none cannot be described (spec). This
+    also covers the moment before the first quarter starts.
+    """
     video = clip.video
     if video.purged_at is not None:
-        # Pełnego nagrania już nie ma, więc początków kwart nie da się ustawić; blokada zostawiłaby
-        # klip na zawsze nieopisany. Kwarta liczy się dalej z istniejących znaczników (period_marks),
-        # a przy ich braku klip pokazuje „kwarta nieustalona” — ale można go opisać.
+        # The full recording is gone, so quarter starts cannot be set; blocking would leave the clip
+        # undescribed forever. The quarter is still computed from existing markers (period_marks), or
+        # shows as unknown without them, but the clip can be described.
         return None
     marks = video.marks
     missing = missing_periods(video.content, (m.period for m in marks))
@@ -742,10 +702,9 @@ def describe_block(clip: Clip) -> DescribeBlock | None:
 
 def describe_clip(db: Session, clip: Clip, *, official: str, category_id: str, custom_category: str,
                   description: str) -> None:
-    """Zatwierdza opis klipu (pierwszy raz albo edycję): sędzia z obsady meczu albo „cały zespół”
-    i kategoria są wymagane, kategoria „własna” wymaga nazwy, opis tekstowy jest opcjonalny.
-    `described_at` ustawia się raz (pierwsze zatwierdzenie) i przy edycji się nie zmienia.
-    Błąd to ClipDescribeError i nic nie jest zmieniane."""
+    """`described_at` is set once (first approval) and does not change on edits. An error is a
+    ClipDescribeError and nothing is changed.
+    """
     block = describe_block(clip)
     if block is not None:
         raise ClipBlockedError(block)
@@ -777,12 +736,10 @@ def describe_clip(db: Session, clip: Clip, *, official: str, category_id: str, c
 
 
 def clip_order_key(clip: Clip) -> tuple[int, float, int]:
-    """Kolejność klipów w meczu: nagranie, potem czas w nagraniu."""
     return clip.video_id, clip.time_sec, clip.id
 
 
 def undescribed_queue(db: Session, match_id: int, video_id: int | None = None) -> list[Clip]:
-    """Nieopisane klipy meczu (albo jednego nagrania) w kolejności nagranie -> czas."""
     stmt = select(Clip).where(Clip.match_id == match_id, Clip.described_at.is_(None))
     if video_id:
         stmt = stmt.where(Clip.video_id == video_id)
@@ -790,8 +747,7 @@ def undescribed_queue(db: Session, match_id: int, video_id: int | None = None) -
 
 
 def next_in_queue(queue: Iterable[Clip], current: Clip | None) -> Clip | None:
-    """Następny klip z kolejki po `current` (kolejność nagranie -> czas); po ostatnim wraca do
-    pierwszego z pozostałych. `current` nie jest zwracany. None, gdy w kolejce nie ma innych."""
+    """Wraps from the last clip to the first of the rest; `current` is never returned."""
     others = sorted((c for c in queue if current is None or c.id != current.id), key=clip_order_key)
     if not others:
         return None
@@ -804,8 +760,7 @@ def next_in_queue(queue: Iterable[Clip], current: Clip | None) -> Clip | None:
 
 
 def neighbours(clips: Iterable[Clip], current: Clip) -> tuple[Clip | None, Clip | None]:
-    """Poprzedni i następny klip względem `current` w kolejności nagranie -> czas. `current` nie musi
-    być na liście (np. po edycji przestał pasować do filtra)."""
+    """`current` need not be in the list (e.g. an edit made it stop matching the filter)."""
     key = clip_order_key(current)
     ordered = sorted((c for c in clips if c.id != current.id), key=clip_order_key)
     before = [c for c in ordered if clip_order_key(c) < key]
@@ -814,5 +769,4 @@ def neighbours(clips: Iterable[Clip], current: Clip) -> tuple[Clip | None, Clip 
 
 
 def is_proposal(clip: Clip) -> bool:
-    """Nieopisany klip z wartościami wstępnymi (z notatek) — propozycja do zatwierdzenia."""
     return not clip.is_described and bool(clip.official_id or clip.category_id)

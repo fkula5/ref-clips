@@ -1,8 +1,8 @@
-"""Jednorazowe czyszczenie metadanych w już wyciętych klipach (bez przekodowania obrazu).
-
-Klipy sprzed wprowadzenia linków udostępniających mogą nieść metadane pliku źródłowego (tytuł,
-lokalizację GPS, datę nagrania). Nowe klipy ich nie dostają (`video.STRIP_METADATA`). Uruchomienie na
-serwerze, raz po wdrożeniu: `python -m app.strip_metadata` (idempotentne; plik podmieniany atomowo)."""
+"""One-off cleanup of metadata in already cut clips (no video re-encode). Clips from before share links
+may carry source metadata (title, GPS, recording date); new ones do not (`video.STRIP_METADATA`). Run
+once on the server after deploy: `python -m app.strip_metadata` (idempotent; the file is replaced
+atomically).
+"""
 from __future__ import annotations
 
 import subprocess
@@ -19,7 +19,6 @@ from app.video import STRIP_METADATA
 
 
 def strip_file(ffmpeg: str, path: Path) -> None:
-    """Przepisuje kontener bez metadanych (`-c copy`); w razie błędu oryginał zostaje nietknięty."""
     tmp = path.with_name(path.stem + ".strip.mp4")
     try:
         subprocess.run([ffmpeg, "-y", "-hide_banner", "-loglevel", "error", "-nostdin", "-i", str(path),

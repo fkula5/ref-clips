@@ -1,5 +1,3 @@
-"""Klipy: lista z filtrami, strona klipu, opis i edycja, ponowne cięcie, usuwanie, pobieranie.
-Oceny i komentarze: app/routers/feedback.py."""
 from __future__ import annotations
 
 from urllib.parse import urlencode
@@ -11,7 +9,7 @@ from sqlalchemy.orm import Session
 
 from app import clip_list, feedback, permissions, services, share
 from app.auth import require, via_match
-from app.clip_list import query_clips  # noqa: F401 - używane też przez app/routers/clips_v2.py
+from app.clip_list import query_clips  # noqa: F401 - also used by app/routers/clips_v2.py
 from app.db import get_db
 from app.loaders import get_clip
 from app.models import Clip, Match, User
@@ -26,7 +24,6 @@ def person_choices(db: Session) -> list[tuple[str, str]]:
     return [*services.people(db), (clip_list.TEAM, "cały zespół")]
 
 
-# --- lista ----------------------------------------------------------------------
 @router.get("/clips")
 def clips_list(request: Request, db: Session = Depends(get_db),
                user: User = require(permissions.can_view), created: int | None = None, skipped: int = 0):
@@ -42,13 +39,12 @@ def clips_list(request: Request, db: Session = Depends(get_db),
         nav=f.query(scope=False), query=str(request.url.query))
 
 
-# --- strona klipu ---------------------------------------------------------------
 def render_clip(request: Request, db: Session, clip: Clip, f: clip_list.ClipFilters, *,
                 values: dict | None = None, error: str | None = None, status_code: int = 200, **extra):
-    """Strona klipu; `f` to filtry, z których przyszedł użytkownik (poprzedni/następny klip w meczu
-    liczony wg nich, a klip bieżący nie musi do nich pasować). `extra` to stan formularzy ocen i
-    komentarzy po błędzie. Odświeżanie sekcji klipu przez HTMX nie potrzebuje ocen ani komentarzy,
-    więc ich wtedy nie wczytujemy."""
+    """`f` are the filters the user came from (previous/next clip is computed from them; the current
+    clip need not match). HTMX refreshes of the clip section need no ratings or comments, so those
+    are not loaded.
+    """
     partial = is_htmx(request)
     previous, following = services.neighbours(clip_list.select_clips(db, f, match_id=clip.match_id), clip)
     nav = f.query(scope=False)
@@ -72,16 +68,12 @@ def clip_detail(request: Request, db: Session = Depends(get_db), clip: Clip = De
     return render_clip(request, db, clip, clip_list.parse_filters(request.query_params))
 
 
-# --- opis (pierwszy i edycja) ---------------------------------------------------
 @router.post("/clips/{clip_id}/update")
 def clip_update(request: Request, db: Session = Depends(get_db), clip: Clip = Depends(get_clip),
                 user: User = require(permissions.can_describe_clip, get_clip),
                 official: str = Form(""), category_id: str = Form(""),
                 custom_category: str = Form(""), description: str = Form(""),
                 context: str = "", video_id: int | None = None):
-    """Opis klipu: sędzia z obsady albo „cały zespół” i kategoria są wymagane, opis opcjonalny.
-    `context=describe` (ekran opisywania) po zapisie przechodzi do następnego nieopisanego klipu,
-    w przeciwnym razie wracamy na stronę klipu. Błędy wracają do formularza z zachowanymi wartościami."""
     describing = context == "describe"
     values = {"official": official, "category_id": category_id,
               "custom_category": custom_category, "description": description}
@@ -107,7 +99,6 @@ def _to_clip(request: Request, clip: Clip) -> RedirectResponse:
 
 
 def _describe_redirect(match_id: int, following: Clip | None, video_id: int | None) -> RedirectResponse:
-    """Ekran opisywania z następnym klipem; bez niego (pusta kolejka) — z komunikatem „wszystko opisane”."""
     params = [("clip", str(following.id))] if following else []
     if video_id:
         params.append(("video_id", str(video_id)))
@@ -116,7 +107,6 @@ def _describe_redirect(match_id: int, following: Clip | None, video_id: int | No
 
 
 def _to_next(db: Session, clip: Clip, video_id: int | None) -> RedirectResponse:
-    """Po zapisie: następny nieopisany klip w kolejce (ten sam zakres)."""
     following = services.next_in_queue(services.undescribed_queue(db, clip.match_id, video_id), clip)
     return _describe_redirect(clip.match_id, following, video_id)
 
@@ -138,7 +128,7 @@ def clip_delete(db: Session = Depends(get_db), clip: Clip = Depends(get_clip),
                 context: str = "", video_id: int | None = None):
     match_id = clip.match_id
     following = None
-    if context == "describe":  # w ekranie opisywania liczymy następny klip, zanim ten zniknie
+    if context == "describe":  # in the describe screen the next clip is computed before this one disappears
         following = services.next_in_queue(services.undescribed_queue(db, match_id, video_id), clip)
     services.remove_clip_files(clip)
     db.delete(clip)
