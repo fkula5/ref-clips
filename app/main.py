@@ -1,3 +1,4 @@
+import asyncio
 from contextlib import asynccontextmanager
 from urllib.parse import quote
 
@@ -10,7 +11,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 from starlette.exceptions import HTTPException
 
-from app import config, health, logfilter, permissions
+from app import config, health, logfilter, permissions, watch
 from app import video as vid
 from app.auth import PROTECTED, PUBLIC, SessionRefreshMiddleware, require
 from app.privacy import SharePrivacyHeadersMiddleware
@@ -18,7 +19,7 @@ from app.db import get_db
 from app.initdb import init_db
 from app.models import Job, User
 from app.routers import (admin, auth, clips, clips_v2, describe, feedback, matches, share, share_links, sheets,
-                         uploads, videos)
+                         uploads, videos, watch as watch_routes)
 from app.web import BASE, back_url, render
 
 
@@ -28,7 +29,9 @@ logfilter.install()
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     init_db()
+    sweeper = asyncio.create_task(watch.sweep_forever())
     yield
+    sweeper.cancel()
 
 
 # No public API docs: every page except login needs a session.
@@ -51,6 +54,8 @@ app.include_router(clips.router, dependencies=PROTECTED)
 app.include_router(feedback.router, dependencies=PROTECTED)
 app.include_router(share_links.router, dependencies=PROTECTED)
 app.include_router(sheets.router, dependencies=PROTECTED)
+app.include_router(watch_routes.router, dependencies=PROTECTED)
+app.include_router(watch_routes.ws_router)
 
 
 def _wants_page(request: Request) -> bool:
