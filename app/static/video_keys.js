@@ -15,6 +15,7 @@ document.addEventListener("keydown", (e) => {
   if (!video) return;
   e.preventDefault();
   e.stopPropagation();
+  if (window.RefPlayer && !window.RefPlayer.canControl()) { window.RefPlayer.denied(); return; }
   const step = (e.key === "ArrowLeft" ? -1 : 1) * (e.shiftKey ? 5 : 1);
   video.currentTime = Math.min(Math.max(0, video.currentTime + step), video.duration || Infinity);
 }, true);

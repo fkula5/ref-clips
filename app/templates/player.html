@@ -35,6 +35,7 @@
       <video id="player" src="/videos/{{ video.id }}/stream" preload="auto" controls controlsList="nofullscreen" playsinline></video>
       <div id="timeline" class="timeline" title="Kliknij, by przewinąć"></div>
       <div id="mark-count" class="mark-count" title="Liczba znaczników w tym nagraniu"></div>
+      <div id="watch-badge" class="mark-count watch-badge hidden"></div>
       <div id="flash" class="flash hidden"></div>
       {% if perm.can_manage_clips(user, match) %}<button class="btn primary big fs-only" id="btn-mark-fs" type="button">Zaznacz (Z)</button>{% endif %}
       <div id="toast" class="toast hidden"></div>
@@ -52,8 +53,27 @@
         <button class="btn" id="btn-m" type="button" title="Pauza i pole tekstowe: sędzia, kategoria, opis"><kbd>M</kbd> Znacznik z notatką</button>
       {% endif %}
       {% if perm.can_upload_to_match(user, match) %}<button class="btn" id="btn-q" type="button"><kbd>Q</kbd> Początek kwarty (<span id="next-period">—</span>)</button>{% endif %}
+      <button class="btn" id="btn-watch" type="button" title="Tworzy pokój: wszyscy oglądają to samo nagranie w tym samym momencie">Oglądaj razem</button>
       <button class="btn" id="btn-fs" type="button">Pełny ekran (F)</button>
       <button class="btn" id="btn-help" type="button">? Skróty</button>
+    </div>
+    <div id="watch-panel" class="card watch-panel hidden" aria-label="Oglądanie razem">
+      <div class="row between">
+        <h3>Oglądanie razem</h3>
+        <span id="watch-status" class="badge" role="status"></span>
+      </div>
+      <p id="watch-leader" class="watch-leader"></p>
+      <div class="row">
+        <input id="watch-link" class="grow" readonly aria-label="Link do pokoju" title="Link działa tylko dla zalogowanych użytkowników">
+        <button class="btn" id="watch-copy" type="button">Kopiuj link</button>
+      </div>
+      <ul id="watch-people" class="watch-people"></ul>
+      <div class="row">
+        <button class="btn primary hidden" id="watch-play" type="button">Włącz odtwarzanie</button>
+        <button class="btn" id="watch-detach" type="button">Odłącz</button>
+        <button class="btn" id="watch-leave" type="button">Wyjdź z pokoju</button>
+      </div>
+      <p class="muted small-note">Link otworzą tylko zalogowani użytkownicy. Rozmowę prowadzicie poza aplikacją (telefon, Meet, Discord).</p>
     </div>
     {% if perm.can_manage_clips(user, match) %}
     <form id="quick-form" class="card hidden" autocomplete="off">
@@ -69,7 +89,7 @@
         <tr><td><kbd>Backspace</kbd></td><td>Cofnij swój ostatni nieopisany znacznik</td></tr>
         <tr><td><kbd>M</kbd></td><td>Znacznik z notatką (pauza, pole tekstowe: sędzia, kategoria, opis)</td></tr>
         <tr><td><kbd>Q</kbd></td><td>Ustaw początek następnej brakującej kwarty w bieżącym czasie</td></tr>
-        <tr><td><kbd>Spacja</kbd></td><td>Start / pauza</td></tr>
+        <tr><td><kbd>Spacja</kbd></td><td>Start / pauza (w pokoju „Oglądaj razem” tylko prowadzący albo po „Odłącz”; <kbd>Z</kbd> działa dla wszystkich)</td></tr>
         <tr><td><kbd>←</kbd> <kbd>→</kbd></td><td>±1 s (z <kbd>Shift</kbd> ±5 s)</td></tr>
         <tr><td><kbd>,</kbd> <kbd>.</kbd></td><td>Klatka wstecz / naprzód</td></tr>
         <tr><td><kbd>[</kbd> <kbd>]</kbd></td><td>Wolniejsze / szybsze tempo (0,25×–2×)</td></tr>
@@ -106,4 +126,4 @@
 <script type="application/json" id="init-state">{{ state|tojson }}</script>
 {% endif %}
 {% endblock %}
-{% block scripts %}{% if state %}<script>window.CAN_MARK = {{ 'true' if perm.can_upload_to_match(user, match) else 'false' }};window.CAN_CLIP = {{ 'true' if perm.can_manage_clips(user, match) else 'false' }};window.START_AT = {{ start_at }};</script><script src="/static/player.js"></script>{% endif %}{% endblock %}
+{% block scripts %}{% if state %}<script>window.CAN_MARK = {{ 'true' if perm.can_upload_to_match(user, match) else 'false' }};window.CAN_CLIP = {{ 'true' if perm.can_manage_clips(user, match) else 'false' }};window.START_AT = {{ start_at }};</script><script src="/static/player.js"></script><script src="/static/watch.js"></script>{% endif %}{% endblock %}

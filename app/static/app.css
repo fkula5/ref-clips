@@ -175,6 +175,15 @@ tr.inactive td { color: var(--muted); }
 .banner.warn { background: var(--notice-bg); border-color: var(--notice-line); color: var(--notice-ink); margin: 12px 0; }
 .btn.big { font-size: 17px; font-weight: 600; padding: 10px 22px; }
 .mark-count { position: absolute; top: 8px; right: 8px; background: var(--scrim); color: var(--on-chrome); padding: 2px 10px; border-radius: 10px; font-size: 13px; pointer-events: none; }
+.watch-badge { right: auto; left: 8px; max-width: calc(100% - 90px); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.watch-leader { font-size: 17px; font-weight: 600; margin: 6px 0; overflow-wrap: anywhere; }
+.watch-panel input { min-width: 0; }
+.watch-people { list-style: none; margin: 8px 0; padding: 0; }
+.watch-people li { display: flex; align-items: center; gap: 4px 8px; flex-wrap: wrap; padding: 4px 0; border-bottom: 1px solid var(--line); }
+.watch-people .who-name { overflow-wrap: anywhere; }
+.watch-follow #speed, .timeline.locked { cursor: not-allowed; }
+.timeline.locked { opacity: .6; }
+.watch-follow video::-webkit-media-controls-play-button, .watch-follow video::-webkit-media-controls-timeline { display: none; }
 .flash { position: absolute; top: 14%; left: 50%; transform: translateX(-50%); background: var(--flash-bg); color: var(--on-accent); font: 600 22px system-ui, sans-serif; padding: 10px 24px; border-radius: 10px; pointer-events: none; animation: flash-pop 1.2s ease-out forwards; z-index: 5; white-space: nowrap; }
 .flash.error { background: var(--flash-error-bg); }
 @keyframes flash-pop { 0% { opacity: 0; transform: translateX(-50%) scale(.85); } 12% { opacity: 1; transform: translateX(-50%) scale(1.05); } 70% { opacity: 1; } 100% { opacity: 0; } }
