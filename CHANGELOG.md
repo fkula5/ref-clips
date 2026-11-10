@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.4.0](https://github.com/fkula5/ref-clips/compare/v1.3.1...v1.4.0) (2026-11-10)
+
+
+### Features
+
+* **logs:** keep watch room ids out of the logs ([99f101a](https://github.com/fkula5/ref-clips/commit/99f101a4f74d6340cb803237b6a3c69fe6479d72))
+* **notify:** add the bell and the notifications page ([f565bdc](https://github.com/fkula5/ref-clips/commit/f565bdced54930622cca5882d6e5711dd6acc2e5))
+* **notify:** create notifications for ratings, comments and published sheets ([e6592ec](https://github.com/fkula5/ref-clips/commit/e6592ec5b21a4e766786598af560873942c75314))
+* **notify:** in-app notifications ([66419b3](https://github.com/fkula5/ref-clips/commit/66419b354fec29e5911482455efed9c82fd26dee))
+* **watch:** add the Oglądaj razem room panel to the player ([2508586](https://github.com/fkula5/ref-clips/commit/2508586c8089eea39f1708ba640e6762128178eb))
+* **watch:** in-memory rooms and a WebSocket endpoint ([e3ed0f2](https://github.com/fkula5/ref-clips/commit/e3ed0f211c588e55bac6873b3a5fab9c56fa395c))
+
 ## [1.3.1](https://github.com/fkula5/ref-clips/compare/v1.3.0...v1.3.1) (2026-11-10)
 
 
