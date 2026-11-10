@@ -4,8 +4,10 @@
 <div class="row between">
   <div>
     <h1>{{ video.display_name }}</h1>
-    <a href="/matches/{{ match.id }}">{{ match.title }}</a>
-    <span class="muted">· zawiera: {{ content_label(video.content) }}</span>
+    <ul class="meta-list">
+      <li><a href="/matches/{{ match.id }}">{{ match.title }}</a></li>
+      <li class="muted">zawiera: {{ content_label(video.content) }}</li>
+    </ul>
   </div>
   <div class="row">
     {% if perm.can_manage_clips(user, match) %}<a class="btn primary" id="btn-describe" href="/matches/{{ match.id }}/describe?video_id={{ video.id }}" title="Ekran opisywania: nieopisane znaczniki tego nagrania">Opisz znaczniki (<span id="undescribed-count">{{ video.clips|rejectattr('described_at')|list|length }}</span>)</a>{% endif %}
@@ -47,9 +49,9 @@
       {% if perm.can_manage_clips(user, match) %}
         <button class="btn primary big" id="btn-z" type="button" title="Dodaje znacznik w bieżącym czasie bez zatrzymywania odtwarzania">Zaznacz (Z)</button>
         <button class="btn" id="btn-undo" type="button" title="Usuwa Twój ostatni nieopisany znacznik">Cofnij (Backspace)</button>
-        <button class="btn" id="btn-m" type="button" title="Pauza i pole tekstowe: sędzia, kategoria, opis">M · Znacznik z notatką</button>
+        <button class="btn" id="btn-m" type="button" title="Pauza i pole tekstowe: sędzia, kategoria, opis"><kbd>M</kbd> Znacznik z notatką</button>
       {% endif %}
-      {% if perm.can_upload_to_match(user, match) %}<button class="btn" id="btn-q" type="button">Q · Początek kwarty (<span id="next-period">—</span>)</button>{% endif %}
+      {% if perm.can_upload_to_match(user, match) %}<button class="btn" id="btn-q" type="button"><kbd>Q</kbd> Początek kwarty (<span id="next-period">—</span>)</button>{% endif %}
       <button class="btn" id="btn-fs" type="button">Pełny ekran (F)</button>
       <button class="btn" id="btn-help" type="button">? Skróty</button>
     </div>
@@ -76,9 +78,12 @@
       </table>
     </div>
     <p class="muted shortcuts">
-      <kbd>Z</kbd> zaznacz · <kbd>Backspace</kbd> cofnij · <kbd>Spacja</kbd> start/pauza · <kbd>←</kbd><kbd>→</kbd> ±1 s ·
-      <kbd>,</kbd><kbd>.</kbd> klatka · <kbd>[</kbd><kbd>]</kbd> tempo · <kbd>M</kbd> z notatką · <kbd>Q</kbd> kwarta ·
-      <kbd>F</kbd> pełny ekran · <kbd>?</kbd> wszystkie skróty
+      <span class="meta-list">
+        <span><kbd>Z</kbd> zaznacz</span><span><kbd>Backspace</kbd> cofnij</span><span><kbd>Spacja</kbd> start/pauza</span>
+        <span><kbd>←</kbd><kbd>→</kbd> ±1 s</span><span><kbd>,</kbd><kbd>.</kbd> klatka</span><span><kbd>[</kbd><kbd>]</kbd> tempo</span>
+        <span><kbd>M</kbd> z notatką</span><span><kbd>Q</kbd> kwarta</span><span><kbd>F</kbd> pełny ekran</span>
+        <span><kbd>?</kbd> wszystkie skróty</span>
+      </span>
     </p>
   </section>
 
@@ -91,7 +96,7 @@
       <div id="periods"></div>
     </div>
     <div class="card">
-      <h3>Znaczniki <span id="dec-count" class="muted"></span></h3>
+      <h3>Znaczniki <span id="dec-count"></span></h3>
       <ul id="decisions" class="dec-list"></ul>
       <p class="muted small-note">Znaczniki opisujesz później. Z każdego powstaje klip {{ (2 * DEFAULT_MARGIN)|int }} s
         (po {{ DEFAULT_MARGIN|int }} s przed i po).</p>

@@ -4,9 +4,11 @@
 <div class="row between">
   <div>
     <h1>{{ c.match.team_a_name or c.match.team_a_color }} – {{ c.match.team_b_name or c.match.team_b_color }} · {{ c.time_sec|clock }}</h1>
-    <a href="/matches/{{ c.match_id }}">{{ c.match.title }}</a> ·
-    {% if full_video %}<a href="/videos/{{ c.video_id }}?t={{ c.time_sec }}">pokaż w pełnym nagraniu</a> ·{% endif %}
-    <a href="/matches/{{ c.match_id }}{{ nav_q }}#klipy">wszystkie klipy meczu</a>
+    <ul class="meta-list">
+      <li><a href="/matches/{{ c.match_id }}">{{ c.match.title }}</a></li>
+      {% if full_video %}<li><a href="/videos/{{ c.video_id }}?t={{ c.time_sec }}">pokaż w pełnym nagraniu</a></li>{% endif %}
+      <li><a href="/matches/{{ c.match_id }}{{ nav_q }}#klipy">wszystkie klipy meczu</a></li>
+    </ul>
   </div>
   <span id="clip-status" class="badge {{ c.status }}">{{ CLIP_STATUSES.get(c.status, c.status) }}</span>
 </div>

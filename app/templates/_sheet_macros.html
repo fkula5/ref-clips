@@ -6,6 +6,6 @@
       <th scope="row">Kwalifikator</th><td>{{ sheet.coach.name }}</td></tr>
   <tr><th scope="row">Wynik</th><td>{% if caller %}{{ caller('result') }}{% else %}{{ sheet.result or '—' }}{% endif %}</td>
       <th scope="row">Trudność</th><td>{% if caller %}{{ caller('difficulty') }}{% else %}{{ SHEET_DIFFICULTIES.get(sheet.difficulty, '—') }}{% endif %}</td></tr>
-  <tr><th scope="row">Obsada</th><td colspan="3">{% for c in sheet.columns %}{{ c.label }}{{ ', ' if not loop.last }}{% endfor %}</td></tr>
+  <tr><th scope="row">Obsada</th><td colspan="3"><ul class="meta-list">{% for c in sheet.columns %}<li>{{ c.label }}</li>{% endfor %}</ul></td></tr>
 </table>
 {% endmacro %}

@@ -17,7 +17,7 @@
 <h2>Co zobaczy odbiorca</h2>
 <ol class="share-contents">
   {% for position, c in clips %}
-  <li><strong>{{ c.category_label or 'Klip ' ~ position }}</strong>{% if c.match.level %} · {{ c.match.level }}{% endif %}
+  <li><span class="meta-list"><strong>{{ c.category_label or 'Klip ' ~ position }}</strong>{% if c.match.level %}<span>{{ c.match.level }}</span>{% endif %}</span>
     <span class="muted">— plik: {{ public_filename(c) }}</span></li>
   {% endfor %}
 </ol>

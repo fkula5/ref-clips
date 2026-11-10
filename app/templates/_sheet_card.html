@@ -11,7 +11,7 @@
       {% if s.is_published %}<span class="badge ready">opublikowany</span>{% else %}<span class="badge state-uploading">szkic</span>{% endif %}
       {% if s.coach_id == user.id %}<small class="me">to Ty</small>{% endif %}
       <span class="muted small-note">
-        {% if s.is_published %}{{ s.published_at|local("%d.%m.%Y") }}{% if s.edited_after_publishing %} · zmieniono {{ s.updated_at|local("%d.%m.%Y") }}{% endif %}
+        {% if s.is_published %}<span class="meta-list"><span>{{ s.published_at|local("%d.%m.%Y") }}</span>{% if s.edited_after_publishing %}<span>zmieniono {{ s.updated_at|local("%d.%m.%Y") }}</span>{% endif %}</span>
         {% else %}zapisano {{ s.updated_at|local("%d.%m.%Y %H:%M") }}{% endif %}</span>
     </div>
     <div class="table-actions">

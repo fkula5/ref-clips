@@ -6,8 +6,10 @@
   <strong>Ustaw początki kwart, żeby klipy miały kwartę i czas.</strong>
   Do tego czasu klipy z tych nagrań mają kwartę „nieustaloną” (wycinanie działa).
   {% for v, miss in pending_marks %}
-    <div><a href="/videos/{{ v.id }}">{{ v.display_name }}</a> — brakuje: {{ miss|join(', ') }}
-      · <a href="/videos/{{ v.id }}#poczatki-kwart">ustaw w odtwarzaczu</a></div>
+    <ul class="meta-list">
+      <li><a href="/videos/{{ v.id }}">{{ v.display_name }}</a> — brakuje: {{ miss|join(', ') }}</li>
+      <li><a href="/videos/{{ v.id }}#poczatki-kwart">ustaw w odtwarzaczu</a></li>
+    </ul>
   {% endfor %}
 </div>
 {% endif %}
@@ -18,7 +20,11 @@
   <div class="card video-row">
     <div class="grow">
       <strong>{{ v.display_name }}</strong>
-      <span class="muted">{% if v.size_bytes %}· {{ (v.size_bytes / 1048576)|round(0)|int }} MB{% endif %}{% if v.duration %} · {{ v.duration|clock }}{% endif %} · zawiera: {{ content_label(v.content) }}</span>
+      <ul class="meta-list muted">
+        {% if v.size_bytes %}<li>{{ (v.size_bytes / 1048576)|round(0)|int }} MB</li>{% endif %}
+        {% if v.duration %}<li>{{ v.duration|clock }}</li>{% endif %}
+        <li>zawiera: {{ content_label(v.content) }}</li>
+      </ul>
       <div>
         <span class="badge {{ v.status }}">{{ VIDEO_STATUSES.get(v.status, v.status) }}</span>
         {% if v.status in ('queued', 'processing') %}

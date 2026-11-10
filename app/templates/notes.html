@@ -2,7 +2,10 @@
 {% block title %}Notatki{% endblock %}
 {% block content %}
 <h1>Notatki do nagrania: {{ video.display_name }}</h1>
-<p><a href="/matches/{{ match.id }}">{{ match.title }}</a> · <a href="/videos/{{ video.id }}">odtwarzacz</a></p>
+<ul class="meta-list">
+  <li><a href="/matches/{{ match.id }}">{{ match.title }}</a></li>
+  <li><a href="/videos/{{ video.id }}">odtwarzacz</a></li>
+</ul>
 
 <form method="post" action="/videos/{{ video.id }}/notes/preview" class="card form">
   {{ csrf_input() }}

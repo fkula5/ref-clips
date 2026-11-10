@@ -3,7 +3,7 @@
 {% block content %}
 <h1>Usunąć mecz?</h1>
 <div class="card">
-  <p><strong>{{ match.title }}</strong>{% if match.level %} · {{ match.level }}{% endif %}</p>
+  <p class="meta-list"><strong>{{ match.title }}</strong>{% if match.level %}<span>{{ match.level }}</span>{% endif %}</p>
   <p>Razem z meczem zostanie usunięte bezpowrotnie:</p>
   <ul>
     <li>nagrania: <strong>{{ videos }}</strong> (pliki z dysku także),</li>

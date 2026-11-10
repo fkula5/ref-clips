@@ -19,8 +19,12 @@
   <ul class="share-list">
     {% for l in share_links %}
     <li>
-      <span>do {{ l.expires_at|local("%d.%m.%Y %H:%M") }} · wejść: <strong>{{ l.view_count }}</strong>
-        · utworzył(a): {{ l.creator.name if l.creator else '—' }}{% if l.items|length > 1 %} · klipów w linku: {{ l.items|length }}{% endif %}</span>
+      <span class="meta-list">
+        <span>do {{ l.expires_at|local("%d.%m.%Y %H:%M") }}</span>
+        <span>wejść: <strong>{{ l.view_count }}</strong></span>
+        <span>utworzył(a): {{ l.creator.name if l.creator else '—' }}</span>
+        {% if l.items|length > 1 %}<span>klipów w linku: {{ l.items|length }}</span>{% endif %}
+      </span>
       {% if perm.can_revoke_share(user, l) %}
       <form method="post" action="/share-links/{{ l.id }}/revoke" onsubmit="return confirm('Unieważnić link? Osoby, które go mają, stracą dostęp (pobrane pliki zostają).')">
         {{ csrf_input() }}<input type="hidden" name="clip_id" value="{{ c.id }}"><button class="btn small danger">Unieważnij</button></form>
