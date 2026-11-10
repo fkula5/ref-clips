@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.3.1](https://github.com/fkula5/ref-clips/compare/v1.3.0...v1.3.1) (2026-11-10)
+
+
+### Bug Fixes
+
+* **ui:** show every user-facing date as dd.mm.yyyy ([e6da35d](https://github.com/fkula5/ref-clips/commit/e6da35da68801ee86d98108a9df8550b7a9fa67a))
+
 ## [1.3.0](https://github.com/fkula5/ref-clips/compare/v1.2.1...v1.3.0) (2026-11-09)
 
 
