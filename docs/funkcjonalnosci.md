@@ -73,6 +73,11 @@ Priority: **M** = must be in the MVP · **S** = worth having · **P** = later (o
 | O-05 | `Q` adds a marker for the next quarter, with the option to edit and delete | ✅ | |
 | O-06 | Timeline with markers for quarters and decisions (clicking moves to the moment) | ⬜ | |
 | O-07 | Zoom into part of the picture, e.g. for a distant shot from Veo | ⬜ | |
+| O-08 | „Oglądaj razem”: a room for one recording with a link for logged-in users and a list of those present (WebSocket, state in memory; a room closes 10 minutes after the last person leaves, a restart drops all rooms) | ✅ | |
+| O-09 | The room creator leads (play/pause, seeking, speed, frame steps); the others follow (drift above 0.5 s is corrected, heartbeat every 2 s). The leader can hand control to a participant; a leader who drops keeps the lead for 10 s, then it passes to the longest-present participant | ✅ | |
+| O-10 | A follower cannot drive playback (controls and keys disabled, volume stays local) but may „Odłącz” (watch alone) and „Dołącz z powrotem” | ✅ | |
+| O-11 | `Z` (and other marker changes) by any participant appear for everyone at once; the marker is created by the normal marker endpoint with that participant as its author | ✅ | |
+| O-12 | Safety: session cookie and `Origin` checked at the handshake, random room ids kept out of logs, limits on message size and rate, rooms (30), rooms per user (3) and participants (10); voice happens outside the app | ✅ (not tried over a real network or in Safari) | |
 
 ### 4.4 Notes and creating decisions
 

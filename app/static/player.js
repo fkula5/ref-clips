@@ -9,6 +9,13 @@
   const DEBOUNCE_MS = 1000;  // as on the server
   const STATE_KEYS = ["marks", "periods", "missing_periods", "clips", "next_period"];
   let fps = state.fps || 25;
+  // The interface watch.js plugs into: it says whether this viewer may drive playback.
+  const hooks = window.RefPlayer = {
+    video, videoId: state.video_id, api, toast,
+    canControl: () => true, denied: () => {},
+    refresh: async () => { applyState(await api("GET", `/api/videos/${state.video_id}/state`)); render(); },
+  };
+  const allowed = () => hooks.canControl() || (hooks.denied(), false);
   let lastMarkAt = -Infinity;
   let highlightId = null;
 
@@ -65,10 +72,12 @@
   }
 
   function seek(t) {
+    if (!allowed()) return;
     video.currentTime = Math.min(Math.max(0, t), video.duration || t);
   }
 
   function setSpeed(rate) {
+    if (!allowed()) { $("speed").value = String(video.playbackRate); return; }
     video.playbackRate = rate;
     $("speed").value = String(rate);
   }
@@ -252,7 +261,7 @@
 
   function openQuick() {
     if (!$("quick-form")) return;
-    video.pause();
+    if (hooks.canControl()) video.pause();
     $("quick-form").classList.remove("hidden");
     $("quick-form").dataset.time = video.currentTime;
     $("quick-time").textContent = clock(video.currentTime);
@@ -293,6 +302,7 @@
   }
 
   function stepFrame(dir) {
+    if (!allowed()) return;
     video.pause();
     const frame = Math.round(video.currentTime * fps);
     video.currentTime = (frame + dir) / fps + 0.0005;
@@ -306,7 +316,7 @@
     }
     if (e.ctrlKey || e.metaKey || e.altKey) return;
     switch (e.key) {
-      case " ": e.preventDefault(); if (video.paused) { video.play().catch(() => {}); } else { video.pause(); } break;
+      case " ": e.preventDefault(); if (!allowed()) break; if (video.paused) { video.play().catch(() => {}); } else { video.pause(); } break;
       case ",": case "<": e.preventDefault(); stepFrame(-1); break;
       case ".": case ">": e.preventDefault(); stepFrame(1); break;
       case "[": setSpeed(SPEEDS[Math.max(0, SPEEDS.indexOf(video.playbackRate) - 1)] ?? 1); break;

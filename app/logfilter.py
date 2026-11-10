@@ -1,13 +1,13 @@
-"""A token in the URL lets someone set another account's password and a share code opens clips without
-login, so neither may stay in logs (uvicorn logs the full URL). The rest of the path stays:
-/s/[ukryty]/clips/1/file. The Caddy counterpart is in deploy/Caddyfile.
+"""A token in the URL lets someone set another account's password, a share code opens clips without
+login and a watch-room id lets a logged-in user into the room, so none may stay in logs (uvicorn logs
+the full URL). The rest of the path stays: /s/[ukryty]/clips/1/file. The Caddy counterpart is in deploy/Caddyfile.
 """
 from __future__ import annotations
 
 import logging
 import re
 
-TOKEN_PATH = re.compile(r"(/(?:set-password|s)/)[^/?#\s\"]+")
+TOKEN_PATH = re.compile(r"(/(?:set-password|s|watch|ws/watch)/)[^/?#\s\"]+")
 REPLACEMENT = r"\1[ukryty]"
 
 
@@ -29,6 +29,8 @@ class RedactTokens(logging.Filter):
 
 
 def install() -> None:
-    access = logging.getLogger("uvicorn.access")
-    if not any(isinstance(f, RedactTokens) for f in access.filters):
-        access.addFilter(RedactTokens())
+    # uvicorn.error also logs the URL: `"WebSocket /ws/watch/<id>" [accepted]`
+    for name in ("uvicorn.access", "uvicorn.error"):
+        logger = logging.getLogger(name)
+        if not any(isinstance(f, RedactTokens) for f in logger.filters):
+            logger.addFilter(RedactTokens())

@@ -6,7 +6,7 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app import permissions, services
+from app import permissions, services, watch
 from app.auth import require, via_match
 from app.db import get_db
 from app.loaders import get_clip, get_mark, get_match, get_video
@@ -177,6 +177,7 @@ def set_mark(body: MarkIn, db: Session = Depends(get_db), video: Video = Depends
         mark.time_sec = time_sec
     db.commit()
     db.refresh(video)
+    watch.notify_markers_changed(video.id)
     return {"period": period, **_state(video, user)}
 
 
@@ -191,6 +192,7 @@ def delete_mark(db: Session = Depends(get_db), mark: PeriodMark = Depends(get_ma
     db.delete(mark)
     db.commit()
     db.refresh(video)
+    watch.notify_markers_changed(video.id)
     return _state(video, user)
 
 
@@ -207,6 +209,8 @@ def add_marker(body: MarkerIn, db: Session = Depends(get_db), video: Video = Dep
     _require_playable(video)
     clip, created = services.add_marker(db, video, user, body.time_sec)
     db.refresh(video)
+    if created:
+        watch.notify_markers_changed(video.id)
     return {"marker": clip_json(clip), "created": created, **_state(video, user)}
 
 
@@ -218,6 +222,7 @@ def undo_marker(db: Session = Depends(get_db), video: Video = Depends(get_video)
     if clip is None:
         raise HTTPException(404, "Nie masz nieopisanego znacznika do cofnięcia")
     db.refresh(video)
+    watch.notify_markers_changed(video.id)
     return {"removed": clip.id, "time_sec": clip.time_sec, **_state(video, user)}
 
 
@@ -232,6 +237,7 @@ def delete_marker(confirm: bool = False, db: Session = Depends(get_db), clip: Cl
     db.delete(clip)
     db.commit()
     db.refresh(video)
+    watch.notify_markers_changed(video.id)
     return _state(video, user)
 
 
@@ -254,6 +260,7 @@ def quick_clip(body: QuickClipIn, db: Session = Depends(get_db), video: Video = 
         category_id=category.id if category else None,
         description=line.description)  # only the remainder: no time, referee or category (they are separate fields)
     db.commit()
+    watch.notify_markers_changed(video.id)
     return {"clip": clip_json(clip), "warnings": line.warnings, **_state(video, user)}
 
 
