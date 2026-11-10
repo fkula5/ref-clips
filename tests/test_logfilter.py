@@ -15,6 +15,12 @@ def test_redact_replaces_only_the_token():
     assert logfilter.redact("/login?next=/matches/1") == "/login?next=/matches/1"
 
 
+def test_redact_hides_watch_room_ids_in_both_the_page_and_the_socket_path():
+    assert logfilter.redact("GET /watch/aB3_-xyz HTTP/1.1") == "GET /watch/[ukryty] HTTP/1.1"
+    assert logfilter.redact('"/ws/watch/aB3_-xyz" [accepted]') == '"/ws/watch/[ukryty]" [accepted]'
+    assert logfilter.redact("/videos/5 /api/videos/5/watch") == "/videos/5 /api/videos/5/watch"
+
+
 def test_redact_hides_the_share_link_code_and_keeps_the_rest_of_the_path():
     code = "aB3_-" * 8 + "xyz"
     assert logfilter.redact(f"GET /s/{code} HTTP/1.1") == "GET /s/[ukryty] HTTP/1.1"

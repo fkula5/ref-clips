@@ -47,15 +47,16 @@
 	}
 
 	# Access log: the invite token (/set-password/<token>) allows setting another account's password and
-	# the clip link code (/s/<code>) opens clips without login, so neither stays in logs, in the request
-	# URL or in Referer; the rest of the path stays (/s/[ukryty]/zip). Cookies and Authorization are
+	# the clip link code (/s/<code>) opens clips without login and a watch-room id (/watch/<id>,
+	# /ws/watch/<id>) lets a logged-in user into the room, so none stays in logs, in the request URL or
+	# in Referer; the rest of the path stays (/s/[ukryty]/zip). Cookies and Authorization are
 	# replaced by Caddy with REDACTED anyway.
 	log {
 		output stdout
 		format filter {
 			wrap json
-			request>uri regexp (/(?:set-password|s)/)[^/?#\s"]+ $1[ukryty]
-			request>headers>Referer regexp (/(?:set-password|s)/)[^/?#\s"]+ $1[ukryty]
+			request>uri regexp (/(?:set-password|s|watch|ws/watch)/)[^/?#\s"]+ $1[ukryty]
+			request>headers>Referer regexp (/(?:set-password|s|watch|ws/watch)/)[^/?#\s"]+ $1[ukryty]
 		}
 	}
 
