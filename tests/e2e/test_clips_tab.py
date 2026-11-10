@@ -1,12 +1,10 @@
-"""Scenariusz l): zakładka „Klipy” meczu (filtry HTMX i bez JS, widok mobilny), nawigacja poprzedni/następny
-na stronie klipu oraz stany błędów klipu."""
 import re
 
 from playwright.sync_api import expect
 
 
 def setup_tab(ui, mobile=False):
-    """Mecz CC=Roman (konto), U1=Kasia, U2=Ula (konto); kwarty w 5 s i 35 s; sześć klipów."""
+    """CC=Roman (account), U1=Kasia, U2=Ula (account); quarters at 5 s and 35 s; six clips."""
     match_id = ui.server.make_match(officials=(("CC", "referee"), ("U1", "Kasia Żółć"), ("U2", "second")))
     video_id = ui.server.make_ready_video(match_id, content="Q1,Q2")
     ui.server.set_mark(video_id, "Q1", 5.0)
@@ -38,7 +36,7 @@ def test_filtry_zakladki_klipow_przez_htmx(ui):
     expect(page.locator("#clips-head h2")).to_have_text("Klipy (6, nieopisane: 2)")
     expect(rows(page)).to_have_count(6)
     expect(rows(page).first).to_contain_text("CC · Roman Sędzia")
-    expect(rows(page).first).to_contain_text("Q1 · 0:05")                  # czas od początku kwarty (nagranie)
+    expect(rows(page).first).to_contain_text("Q1 · 0:05")
     expect(rows(page).first).to_contain_text("Przekroczenie linii")
     expect(page.locator("#clips-list td[data-label='Oceny']").first).to_have_text("—")
     page.evaluate("window.__bez_przeladowania = true")
@@ -47,20 +45,20 @@ def test_filtry_zakladki_klipow_przez_htmx(ui):
     expect(page).to_have_url(re.compile(r"person=u\d+"))
     expect(rows(page)).to_have_count(2)
     assert clip_times(page) == ["0:10", "0:40"]
-    assert "category_id" not in page.url and "period" not in page.url, page.url      # adres bez pustych parametrów
+    assert "category_id" not in page.url and "period" not in page.url, page.url
 
     page.locator("select[name=category_id]").select_option(label="kroki")
     expect(page).to_have_url(re.compile(r"category_id=\d+"))
     expect(rows(page)).to_have_count(2)
-    page.locator("select[name=period]").select_option("Q2")                # kombinacja: CC + kroki + Q2
+    page.locator("select[name=period]").select_option("Q2")
     expect(page).to_have_url(re.compile(r"period=Q2"))
     expect(rows(page)).to_have_count(1)
     assert clip_times(page) == ["0:40"]
     expect(page.locator("#clips-list")).to_contain_text("Pokazano 1 z 6")
 
-    page.locator("select[name=person]").select_option("")                  # luzujemy sędziego: kroki + Q2
+    page.locator("select[name=person]").select_option("")
     page.locator("select[name=category_id]").select_option("")
-    expect(rows(page)).to_have_count(3)                                     # 40, 45, 48 s
+    expect(rows(page)).to_have_count(3)
     page.locator("select[name=described]").select_option(label="nieopisane")
     expect(page).to_have_url(re.compile(r"described=0"))
     expect(rows(page)).to_have_count(1)
@@ -72,9 +70,8 @@ def test_filtry_zakladki_klipow_przez_htmx(ui):
     expect(rows(page)).to_have_count(1)
     expect(rows(page).first).to_contain_text("Kontakt z ławką")
     assert page.evaluate("window.__bez_przeladowania === true"), "filtrowanie przeładowało stronę"
-    expect(page.locator("#clips-head h2")).to_have_text("Klipy (6, nieopisane: 2)")   # nagłówek liczy cały mecz
+    expect(page.locator("#clips-head h2")).to_have_text("Klipy (6, nieopisane: 2)")  # the heading counts the whole match
 
-    # adres z filtrami po odświeżeniu daje ten sam widok; „Wyczyść” wraca do pełnej listy
     page.reload()
     expect(rows(page)).to_have_count(1)
     expect(page.locator("select[name=person] option:checked")).to_have_text("cały zespół")
@@ -128,11 +125,11 @@ def test_zakladka_klipow_na_telefonie_to_karty_z_dzialajacymi_filtrami(ui):
 def test_nawigacja_poprzedni_nastepny_wg_filtrow_z_ktorych_przyszedl_uzytkownik(ui):
     page, match_id, _, ids = setup_tab(ui)
     page.locator("select[name=described]").select_option(label="opisane")
-    expect(rows(page)).to_have_count(4)                                       # 10, 20, 40, 45 s
-    rows(page).nth(1).get_by_role("link", name="Otwórz klip").click()         # 0:20, U1
+    expect(rows(page)).to_have_count(4)
+    rows(page).nth(1).get_by_role("link", name="Otwórz klip").click()
     expect(page).to_have_url(re.compile(rf"/clips/{ids['a1']}\?described=1$"))
     expect(page.locator("h1")).to_contain_text("0:20")
-    expect(page.locator("#prev-clip")).to_contain_text("0:10")                # pomija nieopisany 0:15
+    expect(page.locator("#prev-clip")).to_contain_text("0:10")  # skips the undescribed 0:15
     expect(page.locator("#next-clip")).to_contain_text("0:40")
     page.locator("#next-clip").click()
     expect(page).to_have_url(re.compile(rf"/clips/{ids['k2']}\?described=1$"))
@@ -141,17 +138,15 @@ def test_nawigacja_poprzedni_nastepny_wg_filtrow_z_ktorych_przyszedl_uzytkownik(
     expect(page.locator("#clip-info")).to_contain_text("czas nagrania – nie zegar meczowy")
     page.locator("#next-clip").click()
     expect(page.locator("h1")).to_contain_text("0:45")
-    expect(page.locator("#next-clip")).to_have_count(0)                         # ostatni opisany
+    expect(page.locator("#next-clip")).to_have_count(0)
     expect(page.locator("[aria-disabled=true]")).to_have_text("Następny klip ›")
     page.locator("#prev-clip").click()
     page.locator("#prev-clip").click()
     expect(page.locator("h1")).to_contain_text("0:20")
-    # powrót do listy zachowuje filtr
     page.get_by_role("link", name="wszystkie klipy meczu").click()
     expect(page).to_have_url(re.compile(rf"/matches/{match_id}\?described=1#klipy$"))
     expect(rows(page)).to_have_count(4)
 
-    # bez filtrów nawigacja idzie po wszystkich klipach meczu wg czasu
     page.goto(f"/clips/{ids['n1']}")
     expect(page.locator("#prev-clip")).to_contain_text("0:10")
     expect(page.locator("#next-clip")).to_contain_text("0:20")
@@ -188,11 +183,11 @@ def test_klip_w_bledzie_ciecia_ma_wytnij_ponownie_i_usun(ui):
     page.goto(f"/clips/{failed}")
     expect(page.locator("#cut-problem")).to_contain_text("Nie udało się wyciąć klipu: ffmpeg: nieoczekiwany błąd")
     page.get_by_role("button", name="Wytnij ponownie").click()
-    expect(page.locator("#clip-video")).to_be_visible(timeout=60_000)               # worker naprawdę wycina
+    expect(page.locator("#clip-video")).to_be_visible(timeout=60_000)  # the worker really cuts
     assert ui.server.clip(failed).status == "cut"
     expect(page.get_by_role("link", name="Pobierz MP4")).to_be_visible()
     page.wait_for_function("document.getElementById('clip-video').readyState >= 1")
-    # nazwa pliku: data_kwarta_czas_sędzia_kategoria
+    # file name: date_quarter_time_referee_category
     with page.expect_download() as download:
         page.get_by_role("link", name="Pobierz MP4").click()
     assert download.value.suggested_filename == "II-liga.mp4"

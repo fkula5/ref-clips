@@ -1,4 +1,3 @@
-"""Lista meczów: filtry (GET), „tylko moje”, stan, liczniki klipów, paginacja, wąski ekran."""
 import re
 from datetime import date, datetime
 
@@ -7,7 +6,6 @@ from tests.helpers import make_ready_video, make_user
 
 
 def add_match(db, day, *, level="II liga", name=None, crew=(), created_by=None) -> Match:
-    """Mecz z unikalną nazwą drużyny (do rozpoznawania wierszy); crew: (funkcja, User | nazwisko)."""
     match = Match(date=day, level=level, team_a_name=name or f"Drużyna {day.isoformat()}", team_b_name="Rywal",
                   created_by=created_by.id if created_by else None)
     for function, who in crew:
@@ -19,7 +17,6 @@ def add_match(db, day, *, level="II liga", name=None, crew=(), created_by=None) 
 
 
 def ids(response) -> list[int]:
-    """Id meczów w kolejności z tabeli (linki w kolumnie „Mecz”)."""
     return [int(i) for i in re.findall(r'<td data-label="Mecz"[^>]*><a href="/matches/(\d+)"', response.text)]
 
 
@@ -47,11 +44,11 @@ def test_filter_by_date_range(client, db):
     b = add_match(db, date(2026, 4, 10))
     c = add_match(db, date(2026, 5, 20))
     assert ids(get(client, date_from="2026-04-01")) == [c.id, b.id]
-    assert ids(get(client, date_to="2026-04-10")) == [b.id, a.id]                  # granice włącznie
+    assert ids(get(client, date_to="2026-04-10")) == [b.id, a.id]
     assert ids(get(client, date_from="2026-04-10", date_to="2026-04-10")) == [b.id]
     assert ids(get(client, date_from="2026-06-01")) == []
     r = get(client, date_from="2026-04-01")
-    assert 'name="date_from" value="2026-04-01"' in r.text                          # filtr zostaje w formularzu
+    assert 'name="date_from" value="2026-04-01"' in r.text
 
 
 def test_invalid_date_is_ignored_with_message(client, db):
@@ -86,7 +83,7 @@ def test_filter_by_referee_account_and_typed_name(client, db):
 
 def test_referee_filter_treats_typed_name_and_account_of_same_person_as_one(client, db):
     ref = make_user(db, ["referee"], email="r@example.com", name="Rafał Sędzia")
-    old = add_match(db, date(2026, 1, 1), crew=[("CC", "rafal sedzia"), ("U1", "X Y")])   # zanim miał konto
+    old = add_match(db, date(2026, 1, 1), crew=[("CC", "rafal sedzia"), ("U1", "X Y")])  # before he had an account
     new = add_match(db, date(2026, 2, 1), crew=[("CC", ref), ("U1", "X Y")])
     assert ids(get(client, person=f"u{ref.id}")) == [new.id, old.id]
     page = get(client).text
@@ -103,7 +100,7 @@ def test_only_mine_shows_matches_where_i_am_in_crew_or_created(make_client, db):
     typed_namesake = add_match(db, date(2026, 3, 5), crew=[("CC", "Ja Trener"), ("U1", "E F")], created_by=other)
     assert ids(get(me_client)) == [typed_namesake.id, foreign.id, both.id, created.id, in_crew.id]
     mine = ids(get(me_client, mine="1"))
-    assert mine == [both.id, created.id, in_crew.id]       # wpisane nazwisko bez konta nie liczy się jako „ja”
+    assert mine == [both.id, created.id, in_crew.id]  # a typed name without an account does not count as "me"
     assert 'name="mine" value="1" checked' in get(me_client, mine="1").text
 
 
@@ -111,10 +108,10 @@ def test_filters_combine(make_client, db):
     me_client, me = make_client("referee", name="Ja Sędzia")
     ref = make_user(db, ["referee"], email="r@example.com", name="Rafał Sędzia")
     hit = add_match(db, date(2026, 4, 10), level="II liga", crew=[("CC", me), ("U1", ref)])
-    add_match(db, date(2026, 4, 11), level="I liga", crew=[("CC", me), ("U1", ref)])        # inna liga
-    add_match(db, date(2026, 2, 11), level="II liga", crew=[("CC", me), ("U1", ref)])       # poza zakresem
-    add_match(db, date(2026, 4, 12), level="II liga", crew=[("CC", me), ("U1", "Ktoś Inny")])  # inny sędzia
-    add_match(db, date(2026, 4, 13), level="II liga", crew=[("CC", "A B"), ("U1", ref)])    # bez mnie
+    add_match(db, date(2026, 4, 11), level="I liga", crew=[("CC", me), ("U1", ref)])
+    add_match(db, date(2026, 2, 11), level="II liga", crew=[("CC", me), ("U1", ref)])
+    add_match(db, date(2026, 4, 12), level="II liga", crew=[("CC", me), ("U1", "Ktoś Inny")])
+    add_match(db, date(2026, 4, 13), level="II liga", crew=[("CC", "A B"), ("U1", ref)])
     r = get(me_client, date_from="2026-04-01", date_to="2026-04-30", level="II liga",
             person=f"u{ref.id}", mine="1")
     assert ids(r) == [hit.id]
@@ -130,10 +127,9 @@ def test_pagination_25_per_page_keeps_filters(client, db):
     assert ids(get(client, page="2")) == newest_first[25:50]
     r3 = get(client, page="3")
     assert ids(r3) == newest_first[50:] and "Starsze" not in r3.text and "Nowsze" in r3.text
-    assert ids(get(client, page="99")) == newest_first[50:]            # poza zakresem: ostatnia strona
+    assert ids(get(client, page="99")) == newest_first[50:]
     assert ids(get(client, page="abc")) == newest_first[:25]
     assert ids(get(client, page="-4")) == newest_first[:25]
-    # filtr + paginacja: 30 meczów II ligi = 2 strony, a linki niosą filtr
     ii = [m.id for m in reversed(matches) if m.level == "II liga"]
     r = get(client, level="II liga")
     assert ids(r) == ii[:25] and "Mecze: 30" in r.text and "page=2" in r.text and "level=II+liga" in r.text
@@ -156,7 +152,7 @@ def test_list_state_counts_and_queue_position(client, db):
         db.flush()
         if status == "queued":
             db.add(Job(type="transcode", status="pending", video_id=v.id))
-    make_ready_video(db, nomarks)                                  # zawartość „full” bez znaczników
+    make_ready_video(db, nomarks)
     pv = make_ready_video(db, purged)
     pv.purged_at = datetime(2026, 1, 10)
     db.add_all([Clip(match_id=ready.id, video_id=v_ready.id, time_sec=10, described_at=datetime(2026, 1, 2)),
@@ -174,7 +170,6 @@ def test_list_state_counts_and_queue_position(client, db):
     assert "błąd konwersji" in row[errored.id]
     assert "brak znaczników kwart" in row[nomarks.id]
     assert "pełne nagranie usunięte" in row[purged.id]
-    # 3 klipy, w tym 2 nieopisane
     assert re.search(r'data-label="Klipy"><a href="/clips\?match_id=%d">3</a>' % ready.id, row[ready.id])
     assert 'data-label="Nieopisane"><span class="chip warn">2</span>' in row[ready.id]
     assert 'data-label="Nieopisane">0<' in row[none.id]

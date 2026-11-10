@@ -1,4 +1,3 @@
-"""Testy wideo. Część pracuje na prawdziwym ffmpeg (pomijana, gdy go brak)."""
 import subprocess
 from datetime import date
 
@@ -11,7 +10,6 @@ from tests.conftest import needs_ffmpeg
 from tests.helpers import make_match, tus_upload
 
 
-# --- czyste funkcje (bez ffmpeg) -------------------------------------------------
 def test_clip_bounds_default_margins():
     assert services.clip_bounds(174, 15, 15, 600) == (159, 189)
     assert config.DEFAULT_MARGIN_BEFORE == config.DEFAULT_MARGIN_AFTER == 15
@@ -28,7 +26,7 @@ def test_clip_bounds_clamped_to_recording():
 def test_commands_have_expected_flags():
     from pathlib import Path
     cmd = vid.build_cut_command("ffmpeg", Path("in.mp4"), Path("out.mp4"), 12.5, 20)
-    assert cmd.index("-ss") < cmd.index("-i")  # szybkie szukanie + re-encode = dokładne cięcie
+    assert cmd.index("-ss") < cmd.index("-i")
     assert "libx264" in cmd and "+faststart" in cmd
     tc = vid.build_transcode_command("ffmpeg", Path("in.mov"), Path("out.mp4"))
     assert "libx264" in tc and "aac" in tc and "+faststart" in tc
@@ -37,8 +35,9 @@ def test_commands_have_expected_flags():
 
 @needs_ffmpeg
 def test_metadata_of_source_does_not_reach_clips(tmp_path):
-    """Klipy mogą być udostępnione bez konta: tytuł, lokalizacja i nazwy strumieni źródła nie przechodzą
-    do wersji roboczej ani klipu, a jednorazowe czyszczenie (app.strip_metadata) usuwa je ze starych klipów."""
+    """Clips can be shared without an account: source title, location and stream names must not reach
+    the draft or the clip, and the one-off cleanup (app.strip_metadata) removes them from old clips.
+    """
     from app import strip_metadata
     src = tmp_path / "src.mp4"
     subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-f", "lavfi", "-i", "testsrc2=size=160x90:rate=10:duration=3",
@@ -56,7 +55,7 @@ def test_metadata_of_source_does_not_reach_clips(tmp_path):
     subprocess.run(vid.build_cut_command("ffmpeg", proxy, clip, 0.5, 1.5), check=True, capture_output=True)
     for path in (proxy, clip):
         assert not any(word in tags(path) for word in ("Kowalski", "TAJNE", "location")), tags(path)
-    old = tmp_path / "old.mp4"  # klip sprzed zmiany: źródło z metadanymi
+    old = tmp_path / "old.mp4"
     old.write_bytes(src.read_bytes())
     strip_metadata.strip_file("ffmpeg", old)
     assert "Kowalski" not in tags(old) and "TAJNE" not in tags(old) and "location" not in tags(old)
@@ -95,7 +94,6 @@ def test_worker_waits_when_ffmpeg_missing(db, monkeypatch):
 
 
 def test_worker_pipeline_with_fake_ffmpeg(db, monkeypatch):
-    """Cały przepływ zadań (transcode -> cut) z podstawionymi funkcjami ffmpeg."""
     from app import worker
     from app.storage import storage
     from tests.helpers import make_match
@@ -122,21 +120,21 @@ def test_worker_pipeline_with_fake_ffmpeg(db, monkeypatch):
     db.add(video)
     db.flush()
     services.enqueue(db, "transcode", video_id=video.id)
-    # klip utworzony przed końcem konwersji: cięcie ma poczekać na gotowe nagranie
+    # a clip created before the conversion finished: the cut must wait for the ready recording
     clip = services.create_clip(db, video, None, time_sec=5)
     db.commit()
 
-    assert worker.run_once() is True       # transcode
-    assert worker.run_once() is True       # cut
+    assert worker.run_once() is True
+    assert worker.run_once() is True
     assert worker.run_once() is False
     db.refresh(video)
     db.refresh(clip)
     assert video.status == "ready" and video.duration == 120.0
-    assert video.original_path is None  # po udanej konwersji oryginał jest usuwany
+    assert video.original_path is None
     assert clip.status == "cut" and storage.exists(clip.clip_path)
-    assert calls == [(0, 20)]  # początek obcięty do 0: 0..20 s (5 s + margines 15 s)
+    assert calls == [(0, 20)]  # start clipped to 0: 0..20 s (5 s + 15 s margin)
 
-    services.queue_cut(db, clip)       # korekta -> nowa wersja, stary plik usunięty
+    services.queue_cut(db, clip)
     clip.margin_before, clip.margin_after = 3, 4
     db.commit()
     old = clip.clip_path
@@ -146,9 +144,8 @@ def test_worker_pipeline_with_fake_ffmpeg(db, monkeypatch):
     assert calls[-1] == (2, 7)
 
 
-# --- prawdziwy ffmpeg ------------------------------------------------------------
 def _make_source(path, seconds=20, size="320x240", rate=25, brightness_steps=True):
-    """Wideo, którego jasność rośnie co sekundę (lum = 16 + 10*floor(t)), z dźwiękiem."""
+    """A video whose brightness rises every second (lum = 16 + 10*floor(t)), with sound."""
     ff = vid.ffmpeg_bin()
     if brightness_steps:
         src = f"color=c=gray:s={size}:r={rate}:d={seconds},geq=lum='16+10*floor(T)':cb=128:cr=128"
@@ -163,7 +160,9 @@ def _make_source(path, seconds=20, size="320x240", rate=25, brightness_steps=Tru
 
 
 def _luma_of_second(sec: int) -> float:
-    """Jasność (po konwersji limited->full range do 'gray') klatki z danej sekundy źródła."""
+    """Brightness (after limited->full range conversion to 'gray') of the frame from the given source
+    second.
+    """
     return (16 + 10 * sec - 16) * 255 / 219
 
 
@@ -206,9 +205,9 @@ def test_transcode_to_proxy_720p_with_keyframes(tmp_path):
         [vid.ffprobe_bin(), "-v", "error", "-select_streams", "v:0", "-skip_frame", "nokey",
          "-show_entries", "frame=pts_time", "-of", "csv=p=0", str(proxy)],
         capture_output=True, text=True).stdout.split()
-    assert len(keyframes) >= 5  # klatka kluczowa mniej więcej co sekundę
+    assert len(keyframes) >= 5
     head = proxy.read_bytes()[:4096]
-    assert b"moov" in head  # +faststart: metadane na początku pliku
+    assert b"moov" in head
     assert not list(tmp_path.glob("*.part.mp4"))
 
 
@@ -225,7 +224,7 @@ def test_cut_clip_length_and_start_frame(tmp_path, source):
     vid.cut_clip(source, clip, start=6.2, duration=8.0)
     info = vid.probe(clip)
     assert info["duration"] == pytest.approx(8.0, abs=0.25)
-    # pierwsza klatka pochodzi z sekundy 6 źródła (a nie np. 5 albo 7)
+    # the first frame comes from source second 6 (not e.g. 5 or 7)
     assert _first_frame_luma(clip) == pytest.approx(_luma_of_second(6), abs=4)
 
 
@@ -236,7 +235,7 @@ def test_cut_clip_clamped_at_recording_start_and_end(tmp_path, source):
     clip = tmp_path / "start.mp4"
     vid.cut_clip(source, clip, start, end - start)
     assert vid.probe(clip)["duration"] == pytest.approx(14, abs=0.25)
-    assert _first_frame_luma(clip) < _luma_of_second(2) / 2  # klatka z początku nagrania (sekunda 0-1)
+    assert _first_frame_luma(clip) < _luma_of_second(2) / 2
 
     start, end = services.clip_bounds(duration - 3, 10, 10, duration)
     clip = tmp_path / "end.mp4"
@@ -256,7 +255,6 @@ def test_cut_failure_leaves_no_partial_file(tmp_path):
 
 @needs_ffmpeg
 def test_end_to_end_upload_transcode_cut(client, db, source):
-    """Upload przez API -> worker (konwersja, cięcie) -> pobranie klipu o długości 30 s."""
     from app import worker
     from app.storage import storage
     from tests.helpers import make_match
@@ -268,7 +266,7 @@ def test_end_to_end_upload_transcode_cut(client, db, source):
     assert storage.exists(original)
     assert worker.run_once() is True
     db.expire_all()
-    assert db.get(Video, vid_id).original_path is None and not storage.exists(original)  # oryginał usunięty
+    assert db.get(Video, vid_id).original_path is None and not storage.exists(original)
     state = client.get(f"/api/videos/{vid_id}/state").json()
     assert state["duration"] == pytest.approx(20, abs=0.3)
     assert client.get(f"/videos/{vid_id}/stream", headers={"Range": "bytes=0-99"}).status_code == 206
@@ -279,7 +277,7 @@ def test_end_to_end_upload_transcode_cut(client, db, source):
     clip = client.get(f"/clips/{c['id']}/download")
     assert clip.status_code == 200 and clip.content[4:8] == b"ftyp"
     assert "II-liga_Kowalski_kroki.mp4" in clip.headers["content-disposition"]
-    # klip 0..24 s (9 +/- 15, obcięty do początku i do końca nagrania 20 s)
+    # clip 0..24 s (9 +/- 15, clipped to the start and to the end of the 20 s recording)
     out = db.get(Clip, c["id"])
     db.refresh(out)
     assert vid.probe(storage.local_path(out.clip_path))["duration"] == pytest.approx(20, abs=0.3)
@@ -287,7 +285,6 @@ def test_end_to_end_upload_transcode_cut(client, db, source):
 
 @needs_ffmpeg
 def test_default_clip_is_30_seconds_in_the_middle_of_a_recording(client, db, tmp_path):
-    """Znacznik w środku nagrania: 15 s przed i 15 s po daje klip ok. 30 s."""
     from app import worker
     from app.storage import storage
     from tests.helpers import make_match

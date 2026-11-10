@@ -1,4 +1,3 @@
-"""Logowanie, sesje, CSRF, zaproszenia, reset hasła i wymóg zalogowania."""
 import re
 from datetime import timedelta
 
@@ -14,7 +13,6 @@ from tests.helpers import PASSWORD, make_match, make_user
 
 
 def login_form(client):
-    """Pobiera stronę logowania (ustawia ciasteczko CSRF) i zwraca token do formularza."""
     r = client.get("/login")
     assert r.status_code == 200
     return client.cookies.get(config.CSRF_COOKIE)
@@ -26,7 +24,6 @@ def do_login(client, email, password=PASSWORD, **extra):
                                        **extra}, follow_redirects=False)
 
 
-# --- logowanie ---------------------------------------------------------------------
 def test_login_page_is_public(anon_client):
     r = anon_client.get("/login")
     assert r.status_code == 200 and "Logowanie" in r.text and 'name="csrf_token"' in r.text
@@ -34,11 +31,11 @@ def test_login_page_is_public(anon_client):
 
 def test_login_ok_sets_secure_cookie_and_hashes_token(anon_client, db):
     make_user(db, ["coach"], email="jan@example.com")
-    r = do_login(anon_client, "  Jan@Example.com ")  # e-mail bez względu na wielkość liter i spacje
+    r = do_login(anon_client, "  Jan@Example.com ")
     assert r.status_code == 303 and r.headers["location"] == "/"
     cookie = r.headers["set-cookie"]
     assert config.SESSION_COOKIE in cookie and "HttpOnly" in cookie
-    assert "SameSite=lax" in cookie and "Secure" not in cookie  # lokalnie po http musi działać
+    assert "SameSite=lax" in cookie and "Secure" not in cookie  # must work locally over http
     token = anon_client.cookies.get(config.SESSION_COOKIE)
     session = db.scalar(select(AuthSession))
     assert session.token_hash == security.hash_token(token) != token
@@ -48,7 +45,7 @@ def test_login_ok_sets_secure_cookie_and_hashes_token(anon_client, db):
 
 def test_cookie_secure_flag_is_configurable(anon_client, db, monkeypatch):
     make_user(db, email="jan@example.com")
-    token = login_form(anon_client)  # ciasteczko CSRF jeszcze bez Secure (test działa po http)
+    token = login_form(anon_client)  # the CSRF cookie is not Secure yet (the test runs over http)
     monkeypatch.setattr(config, "COOKIE_SECURE", True)
     r = anon_client.post("/login", data={"email": "jan@example.com", "password": PASSWORD,
                                          "csrf_token": token}, follow_redirects=False)
@@ -79,11 +76,9 @@ def test_login_throttled_per_account(anon_client, db):
     make_user(db, email="jan@example.com")
     for _ in range(config.LOGIN_MAX_ATTEMPTS):
         assert do_login(anon_client, "jan@example.com", "zle-haslo-123").status_code == 401
-    # szósta próba jest odrzucona, nawet z poprawnym hasłem
     r = do_login(anon_client, "jan@example.com")
     assert r.status_code == 429 and "Zbyt wiele" in r.text
-    assert db.query(LoginAttempt).count() == config.LOGIN_MAX_ATTEMPTS  # zablokowane próby nie przedłużają blokady
-    # po upływie okna można się zalogować
+    assert db.query(LoginAttempt).count() == config.LOGIN_MAX_ATTEMPTS  # blocked attempts do not extend the block
     for attempt in db.scalars(select(LoginAttempt)):
         attempt.attempted_at = utcnow() - timedelta(minutes=config.LOGIN_WINDOW_MINUTES + 1)
     db.commit()
@@ -94,16 +89,16 @@ def test_login_throttled_per_ip(anon_client, db):
     make_user(db, email="jan@example.com")
     for i in range(config.LOGIN_MAX_ATTEMPTS):
         do_login(anon_client, f"nikt{i}@example.com", "zle-haslo-123")
-    assert do_login(anon_client, "jan@example.com").status_code == 429  # inny e-mail, ten sam adres IP
+    assert do_login(anon_client, "jan@example.com").status_code == 429
 
 
 def test_throttle_ignores_other_ip(db):
     for _ in range(config.LOGIN_MAX_ATTEMPTS):
         db.add(LoginAttempt(email="jan@example.com", ip="1.1.1.1", attempted_at=utcnow()))
     db.commit()
-    assert accounts.is_throttled(db, "jan@example.com", "2.2.2.2")  # to samo konto
+    assert accounts.is_throttled(db, "jan@example.com", "2.2.2.2")
     assert not accounts.is_throttled(db, "kto@example.com", "2.2.2.2")
-    assert accounts.is_throttled(db, "kto@example.com", "1.1.1.1")  # ten sam IP
+    assert accounts.is_throttled(db, "kto@example.com", "1.1.1.1")
 
 
 @pytest.mark.parametrize("target,expected", [
@@ -132,7 +127,7 @@ def test_successful_login_clears_failure_counter_for_that_email(anon_client, db)
     assert do_login(anon_client, "jan@example.com").status_code == 303
     assert db.query(LoginAttempt).filter_by(email="jan@example.com").count() == 0
     anon_client.cookies.delete(config.SESSION_COOKIE)
-    assert do_login(anon_client, "jan@example.com", "zle-haslo-123").status_code == 401  # 1 błąd po sukcesie, bez blokady
+    assert do_login(anon_client, "jan@example.com", "zle-haslo-123").status_code == 401  # 1 failure after a success, no lockout
     assert not accounts.is_throttled(db, "jan@example.com", "1.2.3.4")
 
 
@@ -160,7 +155,7 @@ def test_logout_ends_session(make_client, db):
     r = client.post("/logout", follow_redirects=False)
     assert r.status_code == 303 and r.headers["location"] == "/login"
     assert db.scalar(select(AuthSession).where(AuthSession.token_hash == security.hash_token(token))) is None
-    client.cookies.set(config.SESSION_COOKIE, token)  # stary token po wylogowaniu nie działa
+    client.cookies.set(config.SESSION_COOKIE, token)
     assert client.get("/", follow_redirects=False).status_code == 303
 
 
@@ -183,7 +178,6 @@ def test_session_is_refreshed_with_new_cookie(make_client, db):
     assert config.SESSION_COOKIE in r.headers.get("set-cookie", "")
     db.refresh(session)
     assert session.expires_at > utcnow() + timedelta(days=29)
-    # świeża sesja nie jest odnawiana przy każdym żądaniu
     assert config.SESSION_COOKIE not in client.get("/").headers.get("set-cookie", "")
 
 
@@ -196,7 +190,6 @@ def test_deactivated_user_loses_session(make_client, admin, db):
     assert db.scalar(select(AuthSession).where(AuthSession.user_id == user.id)) is None
 
 
-# --- wymóg zalogowania --------------------------------------------------------------
 def test_pages_redirect_to_login_and_api_returns_401(anon_client):
     r = anon_client.get("/", follow_redirects=False)
     assert r.status_code == 303 and r.headers["location"] == "/login?next=/"
@@ -212,14 +205,15 @@ def test_pages_redirect_to_login_and_api_returns_401(anon_client):
     assert r.status_code == 401 and r.headers["hx-redirect"] == "/login"
 
 
-# Publiczne linki do klipów (/s/<kod>): bez sesji, tylko odczyt — sprawdza je tests/test_share.py.
+# Public clip links (/s/<code>): no session, read only; tests/test_share.py checks them.
 PUBLIC_PATHS = {"/login", "/set-password/{token}", "/health", "/s/{code}", "/s/{code}/clips/{position}/file",
                 "/s/{code}/clips/{position}/download", "/s/{code}/zip"}
 
 
 def test_every_route_requires_login_except_public_ones(anon_client):
-    """Przegląd wszystkich tras aplikacji bez sesji: poza logowaniem i statykami żadna nie
-    może odpowiedzieć 200/4xx innym niż 401 ani przekierowaniem na /login."""
+    """Sweep of all app routes without a session: apart from login and static files none may answer
+    anything but 401 or redirect to /login.
+    """
     checked = 0
     for path, operations in app.openapi()["paths"].items():
         if path in PUBLIC_PATHS:
@@ -236,7 +230,7 @@ def test_every_route_requires_login_except_public_ones(anon_client):
 
 def test_static_files_are_public(anon_client):
     assert anon_client.get("/static/app.css").status_code == 200
-    assert anon_client.get("/static/vendor/htmx-2.0.4.min.js").status_code == 200  # HTMX lokalnie, bez CDN
+    assert anon_client.get("/static/vendor/htmx-2.0.4.min.js").status_code == 200  # HTMX is served locally, no CDN
 
 
 def test_api_docs_are_not_exposed(anon_client):
@@ -244,7 +238,6 @@ def test_api_docs_are_not_exposed(anon_client):
         assert anon_client.get(path, follow_redirects=False).status_code == 404
 
 
-# --- CSRF ---------------------------------------------------------------------------
 def test_csrf_missing_or_wrong_token_is_rejected(make_client, db):
     client, _ = make_client("admin")
     good = client.headers.pop("X-CSRF-Token")
@@ -255,9 +248,8 @@ def test_csrf_missing_or_wrong_token_is_rejected(make_client, db):
     assert client.post(url, data={"csrf_token": "zly-token"}).status_code == 403
     assert client.post("/api/videos/1/marks", json={"time_sec": 1}).status_code == 403
     assert db.get(type(match), match.id) is not None
-    # prawidłowy token w nagłówku (HTMX, fetch) albo w polu formularza
     assert client.post(url, headers={"X-CSRF-Token": good}, follow_redirects=False).status_code == 303
-    db.expunge_all()  # sesja testu nie trzyma już usuniętego meczu
+    db.expunge_all()
     match2 = make_match(db)
     assert client.post(f"/matches/{match2.id}/delete", data={"csrf_token": good},
                        follow_redirects=False).status_code == 303
@@ -291,7 +283,6 @@ def test_forms_and_htmx_carry_csrf_token(make_client):
     assert f'<meta name="csrf-token" content="{token}">' in page
 
 
-# --- zaproszenia i reset hasła --------------------------------------------------------
 def invite_link(admin_client, **form):
     r = admin_client.post("/admin/users", data={"roles": ["referee"], **form})
     assert r.status_code == 200, r.text
@@ -311,13 +302,12 @@ def test_invite_is_single_use(admin, anon_client, db):
     user = db.scalar(select(User).where(User.email == "nowy@example.com"))
     assert user.password_hash is None and user.roles == {"referee"}
     raw_token = link.rsplit("/", 1)[1]
-    assert db.scalar(select(Invite)).token_hash == security.hash_token(raw_token) != raw_token  # w bazie tylko hash
+    assert db.scalar(select(Invite)).token_hash == security.hash_token(raw_token) != raw_token
     page = anon_client.get("/" + link.split("/", 3)[3])
     assert page.status_code == 200 and "Nowy Sędzia" in page.text
     r = set_password(anon_client, link)
     assert r.status_code == 303 and r.headers["location"] == "/login?ok=1"
     assert do_login(anon_client, "nowy@example.com").status_code == 303
-    # drugie użycie tego samego linku
     assert anon_client.get("/" + link.split("/", 3)[3]).status_code == 410
     anon_client.cookies.clear()
     assert set_password(anon_client, link, "inne-haslo-12345").status_code == 410
@@ -340,7 +330,7 @@ def test_set_password_validation(admin, anon_client, db):
     assert set_password(anon_client, link, "krotkie").status_code == 422
     assert set_password(anon_client, link, PASSWORD, "inne-haslo-12345").status_code == 422
     assert db.scalar(select(User).where(User.email == "nowy@example.com")).password_hash is None
-    assert set_password(anon_client, link).status_code == 303  # link nadal działa po błędach
+    assert set_password(anon_client, link).status_code == 303
 
 
 def test_set_password_requires_csrf_cookie(admin, anon_client):
@@ -371,7 +361,7 @@ def test_password_reset_link(admin, anon_client, make_client, db):
     link = re.search(r'value="([^"]*/set-password/[^"]+)"', r.text).group(1)
     assert db.scalar(select(Invite)).purpose == "reset"
     assert set_password(anon_client, link, "nowe-haslo-98765").status_code == 303
-    assert victim.get("/api/status").status_code == 401  # stare sesje wygasają po resecie
+    assert victim.get("/api/status").status_code == 401
     assert do_login(anon_client, "ofiara@example.com", PASSWORD).status_code == 401
     assert do_login(anon_client, "ofiara@example.com", "nowe-haslo-98765").status_code == 303
 
@@ -391,7 +381,6 @@ def test_no_public_registration(anon_client):
                                                   "roles": ["admin"]}).status_code == 401
 
 
-# --- create_admin ---------------------------------------------------------------------
 def test_create_admin_command(db, monkeypatch, anon_client):
     from app import create_admin
     monkeypatch.setattr(create_admin, "init_db", lambda: None)
@@ -400,7 +389,6 @@ def test_create_admin_command(db, monkeypatch, anon_client):
     user = db.scalar(select(User).where(User.email == "szef@example.com"))
     assert user.roles == {"admin"} and user.is_active
     assert do_login(anon_client, "szef@example.com", "bardzo-dlugie-haslo").status_code == 303
-    # ponowne uruchomienie: ustawia nowe hasło, nie dubluje konta
     assert create_admin.main([*argv[:-1], "inne-bardzo-dlugie-haslo"]) == 0
     db.expire_all()
     assert db.query(User).count() == 1
@@ -418,7 +406,6 @@ def test_create_admin_prompts(db, monkeypatch):
     assert db.scalar(select(User).where(User.email == "admin@example.com")).name == "Ala Admin"
 
 
-# --- adres klienta za reverse proxy (Caddy) -----------------------------------------
 def _request(headers: dict, peer="172.18.0.5"):
     from starlette.requests import Request
     return Request({"type": "http", "headers": [(k.lower().encode(), v.encode()) for k, v in headers.items()],
@@ -437,7 +424,9 @@ def test_client_ip_uses_address_added_by_proxy(monkeypatch):
 
 
 def test_client_ip_cannot_be_spoofed_by_client_prefix(monkeypatch):
-    """Klient podstawia własny wpis; proxy dopisuje prawdziwy adres na końcu — liczy się ostatni."""
+    """The client inserts its own entry; the proxy appends the real address at the end: the last one
+    counts.
+    """
     monkeypatch.setattr(config, "TRUST_PROXY", True)
     assert auth.client_ip(_request({"X-Forwarded-For": "1.2.3.4, 198.51.100.9"})) == "198.51.100.9"
 

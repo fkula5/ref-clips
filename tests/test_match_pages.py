@@ -1,4 +1,3 @@
-"""Strona meczu, potwierdzenie usunięcia, podpowiedzi lig, błędy w formularzach i strona błędu."""
 from datetime import datetime
 
 from sqlalchemy import select
@@ -10,7 +9,6 @@ BASE = {"date": "2026-10-28", "level": "II liga", "team_a_name": "Legia", "team_
         "team_b_name": "Wisła", "team_b_color": "ciemne"}
 
 
-# --- strona meczu -------------------------------------------------------------------------
 def test_match_detail_header(make_client, db):
     client, me = make_client("coach", name="Trener Tomasz")
     ref = make_user(db, ["referee"], email="r@example.com", name="Rafał Sędzia")
@@ -21,10 +19,10 @@ def test_match_detail_header(make_client, db):
     for text in ("28.10.2026", "II liga", "Legia", "Wisła", "(czerwone)", "(granatowe)",
                  "Dodał(a)", "Trener Tomasz", "Rafał Sędzia", "Ewa Druga", "bez konta", "to Ty"):
         assert text in page, text
-    assert "background: #d32f2f" in page and "background: #1a2a5a" in page      # kolory strojów
-    assert page.count('class="has-account"') == 2                              # konta: Rafał i ja
+    assert "background: #d32f2f" in page and "background: #1a2a5a" in page
+    assert page.count('class="has-account"') == 2
     assert "<h2 id=\"nagrania\">Nagrania</h2>" in page and 'id="klipy"' in page
-    assert 'id="komentarze"' in page                                            # miejsce na segment 6
+    assert 'id="komentarze"' in page
 
 
 def test_match_detail_buttons_depend_on_permissions(make_client, db):
@@ -53,10 +51,10 @@ def test_match_detail_lists_clips_with_period_and_undescribed_mark(client, db):
     db.commit()
     page = client.get(f"/matches/{match.id}").text
     assert "Klipy (3, nieopisane: 1)" in page
-    assert "Q2 · 4:12" in page                       # czas od początku kwarty (czas nagrania)
-    assert "Q1 · 0:40" in page and "nieustalona" in page   # klip przed pierwszym znacznikiem
+    assert "Q2 · 4:12" in page
+    assert "Q1 · 0:40" in page and "nieustalona" in page
     assert "cały zespół" in page and "Rafał Sędzia" in page
-    assert page.count("nieopisany") == 1             # tylko ten bez described_at
+    assert page.count("nieopisany") == 1
     for c in (done, pending, team):
         assert f'href="/clips/{c.id}"' in page
     assert "to nie jest zegar meczowy" in page
@@ -74,7 +72,6 @@ def test_match_detail_shows_state(client, db):
     assert "brak znaczników kwart" in client.get(f"/matches/{match.id}").text
 
 
-# --- usuwanie: potwierdzenie ----------------------------------------------------------------
 def test_delete_confirmation_shows_counts_and_deletes_only_on_post(client, db):
     match = make_match(db)
     match_id = match.id
@@ -88,7 +85,7 @@ def test_delete_confirmation_shows_counts_and_deletes_only_on_post(client, db):
     assert "nagrania: <strong>2</strong>" in r.text and "klipy: <strong>3</strong>" in r.text
     assert "nieopisane: 2" in r.text
     assert f'action="/matches/{match.id}/delete"' in r.text and f'href="/matches/{match.id}"' in r.text
-    assert db.get(Match, match_id) is not None                  # samo wejście na stronę nic nie usuwa
+    assert db.get(Match, match_id) is not None
     assert client.post(f"/matches/{match_id}/delete", follow_redirects=False).status_code == 303
     db.expire_all()
     assert db.get(Match, match_id) is None and db.query(Clip).count() == 0 and db.query(Video).count() == 0
@@ -108,11 +105,10 @@ def test_delete_confirmation_permissions(make_client, db):
     match = make_match(db, officials=(("CC", owner), ("U1", member)), created_by=owner)
     assert owner_client.get(f"/matches/{match.id}/delete").status_code == 200
     assert other_client.get(f"/matches/{match.id}/delete").status_code == 403
-    assert member_client.get(f"/matches/{match.id}/delete").status_code == 403   # w obsadzie, ale nie właściciel
+    assert member_client.get(f"/matches/{match.id}/delete").status_code == 403
     assert owner_client.get("/matches/9999/delete").status_code == 404
 
 
-# --- podpowiedzi lig ------------------------------------------------------------------------
 def test_level_datalist_has_distinct_levels_alphabetically(client, db):
     for level in ("II liga", "Juniorzy U18", "II liga", "Ekstraklasa", "", "Żaki"):
         make_match(db).level = level
@@ -139,7 +135,6 @@ def test_known_levels_service(db):
     assert services.known_levels(db) == ["A liga", "a liga", "B liga", "b liga"]
 
 
-# --- błędy w formularzu meczu: komunikat i zachowane wartości ----------------------------------
 def test_match_form_validation_error_keeps_values(client, db):
     ref = make_user(db, ["referee"], email="r@example.com", name="Rafał Sędzia")
     data = {**BASE, "date": "", "level": "Liga testowa", "team_a_color": "zielone",
@@ -175,7 +170,7 @@ def test_referee_not_in_crew_gets_form_with_message_not_bare_error(make_client, 
     client, ref = make_client("referee", name="Rafał Sędzia")
     data = {**BASE, "level": "Liga testowa", "cc_name": "Jan Pierwszy", "u1_name": "Ewa Druga"}
     r = client.post("/matches", data=data)
-    assert r.status_code == 403                                   # reguła zostaje, ale z formularzem
+    assert r.status_code == 403
     assert "Jako sędzia możesz zapisać tylko mecz, w którego obsadzie jesteś" in r.text
     assert '<form method="post" action="/matches"' in r.text
     assert 'value="Liga testowa"' in r.text and 'value="Jan Pierwszy"' in r.text
@@ -192,7 +187,6 @@ def test_referee_editing_own_match_cannot_drop_self_form_shows_message(make_clie
     assert db.get(Match, match.id).official("CC").user_id == ref.id
 
 
-# --- błędy w formularzach panelu admina ---------------------------------------------------------
 def test_admin_new_account_error_keeps_entered_values(admin, db):
     make_user(db, ["coach"], email="zajety@example.com", name="Zajęty")
     r = admin[0].post("/admin/users", data={"name": "Nowy Użytkownik", "email": "ZAJETY@example.com",
@@ -201,7 +195,7 @@ def test_admin_new_account_error_keeps_entered_values(admin, db):
     assert 'name="name" required maxlength="100" value="Nowy Użytkownik"' in r.text
     assert 'value="ZAJETY@example.com"' in r.text
     assert 'value="coach" checked' in r.text and 'value="admin" checked' in r.text
-    assert 'value="referee" checked' not in r.text.split("<h2>Konta")[0]    # domyślnie zaznaczony tylko na czystym formularzu
+    assert 'value="referee" checked' not in r.text.split("<h2>Konta")[0]
 
 
 def test_admin_new_account_form_defaults_to_referee(admin):
@@ -212,20 +206,19 @@ def test_admin_new_account_form_defaults_to_referee(admin):
 def test_admin_role_change_error_keeps_chosen_roles(admin, db):
     admin_user = admin[1]
     other = make_user(db, ["coach"], email="c@example.com", name="Cezary Trener")
-    r = admin[0].post(f"/admin/users/{admin_user.id}/roles", data={"roles": ["coach"]})   # zabiera sobie admina
+    r = admin[0].post(f"/admin/users/{admin_user.id}/roles", data={"roles": ["coach"]})
     assert r.status_code == 422 and "co najmniej jeden aktywny administrator" in r.text
     row = next(x for x in r.text.split("<tr") if "admin@example.com" in x)
-    assert 'value="coach" checked' in row and 'value="admin" checked' not in row   # nie wraca do zapisanych ról
+    assert 'value="coach" checked' in row and 'value="admin" checked' not in row
     db.expire_all()
     assert "admin" in db.get(User, admin_user.id).roles and other.roles == {"coach"}
 
 
-# --- strona błędu przy nawigacji ----------------------------------------------------------------
 def test_error_page_for_missing_match_has_text_and_links(client):
     r = client.get("/matches/9999", headers={"Accept": "text/html", "Referer": "http://testserver/clips"})
     assert r.status_code == 404
     assert "<h1>Nie znaleziono</h1>" in r.text and "Nie ma takiego meczu" in r.text
-    assert 'href="/clips"' in r.text and 'href="/"' in r.text           # powrót + lista meczów
+    assert 'href="/clips"' in r.text and 'href="/"' in r.text
 
 
 def test_error_page_ignores_foreign_referer(client):

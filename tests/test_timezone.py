@@ -1,4 +1,3 @@
-"""Godziny w czasie polskim: baza trzyma UTC, szablony pokazują strefę z konfiguracji."""
 import re
 from datetime import date, datetime
 from pathlib import Path
@@ -29,10 +28,10 @@ def test_przejscie_przez_polnoc_zmienia_date(warsaw):
 
 
 def test_zmiana_czasu_wiosna_i_jesien(warsaw):
-    # 2026-03-29: 01:00 UTC to 03:00 CEST (przeskok 02:00 -> 03:00); chwilę wcześniej jeszcze CET.
+    # 2026-03-29: 01:00 UTC is 03:00 CEST (jump 02:00 -> 03:00); a moment earlier it is still CET.
     assert timeutil.local(datetime(2026, 3, 29, 0, 59)) == "29.03.2026 01:59"
     assert timeutil.local(datetime(2026, 3, 29, 1, 0)) == "29.03.2026 03:00"
-    # 2026-10-25: 01:00 UTC to 02:00 CET (powrót z 03:00 CEST).
+    # 2026-10-25: 01:00 UTC is 02:00 CET (back from 03:00 CEST).
     assert timeutil.local(datetime(2026, 10, 25, 0, 59)) == "25.10.2026 02:59"
     assert timeutil.local(datetime(2026, 10, 25, 1, 0)) == "25.10.2026 02:00"
 
@@ -60,14 +59,12 @@ def test_filtr_local_w_szablonach(warsaw):
 
 
 def test_szablony_nie_uzywaja_strftime():
-    """Wszystkie daty w szablonach idą przez filtr `local` (inaczej pokazałyby UTC)."""
     templates = Path(__file__).resolve().parent.parent / "app" / "templates"
     offenders = [p.name for p in templates.glob("*.html") if re.search(r"strftime", p.read_text(encoding="utf-8"))]
     assert offenders == []
 
 
 def test_strona_meczu_pokazuje_czas_lokalny(db, make_client):
-    """Komentarz zapisany o 22:30 UTC (lato) jest na stronie meczu pokazany jako 00:30 następnego dnia."""
     from app.models import Comment
     from tests.helpers import make_match
 

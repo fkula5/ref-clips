@@ -1,5 +1,3 @@
-"""Funkcje ukryte w MVP (korekta granic klipu, eksport ZIP): kod jest utrzymywany, ale trasy
-są dołączone tylko przy REFCLIPS_V2_FEATURES=1. Test montuje je w osobnej aplikacji."""
 import io
 import zipfile
 
@@ -56,7 +54,7 @@ def test_zip_export(v2_client, db):
     video.marks.append(PeriodMark(period="Q1", time_sec=0))
     db.commit()
     ids = []
-    for t in (100, 100):  # dwie takie same nazwy -> unikalne w paczce
+    for t in (100, 100):
         clip = make_clip(db, video, t)
         clip.clip_path, clip.status = f"clips/{clip.id}_v1.mp4", "cut"
         clip.official_id = video.match.official("CC").id

@@ -1,6 +1,3 @@
-"""Linki udostępniające klipy osobom bez konta (`/s/<kod>`): dostęp bez logowania, prywatność strony
-i nazw plików, jednakowa odpowiedź na linki nieaktywne, tworzenie wszystko-albo-nic, kod pokazywany raz,
-liczba wejść, unieważnianie, paczka ZIP i sprzątanie."""
 import io
 import os
 import re
@@ -21,17 +18,16 @@ from tests.helpers import category_named, make_match, make_ready_video, mark_per
 
 SECRETS = ["Kowalski", "Żółć", "Legia", "Wisła", "SEKRET-OPIS", "SEKRET-KOMENTARZ", "SEKRET-OCENA",
            "Trener Jan", "Sędzia Autor", "2026-10-28", "28.10.2026"]
-CODE_URLS = ["", "/clips/1/file", "/clips/1/download", "/zip"]   # strona, plik, pobranie jednego, ZIP
+CODE_URLS = ["", "/clips/1/file", "/clips/1/download", "/zip"]  # page, file, single download, ZIP
 
 
 @pytest.fixture()
 def world(db, make_client):
-    """Mecz z obsadą, nagranie i użytkownicy; klipy tworzy `world.clip(...)` (z prawdziwym plikiem)."""
     coach_client, coach = make_client("coach", name="Trener Jan")
     ref_client, ref = make_client("referee", name="Sędzia Autor")
     other_client, other = make_client("coach", name="Inny Trener")
     admin_client, admin = make_client("admin", name="Admin Główny")
-    match = make_match(db, created_by=coach)   # II liga, Legia – Wisła, CC Filip Kowalski, U1 Kasia Żółć
+    match = make_match(db, created_by=coach)  # II liga, Legia – Wisła, CC Filip Kowalski, U1 Kasia Żółć
     video = mark_periods(db, make_ready_video(db, match))
     for sub in ("tmp",):
         for path in (config.DATA_DIR / sub).glob("*"):
@@ -57,7 +53,6 @@ def world(db, make_client):
 
 
 def link_to(w, *clips, user=None, days="7"):
-    """Link utworzony przez logikę aplikacji: (link, kod)."""
     return share.create_link(w.db, user or w.coach_user, [str(c.id) for c in clips], days)
 
 
@@ -65,12 +60,11 @@ def snapshot(r):
     return (r.status_code, r.text, r.headers["content-type"], r.headers.get("cache-control"))
 
 
-# --- dostęp bez logowania ------------------------------------------------------------------
 def test_page_file_range_download_and_zip_work_without_login(world, anon_client):
     one, two = world.clip(t=10), world.clip(t=20)
     _, single = link_to(world, one)
     _, multi = link_to(world, one, two)
-    for client in (anon_client, world.admin):   # zalogowany też nie dostaje niczego z sesji
+    for client in (anon_client, world.admin):
         page = client.get(f"/s/{single}")
         assert page.status_code == 200 and "<video" in page.text and f"/s/{single}/clips/1/file" in page.text
         assert "set-cookie" not in page.headers and world.admin_user.name not in page.text
@@ -82,15 +76,14 @@ def test_page_file_range_download_and_zip_work_without_login(world, anon_client)
         download = client.get(f"/s/{single}/clips/1/download")
         assert download.status_code == 200
         assert download.headers["content-disposition"] == 'attachment; filename="II-liga_kroki.mp4"'
-        assert client.get(f"/s/{single}/zip").status_code == 404      # jeden klip: MP4, nie ZIP
-        assert client.get(f"/s/{multi}/clips/1/download").status_code == 404   # kilka klipów: tylko ZIP
+        assert client.get(f"/s/{single}/zip").status_code == 404
+        assert client.get(f"/s/{multi}/clips/1/download").status_code == 404
         archive = zipfile.ZipFile(io.BytesIO(client.get(f"/s/{multi}/zip").content))
         assert archive.namelist() == ["II-liga_kroki.mp4", "II-liga_kroki_2.mp4"]
         assert archive.read("II-liga_kroki_2.mp4") == storage.local_path(two.clip_path).read_bytes()
     assert anon_client.head(f"/s/{single}").status_code == 200
 
 
-# --- linki nieaktywne wyglądają tak samo -------------------------------------------------------
 @pytest.mark.parametrize("state", ["expired", "revoked", "no_clips", "bad_format"])
 def test_dead_links_are_indistinguishable_from_unknown(world, anon_client, state):
     clip = world.clip()
@@ -120,7 +113,6 @@ def test_other_requests_under_s_get_the_same_plain_404_without_cookies(world, an
     assert snapshot(r)[1:] == snapshot(anon_client.get("/s/" + "A" * 43))[1:] or method == "head"
 
 
-# --- co widać publicznie -----------------------------------------------------------------------
 def test_public_html_and_filenames_hide_names_teams_description_comments(world, anon_client):
     clip = world.clip(author=world.ref_user, t=10)
     world.db.add_all([Comment(clip_id=clip.id, author_id=world.coach_user.id, body="SEKRET-KOMENTARZ"),
@@ -146,7 +138,7 @@ def test_public_html_and_filenames_hide_names_teams_description_comments(world, 
 
 
 def test_custom_category_text_is_public_and_in_the_filename(world, anon_client):
-    """Znane ryzyko: tekst wpisany ręcznie jako kategoria „własna” widać na stronie i w nazwie pliku."""
+    """Known risk: text typed as a "custom" category is visible on the page and in the file name."""
     _, code = link_to(world, world.clip(category="własna", custom="Sytuacja przy ławce"))
     assert "Sytuacja przy ławce" in anon_client.get(f"/s/{code}").text
     assert 'filename="II-liga_Sytuacja-przy-lawce.mp4"' in anon_client.get(f"/s/{code}/clips/1/download").headers["content-disposition"]
@@ -156,7 +148,7 @@ def test_database_stores_only_a_hash_of_the_code(world):
     link, code = link_to(world, world.clip())
     assert len(code) == 43 and link.token_hash == hash_token(code) and code not in link.token_hash
     world.db.commit()
-    for suffix in ("", "-wal"):   # ani plik bazy, ani dziennik WAL nie zawierają jawnego kodu
+    for suffix in ("", "-wal"):  # neither the DB file nor the WAL journal contains the plain code
         path = config.DATA_DIR / f"ref-clips.db{suffix}"
         assert not path.exists() or code.encode() not in path.read_bytes()
 
@@ -165,8 +157,8 @@ def test_positions_are_stable_and_missing_files_are_skipped(world, anon_client):
     a, b, c = world.clip(t=1), world.clip(t=2), world.clip(t=3)
     _, code = link_to(world, a, b, c)
     assert [anon_client.get(f"/s/{code}/clips/{n}/file").status_code for n in (1, 2, 3)] == [200] * 3
-    world.db.delete(b)                       # klip usunięty
-    a.status = "queued"                      # klip w trakcie ponownego cięcia
+    world.db.delete(b)  # clip deleted
+    a.status = "queued"  # clip being re-cut
     world.db.commit()
     page = anon_client.get(f"/s/{code}")
     assert page.status_code == 200 and page.text.count("<video") == 1 and f"/s/{code}/clips/3/file" in page.text
@@ -175,10 +167,9 @@ def test_positions_are_stable_and_missing_files_are_skipped(world, anon_client):
     assert snapshot(anon_client.get(f"/s/{code}/clips/9/file")) == snapshot(anon_client.get(f"/s/{'A' * 43}/clips/9/file"))
     c.status = "queued"
     world.db.commit()
-    assert anon_client.get(f"/s/{code}").status_code == 404   # żaden klip do pokazania = jak nieistniejący
+    assert anon_client.get(f"/s/{code}").status_code == 404
 
 
-# --- nagłówki prywatności -------------------------------------------------------------------------
 @pytest.mark.parametrize("dead", [False, True])
 @pytest.mark.parametrize("suffix", CODE_URLS)
 def test_privacy_headers_on_every_public_response(world, anon_client, suffix, dead):
@@ -191,7 +182,6 @@ def test_privacy_headers_on_every_public_response(world, anon_client, suffix, de
     assert "set-cookie" not in r.headers
 
 
-# --- liczba wejść -----------------------------------------------------------------------------------
 def test_view_count_grows_only_on_page_get(world, anon_client):
     one, two = world.clip(t=1), world.clip(t=2)
     single, code = link_to(world, one)
@@ -215,7 +205,6 @@ def test_view_count_grows_only_on_page_get(world, anon_client):
     assert views(multi) == 1
 
 
-# --- tworzenie linku: wszystko albo nic -------------------------------------------------------------
 def post_share(client, ids, days="7", **kw):
     return client.post("/share-links", data={"clip_ids": ids, "days": days}, follow_redirects=False, **kw)
 
@@ -254,14 +243,13 @@ def test_creation_validates_expiry_and_who_may_share(world):
     for days in (1, 7, 30):
         link, _ = link_to(world, own, days=str(days))
         assert abs((link.expires_at - utcnow()) - timedelta(days=days)) < timedelta(minutes=1)
-    assert post_share(world.ref, [own.id]).status_code == 303                       # autor znacznika
-    assert post_share(world.ref, [own.id, foreign.id]).status_code == 403           # nie jego klip
-    assert post_share(world.admin, [own.id, foreign.id, own.id]).status_code == 303 # administrator, powtórzenie pominięte
+    assert post_share(world.ref, [own.id]).status_code == 303
+    assert post_share(world.ref, [own.id, foreign.id]).status_code == 403
+    assert post_share(world.admin, [own.id, foreign.id, own.id]).status_code == 303
     newest = world.db.scalars(select(ShareLink).order_by(ShareLink.id.desc())).first()
     assert [i.clip_id for i in newest.items] == [own.id, foreign.id] and [i.position for i in newest.items] == [1, 2]
 
 
-# --- kod pokazany raz -----------------------------------------------------------------------------------
 def test_code_is_shown_once_and_never_in_the_redirect_url(world, anon_client):
     clip = world.clip()
     r = post_share(world.coach, [clip.id], "30")
@@ -275,7 +263,6 @@ def test_code_is_shown_once_and_never_in_the_redirect_url(world, anon_client):
     assert "Max-Age=0" in page.headers["set-cookie"] and anon_client.get(f"/s/{code}").status_code == 200
     again = world.coach.get("/share-links/created")
     assert code not in again.text and "tylko raz" in again.text
-    # cudze ciasteczko (inny użytkownik) niczego nie odsłania
     world.other.cookies.set("refclips_share", f"{world.db.scalar(select(ShareLink.id))}.{code}", path="/share-links")
     assert code not in world.other.get("/share-links/created").text
 
@@ -286,7 +273,6 @@ def test_public_url_uses_configured_address(world, monkeypatch):
     assert re.search(r'value="https://klipy\.example\.pl/s/[A-Za-z0-9_-]{43}"', world.coach.get("/share-links/created").text)
 
 
-# --- unieważnianie i lista przy klipie ---------------------------------------------------------------------
 def test_revoke_rules_and_clip_page_lists_active_links(world, anon_client):
     clip = world.clip(author=world.ref_user)
     mine, code = link_to(world, clip, user=world.coach_user)
@@ -298,7 +284,7 @@ def test_revoke_rules_and_clip_page_lists_active_links(world, anon_client):
     page = world.coach.get(f"/clips/{clip.id}").text
     assert page.count("Unieważnij") == 1 and "Aktywne linki (2)" in page and "wejść: <strong>1</strong>" in page
     assert f"/share-links/{mine.id}/revoke" in page and f"/share-links/{by_ref.id}/revoke" not in page
-    assert f"/share-links/{by_ref.id}/revoke" in world.admin.get(f"/clips/{clip.id}").text   # administrator unieważnia każdy
+    assert f"/share-links/{by_ref.id}/revoke" in world.admin.get(f"/clips/{clip.id}").text
     assert code not in page and "Utwórz link" in page
     assert world.other.post(f"/share-links/{mine.id}/revoke").status_code == 403
     assert world.ref.post(f"/share-links/{mine.id}/revoke").status_code == 403
@@ -309,7 +295,7 @@ def test_revoke_rules_and_clip_page_lists_active_links(world, anon_client):
     assert world.admin.post(f"/share-links/{by_ref.id}/revoke", follow_redirects=False).headers["location"] == "/clips"
     assert [anon_client.get(f"/s/{c}").status_code for c in (code, ref_code)] == [404, 404]
     assert "Brak aktywnych linków" in world.coach.get(f"/clips/{clip.id}").text
-    assert world.coach.post(f"/share-links/{mine.id}/revoke", follow_redirects=False).status_code == 303  # powtórne: bez błędu
+    assert world.coach.post(f"/share-links/{mine.id}/revoke", follow_redirects=False).status_code == 303
 
 
 def test_share_controls_appear_only_where_the_user_may_share(world):
@@ -325,7 +311,6 @@ def test_share_controls_appear_only_where_the_user_may_share(world):
     assert 'id="share-form"' in world.ref.get("/clips").text
 
 
-# --- paczka ZIP ------------------------------------------------------------------------------------------------
 def tmp_files():
     return list((config.DATA_DIR / "tmp").glob("*"))
 
@@ -364,7 +349,7 @@ def test_cleanup_removes_only_old_zip_leftovers_from_tmp(world):
 def test_public_filenames_hide_the_referee_and_zip_names_are_numbered(world):
     from app import services
     clip = world.clip()
-    assert services.clip_filename(clip) == "II-liga_Kowalski_kroki.mp4"                    # zalogowani: bez zmian
+    assert services.clip_filename(clip) == "II-liga_Kowalski_kroki.mp4"
     assert services.clip_filename(clip, with_referee=False) == "II-liga_kroki.mp4"
     world.match.level = ""
     assert services.clip_filename(clip, with_referee=False) == "kroki.mp4"

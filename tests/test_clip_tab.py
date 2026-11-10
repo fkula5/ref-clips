@@ -1,5 +1,3 @@
-"""Zakładka „Klipy” meczu i globalna lista: filtry w adresie, kolumny, widok mobilny, poprzedni/następny
-klip na stronie klipu, nazwa pliku do pobrania i stany błędów klipu."""
 import re
 from datetime import datetime
 
@@ -12,7 +10,6 @@ from tests.helpers import category_named, make_match, make_ready_video, make_use
 
 @pytest.fixture()
 def tab(db, client):
-    """Mecz: CC=konto, U1=wpisany; kwarty co 100 s; pięć klipów o różnych opisach i stanach."""
     ref = make_user(db, ["referee"], email="r@example.com", name="Rafał Sędzia")
     match = make_match(db, officials=(("CC", ref), ("U1", "Ewa Druga")))
     video = mark_periods(db, make_ready_video(db, match, duration=900), times=(0.0, 100.0, 200.0, 300.0))
@@ -38,7 +35,6 @@ def tab(db, client):
 
 
 def listed(html, clips):
-    """Klucze klipów (z fixture) widoczne w tabeli, w kolejności wystąpienia."""
     by_id = {c.id: k for k, c in clips.items()}
     found = [int(i) for i in re.findall(r'href="/clips/(\d+)(?:\?[^"]*)?"[^>]*>(?!Otwórz)', html)]
     seen = []
@@ -57,11 +53,11 @@ def test_tab_shows_all_columns_per_row(client, tab):
     for header in ("Sędzia", "Kategoria", "Kwarta · od początku kwarty", "Czas w nagraniu", "Opis", "Oceny"):
         assert header in page
     assert "CC · Rafał Sędzia" in page and "U1 · Ewa Druga" in page and "cały zespół" in page
-    assert "Q2 · 0:50" in page and "Q1 · 0:30" in page                      # kwarta · czas od początku kwarty
+    assert "Q2 · 0:50" in page and "Q1 · 0:30" in page
     assert "Kontakt z ławką" in page and "kroki" in page
-    assert "Przekroczył linię bardzo" in page and "bardzo długo" not in page and "…" in page   # opis skrócony
+    assert "Przekroczył linię bardzo" in page and "bardzo długo" not in page and "…" in page
     assert "to nie jest zegar meczowy" in page
-    assert 'data-label="Oceny"' in page                                                    # kolumna ocen
+    assert 'data-label="Oceny"' in page
     assert "Klipy (5, nieopisane: 2)" in page and 'id="btn-describe"' in page and "Opisz znaczniki (2)" in page
 
 
@@ -97,11 +93,11 @@ def test_filter_combinations_and_empty_result(client, tab):
     assert listed(tab_page(client, m, category_id=category_named_id(client, "aut"), period="Q2"), c) == ["q2_u1"]
     page = tab_page(client, m, person="team", period="Q1")
     assert listed(page, c) == [] and "Brak klipów dla wybranych filtrów." in page
-    assert "Klipy (5, nieopisane: 2)" in page                                            # nagłówek liczy cały mecz
+    assert "Klipy (5, nieopisane: 2)" in page
 
 
 def test_period_none_filter_finds_unresolved_quarter(client, tab, db):
-    db.delete(tab["video"].marks[0])                                                     # Q1 znika: klipy z Q1 bez kwarty
+    db.delete(tab["video"].marks[0])
     db.commit()
     page = tab_page(client, tab["match"], period="none")
     assert set(listed(page, tab["clips"])) == {"q1_cc", "q1_none"}
@@ -115,7 +111,7 @@ def test_invalid_filter_values_are_ignored(client, tab):
 def test_filter_form_works_without_js_and_with_htmx(client, tab):
     page = tab_page(client, tab["match"], period="Q2", described="1", category_id=category_named_id(client, "aut"))
     form = re.search(r'<form method="get" action="[^"]*"[^>]*id="clip-filters".*?</form>', page, re.S).group(0)
-    assert f'action="/matches/{tab["match"].id}#klipy"' in form                      # zwykły GET działa bez JS
+    assert f'action="/matches/{tab["match"].id}#klipy"' in form
     assert 'hx-push-url="true"' in form and 'hx-target="#clips-list"' in form
     for name in ("person", "category_id", "period", "described"):
         assert f'name="{name}"' in form
@@ -159,7 +155,7 @@ def test_pending_clips_poll_only_the_list_with_current_filters(client, tab, db):
     page = tab_page(client, tab["match"], described="0")
     assert re.search(rf'<div id="clips-list" hx-get="/matches/{tab["match"].id}\?described=0" hx-trigger="every 3s"', page)
     assert 'hx-select-oob="#clips-head"' in page
-    quiet = tab_page(client, tab["match"], described="1")                      # pokazane klipy nie czekają na cięcie
+    quiet = tab_page(client, tab["match"], described="1")
     assert 'id="clips-list" hx-get' not in quiet
 
 
@@ -170,7 +166,6 @@ def test_busy_video_panel_refreshes_tab_with_current_url_filters(client, tab, db
     assert "location.search" in page and '#match-state,#clips-head,#clips-list' in page
 
 
-# --- nawigacja poprzedni/następny ------------------------------------------------------
 def clip_page(client, clip, **params):
     return client.get(f"/clips/{clip.id}", params=params).text
 
@@ -189,15 +184,15 @@ def test_previous_and_next_follow_recording_time(client, tab):
 def test_previous_and_next_respect_the_filters_we_came_from(client, tab):
     c = tab["clips"]
     page = clip_page(client, c["q1_cc"], described="1")
-    assert f'id="next-clip" rel="next" href="/clips/{c["q2_u1"].id}?described=1"' in page            # pomija nieopisany
+    assert f'id="next-clip" rel="next" href="/clips/{c["q2_u1"].id}?described=1"' in page  # skips the undescribed one
     page = clip_page(client, c["q2_team"], described="1", period="Q2")
     assert f'id="prev-clip" rel="prev" href="/clips/{c["q2_u1"].id}?period=Q2&amp;described=1"' in page
     assert 'id="next-clip"' not in page
-    # bieżący klip nie pasuje do filtra (np. właśnie go opisano): sąsiedzi nadal wg filtra
+    # the current clip does not match the filter (e.g. it was just described): neighbours still follow
+    # the filter
     page = clip_page(client, c["q1_none"], described="1")
     assert f'id="prev-clip" rel="prev" href="/clips/{c["q1_cc"].id}' in page
     assert f'id="next-clip" rel="next" href="/clips/{c["q2_u1"].id}' in page
-    # nawigacja zostaje w obrębie meczu, nawet gdy w adresie jest inny mecz
     page = clip_page(client, c["q4_cc"], match_id="9999")
     assert 'id="next-clip"' not in page
 
@@ -207,13 +202,12 @@ def test_clip_page_links_back_to_the_filtered_tab(client, tab):
     assert f'href="/matches/{tab["match"].id}?period=Q2#klipy"' in page
 
 
-# --- strona klipu ------------------------------------------------------------------------
 def test_clip_page_shows_description_fields_and_ratings_card(client, tab, admin):
     page = clip_page(client, tab["clips"]["q2_team"])
     info = page.split('id="clip-info"')[1].split('id="oceny"')[0]
     for text in ("cały zespół", "Kontakt z ławką", "Q2 · 1:20 od początku kwarty (czas nagrania)",
                  "czas nagrania – nie zegar meczowy", "Znacznik dodał(a)", "Opisano",
-                 "29.10.2026 13:00"):  # described_at 12:00 UTC, po 25.10 czas zimowy (+1)
+                 "29.10.2026 13:00"):  # described_at 12:00 UTC, winter time (+1) after 25.10
         assert text in info, text
     assert "Klip nie ma jeszcze ocen." in page
 
@@ -267,14 +261,13 @@ def test_error_state_buttons_hidden_from_viewers_without_rights(make_client, tab
     assert "Edytuj opis" not in page and "Opisz klip" not in page
 
 
-# --- nazwa pliku -----------------------------------------------------------------------------
 def test_download_name_pattern_is_level_surname_category(tab, db):
     from app import services
     c = tab["clips"]
     assert services.clip_filename(c["q1_cc"]) == "II-liga_Sedzia_kroki.mp4"
     assert services.clip_filename(c["q2_u1"]) == "II-liga_Druga_aut.mp4"
     assert services.clip_filename(c["q2_team"]) == "II-liga_zespol_Kontakt-z-lawka.mp4"
-    assert services.clip_filename(c["q1_none"]) == "II-liga.mp4"                                   # bez opisu
+    assert services.clip_filename(c["q1_none"]) == "II-liga.mp4"
     c["q4_cc"].category_id = None
     c["q4_cc"].custom_category = "Zażółć gęślą jaźń / <script>" + "x" * 90
     name = services.clip_filename(c["q4_cc"])
@@ -301,7 +294,6 @@ def page_has_name(client, clip, name):
     return name in client.get(f"/clips/{clip.id}").text
 
 
-# --- pomocnicze ---------------------------------------------------------------------------------
 def clip_list_key(tab, which):
     from app import services
     from app.db import SessionLocal

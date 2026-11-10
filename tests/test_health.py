@@ -1,4 +1,3 @@
-"""Endpoint /health i znacznik życia workera."""
 import json
 import threading
 from datetime import timedelta
@@ -14,7 +13,6 @@ from app.timeutil import utcnow
 
 @pytest.fixture()
 def beat(db):
-    """Świeży znacznik życia workera."""
     health.record_heartbeat(db)
 
 
@@ -26,7 +24,6 @@ def test_zdrowy_stos_zwraca_200_i_tylko_status(anon_client, beat):
 
 
 def test_health_nie_wymaga_logowania_ani_csrf(anon_client, beat):
-    # brak ciasteczek, brak tokenu CSRF, brak przekierowania na logowanie
     r = anon_client.get("/health", follow_redirects=False)
     assert r.status_code == 200
     assert "set-cookie" not in r.headers
@@ -106,7 +103,7 @@ def test_zapis_znacznika_to_jeden_wiersz_aktualizowany(db):
 
 
 def test_cli_workera_kod_wyjscia(db, capsys):
-    assert health.main(["health", "worker"]) == 1          # brak znacznika
+    assert health.main(["health", "worker"]) == 1
     health.record_heartbeat(db)
     assert health.main(["health", "worker"]) == 0
     assert health.main(["health"]) == 2
@@ -141,4 +138,4 @@ def test_wersja_w_stopce_tylko_dla_zalogowanych_i_nie_w_health(client, anon_clie
     assert 'class="app-version">ref-clips v9.8.7' in client.get("/").text
     assert "v9.8.7" not in anon_client.get("/login").text
     assert "v9.8.7" not in anon_client.get("/health").text
-    assert config.VERSION == "dev"     # bez REFCLIPS_VERSION w środowisku testów
+    assert config.VERSION == "dev"

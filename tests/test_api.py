@@ -36,7 +36,6 @@ def test_create_and_edit_match_with_officials(client, db):
                    "U2": (None, "Zenon Trzeci", "Zenon Trzeci")}
     page = client.get(r.headers["location"])
     assert page.status_code == 200 and "Robert Sędzia" in page.text and "Zenon Trzeci" in page.text
-    # edycja: usunięcie U2, zmiana CC na wpisane nazwisko
     form = {**MATCH_FORM, "cc_name": "Ktoś Inny"}
     assert client.post(f"/matches/{match.id}", data=form, follow_redirects=False).status_code == 303
     db.refresh(match)
@@ -48,7 +47,7 @@ def test_match_form_validation(client, db):
     assert r.status_code == 422 and "U1" in r.text
     r = client.post("/matches", data={**MATCH_FORM, "cc_user": "999"})
     assert r.status_code == 422
-    coach = make_user(db, ["coach"], email="c@example.com")  # nie jest sędzią -> nie do obsady
+    coach = make_user(db, ["coach"], email="c@example.com")
     r = client.post("/matches", data={**MATCH_FORM, "cc_user": str(coach.id)})
     assert r.status_code == 422
     ref = make_user(db, ["referee"], email="r@example.com")
@@ -73,7 +72,7 @@ def test_upload_streams_to_disk_and_queues_transcode(client, db):
     tus_upload(client, match.id, payload, filename="mecz ąę.mp4", chunk=2 * 1024 * 1024, label="Całość")
     video = db.scalar(select(Video))
     assert video.status == "queued" and video.size_bytes == len(payload) and video.label == "Całość"
-    assert video.created_by is not None and video.expires_at is not None  # retencja 30 dni
+    assert video.created_by is not None and video.expires_at is not None
     assert storage.size(video.original_path) == len(payload)
     assert video.original_path.startswith("uploads/") and " " not in video.original_path
     job = db.scalar(select(Job))
@@ -149,12 +148,11 @@ def test_notes_preview_description_is_only_the_unrecognised_remainder(client, db
     text = "2:54 CC kroki za późno\n3:17 Filip Dlaczego nie blok?\n4:00 U1 aut"
     page = client.post(f"/videos/{video.id}/notes/preview", data={"text": text}).text
     assert 'name="desc_0" value="za późno"' in page
-    assert 'name="desc_1" value="Dlaczego nie blok?"' in page      # zdanie swobodne zostaje w całości
-    assert 'name="desc_2" value=""' in page                          # nic nie zostało -> pusty opis
+    assert 'name="desc_1" value="Dlaczego nie blok?"' in page
+    assert 'name="desc_2" value=""' in page
 
 
 def test_quick_clip_description_keeps_only_what_was_not_recognised(client, db):
-    """Klawisz M: sędzia, kategoria i czas są w polach klipu, w opisie zostaje reszta."""
     video = make_ready_video(db, make_match(db), duration=600)
     cases = [
         (174, "CC kroki za późno", "za późno", "kroki"),
@@ -172,9 +170,7 @@ def test_quick_clip_description_keeps_only_what_was_not_recognised(client, db):
 def test_quarter_from_period_marks(client, db):
     video = make_ready_video(db, make_match(db), duration=4000)
     url = f"/api/videos/{video.id}"
-    # bez znaczników kwarta jest nieznana
     assert quick(client, video.id, 50, "Filip kroki").json()["clip"]["period"] is None
-    # kolejne znaczniki dostają kolejne kwarty
     assert client.post(f"{url}/marks", json={"time_sec": 30}).json()["period"] == "Q1"
     assert client.post(f"{url}/marks", json={"time_sec": 1000}).json()["period"] == "Q2"
     state = client.post(f"{url}/marks", json={"time_sec": 2000}).json()
@@ -188,11 +184,9 @@ def test_quarter_from_period_marks(client, db):
     assert period_at(999) == "Q1"
     assert period_at(1000) == "Q2"
     assert period_at(2500) == "Q3"
-    # istniejąca kwarta jest przesuwana, a okres starych klipów liczy się na nowo
     client.post(f"{url}/marks", json={"time_sec": 40, "period": "Q1"})
     clips = client.get(f"{url}/state").json()["clips"]
     assert next(c for c in clips if c["time_sec"] == 50)["period"] == "Q1"
-    # usunięcie znacznika Q3 -> klip z 2500 wraca do Q2
     q3 = next(m for m in state["marks"] if m["period"] == "Q3")
     after = client.delete(f"/api/marks/{q3['id']}").json()
     assert next(c for c in after["clips"] if c["time_sec"] == 2500)["period"] == "Q2"
@@ -211,7 +205,7 @@ def test_quick_clip_parses_line_and_clamps(client, db):
     c = res["clip"]
     assert c["time_sec"] == 100 and c["official"] == "U1 · Kasia Żółć" and c["category"] == "kroki"
     assert c["status"] == "queued" and c["described"] is False
-    assert (c["clip_start"], c["clip_end"]) == (85, 100)  # 15 s przed, obcięte do końca nagrania
+    assert (c["clip_start"], c["clip_end"]) == (85, 100)
     res = quick(client, video.id, 5, "Ktoś kroki").json()
     assert res["clip"]["official"] is None and res["warnings"]
 
@@ -228,7 +222,6 @@ def test_describe_clip(client, db):
     db.refresh(clip)
     assert clip.official_id == cc.id and clip.category.name == "kroki" and clip.description == "Za późno"
     assert clip.is_described and not clip.whole_team
-    # cały zespół + kategoria „własna” wymaga nazwy
     own = str(category_id(db, "własna"))
     assert client.post(f"/clips/{clip_id}/update", data={"official": "team", "category_id": own}).status_code == 422
     assert "Dla kategorii „własna” wpisz jej nazwę." in client.post(
@@ -239,7 +232,7 @@ def test_describe_clip(client, db):
     assert clip.whole_team and clip.official_id is None
     assert clip.category_label == "kontakt z trenerem"
     page = client.get(f"/clips/{clip_id}").text
-    assert "cały zespół" in page and "Mechanika" in page  # grupy kategorii w formularzu
+    assert "cały zespół" in page and "Mechanika" in page
 
 
 def test_clips_filters(client, db):
@@ -281,7 +274,7 @@ def test_download(client, db):
     video = make_ready_video(db, make_match(db))
     client.post(f"/api/videos/{video.id}/marks", json={"time_sec": 0})
     clip_id = quick(client, video.id, 100, "CC kroki").json()["clip"]["id"]
-    assert client.get(f"/clips/{clip_id}/download").status_code == 404  # jeszcze niewycięty
+    assert client.get(f"/clips/{clip_id}/download").status_code == 404
     clip = db.get(Clip, clip_id)
     clip.clip_path, clip.status = f"clips/{clip_id}_v1.mp4", "cut"
     with storage.open_write(clip.clip_path) as fh:
@@ -314,7 +307,6 @@ def test_status_endpoint(client):
 
 
 def test_v2_features_are_not_routed():
-    """Korekta granic klipu i eksport ZIP są ukryte w MVP (REFCLIPS_V2_FEATURES=0)."""
     from app.main import app
     paths = {getattr(r, "path", "") for r in app.routes}
     assert "/clips/export.zip" not in paths and "/clips/{clip_id}/adjust" not in paths

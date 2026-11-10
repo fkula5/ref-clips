@@ -1,8 +1,6 @@
-"""Pomocnicze elementy testów interfejsu: prawdziwy serwer + worker, konta, dane i pliki wideo.
-
-Serwer (uvicorn) i worker (python -m app.worker) działają w osobnych procesach na losowym wolnym
-porcie z tymczasowym REFCLIPS_DATA_DIR. Konta zakłada kod aplikacji (`accounts`), a dane testowe
-(mecze, nagrania) powstają wprost w bazie — przez te same modele co w aplikacji.
+"""Server (uvicorn) and worker (python -m app.worker) run as separate processes on a random free port
+with a temporary REFCLIPS_DATA_DIR. Test data (matches, recordings) is created directly in the DB
+through the app's models.
 """
 from __future__ import annotations
 
@@ -28,15 +26,14 @@ from app.models import Match, MatchOfficial, User, Video
 
 ROOT = Path(__file__).resolve().parents[2]
 PASSWORD = "E2e-haslo-12345"
-CHUNK_KB = 256  # kawałek tus w trybie testowym (REFCLIPS_TEST_UPLOAD_CHUNK_KB)
+CHUNK_KB = 256
 
-# Konta testowe: klucz -> (e-mail, imię i nazwisko, role)
 USERS = {
     "admin": ("admin@example.com", "Adam Admin", ["admin"]),
     "coach": ("trener@example.com", "Cezary Trener", ["coach"]),
-    "referee": ("roman@example.com", "Roman Sędzia", ["referee"]),       # w obsadzie meczów testowych
-    "outsider": ("olek@example.com", "Olek Obcy", ["referee"]),          # sędzia spoza obsady
-    "second": ("ula@example.com", "Ula Druga", ["referee"]),             # druga osoba do formularza obsady
+    "referee": ("roman@example.com", "Roman Sędzia", ["referee"]),
+    "outsider": ("olek@example.com", "Olek Obcy", ["referee"]),
+    "second": ("ula@example.com", "Ula Druga", ["referee"]),
 }
 
 
@@ -47,8 +44,6 @@ def free_port() -> int:
 
 
 def make_sample_video(path: Path, seconds: int = 50) -> Path:
-    """Krótkie wideo 640x360 z dźwiękiem i licznikiem czasu na obrazie; klatka kluczowa co sekundę
-    i faststart — takie jak wersja robocza z workera."""
     subprocess.run(
         ["ffmpeg", "-y", "-loglevel", "error",
          "-f", "lavfi", "-i", f"testsrc2=size=640x360:rate=25:duration={seconds}",
@@ -60,8 +55,6 @@ def make_sample_video(path: Path, seconds: int = 50) -> Path:
 
 
 class Server:
-    """Uruchomiona aplikacja z kontami testowymi i pomocnikami do przygotowania danych."""
-
     def __init__(self, workdir: Path, sample: Path):
         self.workdir = workdir
         self.data_dir = workdir / "data"
@@ -75,7 +68,6 @@ class Server:
         self.users: dict[str, int] = {}
         self._duration: float | None = None
 
-    # --- cykl życia ---------------------------------------------------------------
     def env(self) -> dict[str, str]:
         env = {k: v for k, v in os.environ.items() if not k.startswith("REFCLIPS_") and k != "DATABASE_URL"}
         env.update(REFCLIPS_DATA_DIR=str(self.data_dir), REFCLIPS_FFMPEG_NICE="0",
@@ -90,7 +82,7 @@ class Server:
                                     connect_args={"check_same_thread": False, "timeout": 30})
 
         @event.listens_for(self.engine, "connect")
-        def _pragmas(conn, _rec):  # jak w app/db.py
+        def _pragmas(conn, _rec):  # like app/db.py
             cur = conn.cursor()
             cur.execute("PRAGMA foreign_keys=ON")
             cur.execute("PRAGMA busy_timeout=30000")
@@ -143,7 +135,6 @@ class Server:
         for log in self.logs.glob("*.log"):
             shutil.copy(log, target / f"serwer-{log.name}")
 
-    # --- dane -----------------------------------------------------------------------
     @contextmanager
     def db(self):
         with self.session_factory() as session:
@@ -163,7 +154,6 @@ class Server:
 
     def make_match(self, *, officials=(("CC", "referee"), ("U1", "Kasia Żółć")), level="II liga",
                    team_a="Legia", team_b="Wisła", day: date | None = None, created_by: str | None = "admin") -> int:
-        """Mecz z obsadą: pozycja to (funkcja, klucz konta testowego albo wpisane nazwisko)."""
         with self.db() as db:
             match = Match(date=day or date(2026, 10, 28), level=level, team_a_name=team_a, team_a_color="białe",
                           team_b_name=team_b, team_b_color="ciemne",
@@ -185,8 +175,6 @@ class Server:
         return self._duration
 
     def make_ready_video(self, match_id: int, *, content: str = "full", label: str = "Całość") -> int:
-        """Nagranie już po konwersji: plik próbny skopiowany jako wersja robocza (bez czekania na
-        workera). Cięcie klipów robi prawdziwy worker."""
         with self.db() as db:
             video = Video(match_id=match_id, label=label, original_filename="mecz.mp4", status="ready",
                           duration=self.sample_duration(), fps=25.0, content=content,
@@ -208,7 +196,6 @@ class Server:
             db.commit()
 
     def create_clip(self, video_id: int, time_sec: float, author: str = "admin") -> int:
-        """Nieopisany klip ze znacznika (jak „Zaznacz”): zadanie cięcia podejmie prawdziwy worker."""
         from app import services
         with self.db() as db:
             video = db.get(Video, video_id)
@@ -220,8 +207,6 @@ class Server:
                     category: str | None = None, custom: str | None = None, whole_team: bool = False,
                     description: str = "", described: bool = False, status: str = "cut",
                     error: str | None = None, margin: float = 15.0) -> int:
-        """Klip wprost w bazie, bez zadania cięcia (worker go nie dotknie): dowolny stan, sędzia (funkcja
-        z obsady meczu), kategoria (nazwa), opis. Do testów list, filtrów i ekranu opisywania."""
         from datetime import datetime
         from app.models import Category, Clip
         with self.db() as db:
@@ -247,14 +232,17 @@ class Server:
             return clip
 
     def wait_marker_window_over(self, page, video_id: int, timeout: float = 10.0) -> None:
-        """Czeka, aż w obu miejscach minie okno ochrony przed podwójnym Z (`MARKER_DEBOUNCE_SECONDS`),
-        każde według WŁASNEGO zegara, bo na tej maszynie (WSL2) zegar ścienny skacze względem monotonicznego
-        o ok. 1 s co kilkadziesiąt sekund, więc stałe `sleep` ani porównanie zegarów nic nie gwarantują:
-        - strona: okno klienta liczy `performance.now()` (monotoniczny) od naciśnięcia klawisza; czekamy
-          na `performance.now()` strony, licząc od chwili tuż po zapisie znacznika (czyli od późniejszej niż
-          naciśnięcie, więc z zapasem);
-        - serwer: okno liczy `utcnow()` od `created_at` klipu (zegar ścienny); czekamy, aż ten sam zegar
-          pokaże ponad `MARKER_DEBOUNCE_SECONDS` od `created_at` ostatniego klipu nagrania."""
+        """Waits until the double-Z protection window (`MARKER_DEBOUNCE_SECONDS`) has passed in both
+        places, each by its OWN clock: on this machine (WSL2) the wall clock jumps against the
+        monotonic one by about 1 s every few dozen seconds, so a fixed sleep or a clock comparison
+        guarantees nothing.
+        - page: the client window is measured with `performance.now()` (monotonic) from the key
+        press; we wait on the page's `performance.now()` starting right after the marker was saved
+        (later than the key press, hence with margin);
+        - server: the window is measured with `utcnow()` from the clip's `created_at` (wall clock);
+        we wait until that same clock shows more than `MARKER_DEBOUNCE_SECONDS` since `created_at` of
+        the recording's last clip.
+        """
         from app import config
         from app.models import Clip
         from app.timeutil import utcnow
@@ -290,9 +278,10 @@ class Server:
 
 
 def press_together(page, key: str, times: int = 2) -> None:
-    """Kilka naciśnięć klawisza w jednym zadaniu przeglądarki (odstęp rzędu mikrosekund). Dwa osobne
-    `keyboard.press` to dwa kursy do przeglądarki — przy obciążonej maszynie dzieli je czasem ponad
-    sekundę, czyli więcej niż okno ochrony przed podwójnym Z, i test nie sprawdza już podwójnego kliknięcia."""
+    """Several key presses in one browser task (microseconds apart). Two separate `keyboard.press` calls
+    are two round trips to the browser; on a loaded machine they can be over a second apart, more
+    than the double-Z window, and the test no longer checks the double click.
+    """
     page.evaluate("""([key, times]) => {
         for (let i = 0; i < times; i++) {
             document.body.dispatchEvent(new KeyboardEvent("keydown", {key, bubbles: true, cancelable: true}));
@@ -302,7 +291,6 @@ def press_together(page, key: str, times: int = 2) -> None:
 
 
 def wait_until(page, condition, timeout: float = 20.0, message: str = "warunek nie został spełniony") -> None:
-    """Czeka na warunek po stronie testu (np. liczba żądań), przetwarzając zdarzenia strony."""
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         if condition():
@@ -311,8 +299,8 @@ def wait_until(page, condition, timeout: float = 20.0, message: str = "warunek n
     raise AssertionError(f"Po {timeout:.0f} s: {message}")
 
 
-# Zapisuje w sessionStorage kolejne stany paska postępu wgrywania (przeżywa odświeżenie strony
-# po zakończeniu uploadu, więc test widzi także krótkotrwałe stany typu „100%” i „gotowe”).
+# Records successive states of the upload progress bar in sessionStorage (survives the reload after the
+# upload finishes, so the test also sees short-lived states such as "100%" and "ready").
 RECORD_UPLOAD_PROGRESS = """
 (() => {
   const KEY = '__upload_states';

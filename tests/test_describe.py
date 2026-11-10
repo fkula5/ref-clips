@@ -1,5 +1,3 @@
-"""Ekran opisywania znaczników: kolejka, propozycje z notatek, walidacja, kwarta nieustalona,
-pomiń/usuń, edycja opisanego klipu i uprawnienia."""
 import re
 from datetime import datetime
 
@@ -14,7 +12,6 @@ from tests.helpers import category_named, make_match, make_ready_video, make_use
 
 @pytest.fixture()
 def setup(db, make_client):
-    """Mecz CC=konto sędziego (`member`), U1=wpisany; dwa nagrania z kwartami; klipy w wielu nagraniach."""
     member_client, member = make_client("referee", name="Rafał Sędzia")
     coach_client, coach = make_client("coach", name="Trener")
     outsider_client, _ = make_client("referee", name="Sędzia Obcy")
@@ -38,14 +35,13 @@ def screen(client, match, **params):
 
 
 def ids_in_list(html):
-    """Kolejność klipów na liście z boku ekranu."""
     return [int(i) for i in re.findall(r'href="/matches/\d+/describe\?clip=(\d+)', html.split('id="describe-list"')[1])]
 
 
 def test_queue_is_ordered_by_recording_then_time_and_skips_described(setup):
     s, c = setup, setup["clips"]
     page = screen(s["coach"], s["match"]).text
-    assert ids_in_list(page) == [c["b"].id, c["a"].id, c["c"].id]       # nagranie 1 (40 s, 100 s), nagranie 2 (10 s)
+    assert ids_in_list(page) == [c["b"].id, c["a"].id, c["c"].id]
     assert c["d"].id not in ids_in_list(page)
     assert "Znacznik 1 z 3" in page and 'data-clip="%d"' % c["b"].id in page
     assert "Nieopisane znaczniki (3)" in page
@@ -58,7 +54,7 @@ def test_clip_param_selects_current_and_video_scope_limits_queue(setup):
     scoped = screen(s["coach"], s["match"], video_id=s["v2"].id).text
     assert ids_in_list(scoped) == [c["c"].id] and "Znacznik 1 z 1" in scoped
     assert f"video_id={s['v2'].id}" in scoped
-    foreign = screen(s["coach"], s["match"], video_id=99999).text      # obce nagranie: cały mecz
+    foreign = screen(s["coach"], s["match"], video_id=99999).text
     assert len(ids_in_list(foreign)) == 3
 
 
@@ -79,10 +75,10 @@ def test_proposal_from_notes_is_prefilled_and_marked(setup, db):
     db.commit()
     page = screen(s["coach"], s["match"], clip=clip.id).text
     assert 'id="proposal-note"' in page and "pochodzą z notatek" in page
-    assert re.search(rf'value="{s["match"].official("U1").id}"[^>]*checked', page)       # radio U1 zaznaczone
+    assert re.search(rf'value="{s["match"].official("U1").id}"[^>]*checked', page)
     assert re.search(rf'<option value="{category_named(db, "kroki")}"[^>]*selected', page)
     assert "1:40 Ewa kroki" in page
-    assert page.count('class="chip" title="Sędzia lub kategoria z notatek"') == 1       # tylko ten klip jest propozycją
+    assert page.count('class="chip" title="Sędzia lub kategoria z notatek"') == 1
     clean = screen(s["coach"], s["match"], clip=s["clips"]["b"].id).text
     assert 'id="proposal-note"' not in clean
 
@@ -113,7 +109,6 @@ def test_approving_sets_described_at_and_goes_to_next_undescribed(setup, db):
     db.refresh(c["b"])
     assert c["b"].described_at is not None and c["b"].official_id == cc.id and c["b"].description == "Spóźniony gwizdek"
     assert c["b"].category.name == "kroki" and not c["b"].whole_team
-    # ostatni w kolejce wraca do pierwszego z pozostałych (pominiętego), a po opisaniu wszystkich: ekran „wszystko opisane”
     assert approve(s["coach"], c["c"], db, "team").headers["location"].endswith(f"describe?clip={c['a'].id}")
     r = approve(s["coach"], c["a"], db, "team")
     assert r.headers["location"] == f"/matches/{s['match'].id}/describe"
@@ -126,14 +121,14 @@ def test_next_after_approving_keeps_video_scope(setup, db):
     r = approve(s["coach"], c["b"], db, "team", scope=s["v1"].id)
     assert r.headers["location"] == f"/matches/{s['match'].id}/describe?clip={c['a'].id}&video_id={s['v1'].id}"
     r = approve(s["coach"], c["a"], db, "team", scope=s["v1"].id)
-    assert r.headers["location"] == f"/matches/{s['match'].id}/describe?video_id={s['v1'].id}"   # nagranie 2 poza zakresem
+    assert r.headers["location"] == f"/matches/{s['match'].id}/describe?video_id={s['v1'].id}"
 
 
 def test_next_goes_forward_in_order_before_wrapping(setup, db):
     s, c = setup, setup["clips"]
-    r = approve(s["coach"], c["a"], db, "team")                  # 100 s -> następny w kolejności to nagranie 2
+    r = approve(s["coach"], c["a"], db, "team")
     assert r.headers["location"].endswith(f"clip={c['c'].id}")
-    r = approve(s["coach"], c["c"], db, "team")                  # ostatni: wraca do 40 s
+    r = approve(s["coach"], c["c"], db, "team")
     assert r.headers["location"].endswith(f"clip={c['b'].id}")
 
 
@@ -151,7 +146,7 @@ def test_validation_errors_keep_values_and_change_nothing(setup, db, data, messa
     data = dict(data)
     r = approve(s["coach"], clip, db, data.pop("official"), data.pop("category"), **data)
     assert r.status_code == 422 and message in r.text
-    assert 'id="form-error"' in r.text and 'id="clip-form"' in r.text         # ekran z komunikatem w formularzu
+    assert 'id="form-error"' in r.text and 'id="clip-form"' in r.text
     db.refresh(clip)
     assert clip.described_at is None and clip.category_id is None and not clip.whole_team
 
@@ -162,7 +157,6 @@ def test_custom_category_requires_name_and_stores_it(setup, db):
     assert r.status_code == 303
     db.refresh(clip)
     assert clip.category_label == "kontakt z trenerem" and clip.custom_category == "kontakt z trenerem"
-    # nazwa z innej kategorii nie zostaje
     approve(s["coach"], clip, db, "team", "kroki", custom_category="stara")
     db.refresh(clip)
     assert clip.custom_category is None and clip.category_label == "kroki"
@@ -186,14 +180,13 @@ def test_inactive_category_cannot_be_chosen_but_existing_one_stays(setup, db):
     assert approve(s["coach"], clip, db, "team", "aut").status_code == 422
     clip.category_id = cat.id
     db.commit()
-    assert approve(s["coach"], clip, db, "team", "aut").status_code == 303        # bez zmiany kategorii
-    assert '<option value="%d"' % cat.id in s["coach"].get(f"/clips/{clip.id}").text   # i widać ją w formularzu edycji
+    assert approve(s["coach"], clip, db, "team", "aut").status_code == 303
+    assert '<option value="%d"' % cat.id in s["coach"].get(f"/clips/{clip.id}").text
 
 
-# --- kwarta nieustalona ----------------------------------------------------------
 def test_clip_from_video_without_period_marks_cannot_be_described(setup, db):
     s = setup
-    bare = make_ready_video(db, s["match"], duration=700)                    # cały mecz bez znaczników kwart
+    bare = make_ready_video(db, s["match"], duration=700)
     clip = Clip(match_id=s["match"].id, video_id=bare.id, time_sec=50)
     db.add(clip)
     db.commit()
@@ -204,20 +197,20 @@ def test_clip_from_video_without_period_marks_cannot_be_described(setup, db):
     db.refresh(clip)
     assert clip.described_at is None
     page = screen(s["coach"], s["match"], clip=clip.id).text
-    assert 'id="describe-block"' in page and 'id="clip-form"' not in page            # formularza nie ma
+    assert 'id="describe-block"' in page and 'id="clip-form"' not in page
     assert f'id="set-periods-link" href="/videos/{bare.id}#poczatki-kwart"' in page
     assert "kwarta nieustalona" in page
-    assert 'id="describe-block"' in s["coach"].get(f"/clips/{clip.id}").text         # i na stronie klipu
+    assert 'id="describe-block"' in s["coach"].get(f"/clips/{clip.id}").text
 
 
 def test_incomplete_marks_block_even_when_clip_has_a_quarter(setup, db):
     s = setup
     partial = mark_periods(db, make_ready_video(db, s["match"], duration=700), times=(0.0, 300.0), periods=("Q1", "Q2"))
-    clip = Clip(match_id=s["match"].id, video_id=partial.id, time_sec=50)       # w Q1, ale brakuje Q3 i Q4
+    clip = Clip(match_id=s["match"].id, video_id=partial.id, time_sec=50)
     db.add(clip)
     db.commit()
     assert approve(s["coach"], clip, db, "team").status_code == 422
-    # jedna kwarta nie wymaga znaczników, ale moment przed jej początkiem jest nieustalony
+    # one quarter needs no markers, but a moment before its start is unknown
     single = make_ready_video(db, s["match"], duration=700)
     single.content = "Q2"
     db.commit()
@@ -232,8 +225,9 @@ def test_incomplete_marks_block_even_when_clip_has_a_quarter(setup, db):
 
 
 def test_clip_with_unset_quarter_can_be_described_after_purge(setup, db):
-    """Po usunięciu pełnego nagrania kwart nie da się ustawić, więc blokada opisu znika: klip
-    można opisać, a jego kwarta zostaje „nieustalona” (liczona z period_marks)."""
+    """After the full recording is removed the quarters cannot be set, so the description block
+    disappears: the clip can be described and its quarter stays unknown (computed from period_marks).
+    """
     s = setup
     bare = make_ready_video(db, s["match"], duration=700)
     bare.purged_at = datetime(2026, 11, 1)
@@ -255,20 +249,19 @@ def test_editing_a_described_clip_whose_quarters_vanished_is_blocked(setup, db):
     assert approve(s["coach"], d, db, "team").status_code == 422
 
 
-# --- pomiń, usuń ------------------------------------------------------------------
 def test_skip_changes_nothing_and_points_at_the_next_clip(setup, db):
     s, c = setup, setup["clips"]
     page = screen(s["coach"], s["match"], clip=c["b"].id).text
     assert f'id="btn-skip" href="/matches/{s["match"].id}/describe?clip={c["a"].id}"' in page
     last = screen(s["coach"], s["match"], clip=c["c"].id).text
-    assert f'id="btn-skip" href="/matches/{s["match"].id}/describe?clip={c["b"].id}"' in last     # po ostatnim wraca
+    assert f'id="btn-skip" href="/matches/{s["match"].id}/describe?clip={c["b"].id}"' in last
     db.refresh(c["b"])
     assert c["b"].described_at is None
     only = setup
     for key in ("a", "c"):
         only["clips"][key].described_at = datetime(2026, 10, 29)
     db.commit()
-    assert 'id="btn-skip"' not in screen(s["coach"], s["match"]).text         # jeden nieopisany: nie ma dokąd
+    assert 'id="btn-skip"' not in screen(s["coach"], s["match"]).text
 
 
 def test_delete_marker_removes_file_and_goes_to_next(setup, db):
@@ -286,12 +279,10 @@ def test_delete_marker_removes_file_and_goes_to_next(setup, db):
     assert db.get(Clip, ids["b"]) is None and not storage.exists("clips/b.mp4")
     r = s["coach"].post(f"/clips/{ids['a']}/delete?context=describe&video_id={s['v1'].id}", follow_redirects=False)
     assert r.headers["location"] == f"/matches/{s['match'].id}/describe?video_id={s['v1'].id}"
-    # poza ekranem opisywania: wracamy do zakładki klipów meczu
     r = s["coach"].post(f"/clips/{ids['c']}/delete", follow_redirects=False)
     assert r.headers["location"] == f"/matches/{s['match'].id}#klipy"
 
 
-# --- edycja opisanego klipu ---------------------------------------------------------
 def test_edit_keeps_first_described_at_and_changes_download_name(setup, db):
     s, d = setup, setup["clips"]["d"]
     cc = s["match"].official("CC")
@@ -326,10 +317,9 @@ def test_filter_query_survives_edit_redirect(setup, db):
     assert r.headers["location"] == f"/clips/{d.id}?period=Q2&described=1"
 
 
-# --- podgląd i błędy cięcia ----------------------------------------------------------
 def test_preview_is_the_clip_file_when_cut_and_a_draft_while_queued(setup, db):
     s, c = setup, setup["clips"]
-    draft = screen(s["coach"], s["match"], clip=c["b"].id).text                 # znacznik w 40 s, nowy
+    draft = screen(s["coach"], s["match"], clip=c["b"].id).text
     assert f'src="/videos/{s["v1"].id}/stream"' in draft and 'data-start="25.0"' in draft and 'data-end="55.0"' in draft
     assert "Klip czeka na wycięcie" in draft
     c["b"].clip_path, c["b"].status, c["b"].clip_version = "clips/b.mp4", "cut", 2
@@ -342,7 +332,7 @@ def test_preview_is_the_clip_file_when_cut_and_a_draft_while_queued(setup, db):
 
 def test_draft_is_clamped_at_the_start_of_the_recording(setup):
     s = setup
-    page = screen(s["coach"], s["match"], clip=s["clips"]["c"].id).text          # 10 s: początek obcięty do 0
+    page = screen(s["coach"], s["match"], clip=s["clips"]["c"].id).text
     assert 'data-start="0.0"' in page and 'data-end="25.0"' in page
 
 
@@ -357,12 +347,11 @@ def test_cut_error_screen_offers_recut_or_just_delete(setup, db):
     assert "Moment poza nagraniem" in outside and "Wytnij ponownie" not in outside and "Usuń znacznik" in outside
 
 
-# --- uprawnienia ---------------------------------------------------------------------
 def test_describe_screen_needs_permission_to_manage_clips(setup, make_client):
     s = setup
-    assert screen(s["member"], s["match"]).status_code == 200                      # sędzia z obsady
+    assert screen(s["member"], s["match"]).status_code == 200
     assert screen(s["coach"], s["match"]).status_code == 200
-    assert screen(s["outsider"], s["match"]).status_code == 403                    # sędzia spoza obsady
+    assert screen(s["outsider"], s["match"]).status_code == 403
     plain, _ = make_client()
     assert screen(plain, s["match"]).status_code == 403
     assert s["coach"].get("/matches/9999/describe").status_code == 404
@@ -383,7 +372,7 @@ def test_outsider_gets_403_on_every_describe_write_route(setup, db):
 def test_crew_referee_describes_but_deletes_only_own_markers(setup, db):
     s, c = setup, setup["clips"]
     assert approve(s["member"], c["a"], db, "team").status_code == 303
-    assert s["member"].post(f"/clips/{c['b'].id}/delete?context=describe").status_code == 403    # znacznik trenera
+    assert s["member"].post(f"/clips/{c['b'].id}/delete?context=describe").status_code == 403
     assert 'btn-delete' not in screen(s["member"], s["match"], clip=c["b"].id).text
 
 
@@ -395,7 +384,6 @@ def test_writes_require_csrf_and_login(setup, anon_client, db):
     assert no_csrf.post(f"/clips/{c.id}/update?context=describe", data={"official": "team"}).status_code == 403
 
 
-# --- czyste funkcje kolejki ------------------------------------------------------------
 class Fake:
     def __init__(self, id, video_id, time_sec):
         self.id, self.video_id, self.time_sec = id, video_id, time_sec
@@ -405,10 +393,10 @@ def test_next_in_queue_and_neighbours():
     a, b, c, d = Fake(1, 1, 10), Fake(2, 1, 50), Fake(3, 2, 5), Fake(4, 2, 80)
     assert services.next_in_queue([d, a, c, b], a).id == 2
     assert services.next_in_queue([d, a, c, b], b).id == 3
-    assert services.next_in_queue([d, a, c, b], d).id == 1                     # po ostatnim: pierwszy z pozostałych
+    assert services.next_in_queue([d, a, c, b], d).id == 1
     assert services.next_in_queue([a], a) is None and services.next_in_queue([], None) is None
-    assert services.next_in_queue([c, d], b).id == 3                           # bieżący spoza kolejki (np. już opisany)
+    assert services.next_in_queue([c, d], b).id == 3
     assert [x.id if x else None for x in services.neighbours([a, b, c, d], b)] == [1, 3]
     assert [x.id if x else None for x in services.neighbours([a, b, c, d], a)] == [None, 2]
-    assert [x.id if x else None for x in services.neighbours([a, c], b)] == [1, 3]       # bieżący poza listą
+    assert [x.id if x else None for x in services.neighbours([a, c], b)] == [1, 3]
     assert [x.id if x else None for x in services.neighbours([], b)] == [None, None]

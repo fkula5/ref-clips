@@ -1,5 +1,3 @@
-"""Skrypt migawki kopii zapasowej (deploy/backup_snapshot.py): spójna kopia bazy, klipy z twardymi
-dowiązaniami, pominięcie plików tymczasowych i pełnych nagrań, retencja."""
 import importlib.util
 import os
 import sqlite3
@@ -100,7 +98,6 @@ def test_retention_keeps_newest_snapshots(data, tmp_path):
     names = [p.name for p in snap.list_snapshots(root)]
     assert len(names) == 14
     assert names[0] == "2026-10-07" and names[-1] == "2026-10-20"
-    # najstarsza zachowana migawka ma pełne klipy mimo usunięcia wcześniejszych (twarde dowiązania)
     assert (root / "2026-10-07" / "clips" / "1_v1.mp4").read_bytes() == b"klip1"
 
 
@@ -110,7 +107,7 @@ def test_second_run_same_day_replaces_snapshot(data, tmp_path):
     (data / "clips" / "4_v1.mp4").write_bytes(b"nowy")
     out = snap.snapshot(data, root, today=date(2026, 11, 6))
     assert (out / "clips" / "4_v1.mp4").exists()
-    assert [p.name for p in root.iterdir()] == ["2026-11-06"]  # bez śmieci po zamianie
+    assert [p.name for p in root.iterdir()] == ["2026-11-06"]
 
 
 def test_failed_snapshot_leaves_previous_intact_and_no_temp(data, tmp_path):

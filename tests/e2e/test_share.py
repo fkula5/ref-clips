@@ -1,6 +1,3 @@
-"""Linki udostępniające klipy osobom bez konta: tworzenie na stronie klipu i z listy, wejście z czystego
-kontekstu przeglądarki (bez ciasteczek), odtwarzanie, pobranie MP4 i ZIP, unieważnienie, kod poza logami
-serwera i widok telefonu."""
 import io
 import re
 import time
@@ -17,7 +14,6 @@ SECRETS = ("Roman", "Sędzia", "Legia", "Wisła", "SEKRET-OPIS", "28.10.2026")
 
 @pytest.fixture(scope="module")
 def shared(server):
-    """Mecz III ligi i trzy klipy wycięte przez prawdziwego workera: dwa „kroki” i jeden „aut”."""
     match_id = server.make_match(level="III liga")
     video_id = server.make_ready_video(match_id)
     ids = [server.create_clip(video_id, t) for t in (30.0, 34.0, 38.0)]
@@ -36,7 +32,7 @@ def shared(server):
 
 
 def created_url(page: Page) -> str:
-    expect(page).to_have_url(re.compile(r"/share-links/created$"))   # kod nie jest w adresie przekierowania
+    expect(page).to_have_url(re.compile(r"/share-links/created$"))
     expect(page.locator("#share-created")).to_be_visible()
     return page.locator("#share-url").input_value()
 
@@ -52,7 +48,7 @@ def assert_no_scroll(page: Page, what: str) -> None:
 
 
 def test_link_do_jednego_klipu_od_utworzenia_do_uniewaznienia(ui, server, shared):
-    ui.allow(r"status of 404")      # odświeżenie strony unieważnionego linku
+    ui.allow(r"status of 404")
     coach = ui.page("coach")
     coach.goto(f"/clips/{shared['a']}")
     expect(coach.locator("#clip-share")).to_contain_text("Unieważnienie linku nie cofnie już pobranych plików")
@@ -64,19 +60,18 @@ def test_link_do_jednego_klipu_od_utworzenia_do_uniewaznienia(ui, server, shared
     coach.locator("#share-copy").click()
     expect(coach.locator("#share-copy")).to_contain_text(re.compile("Skopiowano|skopiuj ręcznie"))
 
-    # osoba bez konta: czysty kontekst, żadnych ciasteczek
     guest = ui.page()
     guest.goto(url)
     expect(guest.locator("h1")).to_have_text("Udostępniony klip")
     body = guest.locator("body").inner_text()
     assert "III liga" in body and "kroki" in body
     assert not any(secret in body for secret in SECRETS), body
-    expect(guest.locator("a[href]:not(#share-download)")).to_have_count(0)    # żadnych linków do aplikacji
+    expect(guest.locator("a[href]:not(#share-download)")).to_have_count(0)
     guest.wait_for_function("document.querySelector('video').readyState >= 1 && document.querySelector('video').duration > 0")
     assert abs(guest.evaluate("document.querySelector('video').duration") - 30.0) < 0.6
     guest.evaluate("document.querySelector('video').play()")
     guest.wait_for_function("document.querySelector('video').currentTime > 0.5")
-    guest.evaluate("document.querySelector('video').currentTime = 20")          # przewijanie = żądania Range
+    guest.evaluate("document.querySelector('video').currentTime = 20")
     guest.wait_for_function("Math.abs(document.querySelector('video').currentTime - 20) < 1.5 && document.querySelector('video').readyState >= 2")
     with guest.expect_download() as download:
         guest.locator("#share-download").click()
@@ -84,7 +79,6 @@ def test_link_do_jednego_klipu_od_utworzenia_do_uniewaznienia(ui, server, shared
     assert download.value.path().stat().st_size > 10_000
     assert guest.context.cookies() == []
 
-    # twórca widzi link i liczbę wejść (strona publiczna = jedno wejście), po czym go unieważnia
     coach.goto(f"/clips/{shared['a']}")
     expect(coach.locator("#clip-share .share-list li")).to_have_count(1)
     expect(coach.locator("#clip-share .share-list li")).to_contain_text("wejść: 1")
@@ -105,7 +99,7 @@ def test_kilka_klipow_z_listy_zaznaczenie_przezywa_filtry_i_jeden_zip(ui, server
     expect(coach.locator("#share-submit")).to_be_disabled()
     coach.evaluate("window.__bez_przeladowania = true")
     checks.nth(0).check()
-    coach.locator("select[name=category_id]").select_option(label="aut")      # HTMX podmienia listę
+    coach.locator("select[name=category_id]").select_option(label="aut")
     expect(checks).to_have_count(1)
     expect(coach.locator("#share-count")).to_have_text("Zaznaczono: 1")
     checks.nth(0).check()
@@ -138,7 +132,7 @@ def test_kilka_klipow_z_listy_zaznaczenie_przezywa_filtry_i_jeden_zip(ui, server
 
 
 def test_widok_telefonu_390_px_bez_przewijania_poziomego(ui, server, shared):
-    ui.allow(r"status of 404")      # strona nieaktywnego linku
+    ui.allow(r"status of 404")
     coach = ui.page("coach", mobile=True)
     coach.goto(f"/clips?match_id={shared['match_id']}")
     assert_no_scroll(coach, "lista klipów")

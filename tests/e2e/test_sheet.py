@@ -1,5 +1,3 @@
-"""Scenario: the qualifier's assessment sheet in the browser: a coach fills it in and publishes, a crew referee
-reads it, an outsider cannot, the phone layout (390 px) and the print stylesheet."""
 from playwright.sync_api import expect
 
 from tests.e2e.conftest import MOBILE
@@ -16,7 +14,7 @@ def open_form(page, match_id):
 
 
 def test_trener_wypelnia_i_publikuje_a_sedzia_z_obsady_czyta(ui):
-    match_id = ui.server.make_match()   # CC = Roman Sędzia (konto), U1 = Kasia Żółć (wpisana)
+    match_id = ui.server.make_match()  # CC = Roman Sędzia (account), U1 = Kasia Żółć (typed)
     coach = ui.page("coach")
     open_form(coach, match_id)
     expect(coach.locator("#page-notice")).to_contain_text("Założono arkusz jako szkic")
@@ -36,12 +34,10 @@ def test_trener_wypelnia_i_publikuje_a_sedzia_z_obsady_czyta(ui):
     coach.remove_listener("dialog", watch)
     expect(coach.get_by_label("Mechanika, CC · Roman Sędzia")).to_have_value("Pewne ustawienie.\nDobra rotacja.")
 
-    # a crew referee does not see the draft
     referee = ui.page("referee")
     referee.goto(f"/matches/{match_id}")
     expect(referee.locator("#sheet-card")).not_to_contain_text("Cezary Trener")
 
-    # publishing needs a difficulty, then asks for confirmation that states the empty fields
     ui.allow(r"status of 42[2]")
     coach.get_by_role("button", name="Opublikuj").click()
     expect(coach.locator("#sheet-errors")).to_contain_text("stopień trudności")
@@ -50,13 +46,12 @@ def test_trener_wypelnia_i_publikuje_a_sedzia_z_obsady_czyta(ui):
     messages = []
     coach.once("dialog", lambda d: (messages.append(d.message), d.dismiss()))
     coach.get_by_role("button", name="Opublikuj").click()
-    assert "Puste pola: 24 z 25" in messages[0] and "/edit" in coach.url   # dismissed: nothing happens
+    assert "Puste pola: 24 z 25" in messages[0] and "/edit" in coach.url
     coach.once("dialog", lambda d: d.accept())
     coach.get_by_role("button", name="Opublikuj").click()
     expect(coach.locator("#page-notice")).to_contain_text("Opublikowano arkusz. Puste pola: 24 z 25")
     expect(coach.locator("#sheet-elements")).to_contain_text("Pewne ustawienie.")
 
-    # the crew referee now sees it on the match page and can read it; an outsider cannot
     referee.goto(f"/matches/{match_id}")
     expect(referee.locator("#sheet-card")).to_contain_text("Cezary Trener")
     referee.get_by_role("link", name="Otwórz").click()
@@ -79,7 +74,7 @@ def test_uklad_na_telefonie_bez_przewijania_w_bok(ui):
     field.fill("Tekst na telefonie " * 20)
     expect(field).to_be_visible()
     assert field.bounding_box()["width"] > 250 and no_horizontal_scroll(page)
-    page.once("dialog", lambda d: d.accept())   # leaving with unsaved text
+    page.once("dialog", lambda d: d.accept())
     page.get_by_role("link", name="Podgląd").click()
     expect(page.locator("#sheet-elements")).to_be_visible()
     assert no_horizontal_scroll(page)

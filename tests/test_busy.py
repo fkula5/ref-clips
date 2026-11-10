@@ -1,4 +1,3 @@
-"""Sprawdzenie zajętości przed wdrożeniem (app/busy.py): uploady, zadania w toku i w kolejce."""
 from datetime import timedelta
 
 from app import busy
@@ -39,7 +38,7 @@ def test_ukonczony_upload_nie_blokuje(db, admin):
 def test_upload_tuz_przed_progiem(db, admin):
     _upload(db, admin[1], offset=100, size=1000, minutes_ago=busy.ACTIVE_UPLOAD_MINUTES - 1)
     assert len(busy.busy_items(db)) == 1
-    assert "100 B" not in busy.busy_items(db)[0]   # małe pliki w MB, nie bajtach
+    assert "100 B" not in busy.busy_items(db)[0]
 
 
 def test_trwajaca_konwersja_z_postepem(db, admin):

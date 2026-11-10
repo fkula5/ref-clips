@@ -2,7 +2,7 @@ import os
 import shutil
 import tempfile
 
-# Dane testowe w katalogu tymczasowym — musi być ustawione przed importem aplikacji.
+# Test data in a temp dir: must be set before the app is imported.
 _TMP = tempfile.mkdtemp(prefix="refclips-test-")
 os.environ["REFCLIPS_DATA_DIR"] = _TMP
 
@@ -27,7 +27,7 @@ def pytest_sessionfinish(session, exitstatus):
 def db():
     Base.metadata.drop_all(engine)
     Base.metadata.create_all(engine)
-    for sub in ("uploads", "proxies", "clips"):  # pliki z poprzednich testów
+    for sub in ("uploads", "proxies", "clips"):
         for path in (config.DATA_DIR / sub).glob("*"):
             path.unlink(missing_ok=True)
     with SessionLocal() as session:
@@ -38,12 +38,11 @@ def db():
 
 @pytest.fixture()
 def anon_client(db):
-    """Klient bez sesji. Bez context managera: nie uruchamia lifespan (migracje testujemy osobno)."""
+    """No context manager: lifespan (migrations) is not started; migrations are tested separately."""
     return TestClient(app)
 
 
 def login_client(db, user) -> TestClient:
-    """Klient zalogowany jako `user` (sesja założona wprost w bazie) z tokenem CSRF w nagłówku."""
     token = accounts.create_session(db, user)
     client = TestClient(app)
     client.cookies.set(config.SESSION_COOKIE, token)
@@ -53,7 +52,6 @@ def login_client(db, user) -> TestClient:
 
 @pytest.fixture()
 def make_client(db):
-    """Fabryka: make_client("coach", "referee") -> (zalogowany klient, użytkownik)."""
     counter = iter(range(1, 1000))
 
     def factory(*roles, name=None, email=None):
@@ -71,5 +69,4 @@ def admin(make_client):
 
 @pytest.fixture()
 def client(admin):
-    """Domyślny klient testów API: zalogowany administrator (pełne uprawnienia)."""
     return admin[0]

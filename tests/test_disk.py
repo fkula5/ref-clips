@@ -1,4 +1,3 @@
-"""Panel dysku: zajętość, lista nagrań, odrzucone uploady (507) i ich baner."""
 from datetime import timedelta
 
 import pytest
@@ -26,7 +25,7 @@ def test_usage_sums_database_sizes_and_clip_files(db, admin, fixed_space):
     a = ready(db, expires_in_days=5, proxy_bytes=4000)
     ready(db, expires_in_days=9, proxy_bytes=6000)
     done = ready(db, expires_in_days=9, proxy_bytes=9999)
-    done.purged_at = utcnow()                                    # usunięte nie liczą się do wersji roboczych
+    done.purged_at = utcnow()
     converting = ready(db, status="processing", original_path="uploads/x.mp4", size_bytes=7000)
     converting.proxy_path = None
     db.add(UploadSession(id="u1", user_id=admin[1].id, filename="a.mp4", size_bytes=900, offset_bytes=300, reserved_bytes=900))
@@ -49,7 +48,7 @@ def test_proxy_sizes_are_filled_lazily_once(db):
     assert video.proxy_bytes == storage.size(video.proxy_path)
     video.proxy_bytes = 5
     db.commit()
-    disk.fill_proxy_sizes(db)                    # istniejącego rozmiaru nie przelicza
+    disk.fill_proxy_sizes(db)
     db.refresh(video)
     assert video.proxy_bytes == 5
 
@@ -78,7 +77,6 @@ def test_retention_page_lists_videos_with_size_match_and_dates(client, db):
     assert local(video.expires_at, "%d.%m.%Y") in page and "za 4 dni" in page
 
 
-# --- odrzucone uploady (507) ----------------------------------------------------------------------
 def test_rejected_upload_is_recorded_and_shown_as_banner(client, admin, db, fixed_space):
     match = make_match(db)
     fixed_space(5000 + 1000 + 500 - 1)
@@ -90,10 +88,8 @@ def test_rejected_upload_is_recorded_and_shown_as_banner(client, admin, db, fixe
     page = client.get("/admin/retention").text
     assert 'id="rejected-banner"' in page and "Brak miejsca na dysku" in page and "duzy mecz.mp4" in page
     assert admin[1].name in page
-    # baner jest też na pozostałych zakładkach panelu, z liczbą w zakładce
     for path in ("/admin/users", "/admin/categories"):
         assert 'id="rejected-banner"' in client.get(path).text
-    # udany upload niczego nie dopisuje
     fixed_space(10_000)
     assert tus_create(client, match.id, 5000).status_code == 201
     assert db.query(UploadRejection).count() == 1

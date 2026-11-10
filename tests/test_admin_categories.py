@@ -1,5 +1,3 @@
-"""Panel admina: słownik kategorii (walidacja, aktywacja, usuwanie, kolejność) i jego wpływ na parser
-notatek oraz formularze opisu."""
 from sqlalchemy import select
 
 from app import categories, services
@@ -56,7 +54,6 @@ def test_name_validation(client, db):
     assert db.query(Category).filter(Category.name.in_(["Nowa", "cc", "???"])).count() == 0
     r = add(client, "Nowa nazwa", "Faule", "x")
     assert r.status_code == 200
-    # wpisane wartości zostają po błędzie
     r = add(client, "kroki", "Naruszenia", "abc, def")
     assert r.status_code == 422 and 'value="abc, def"' in r.text
 
@@ -68,16 +65,14 @@ def test_name_uniqueness_ignores_case_and_polish_letters(client, db):
 
 
 def test_alias_conflicts_are_rejected(client, db):
-    # alias z aliasem innej kategorii (kroki: „krok”), z nazwą innej, z funkcją sędziego
     r = add(client, "Nowa A", "Naruszenia", "Krok")
     assert r.status_code == 422 and "„Krok” jest już używany przez kategorię „kroki”" in r.text
-    r = add(client, "Nowa B", "Naruszenia", "szarza")        # bez polskich znaków
+    r = add(client, "Nowa B", "Naruszenia", "szarza")
     assert r.status_code == 422 and "blok / szarża" in r.text
-    r = add(client, "Nowa C", "Naruszenia", "AUT")            # nazwa innej kategorii
+    r = add(client, "Nowa C", "Naruszenia", "AUT")
     assert r.status_code == 422 and "„aut”" in r.text
     r = add(client, "Nowa D", "Naruszenia", "u1")
     assert r.status_code == 422 and "zarezerwowany" in r.text
-    # sam alias nieaktywnej kategorii też blokuje (po aktywacji byłby konflikt)
     post(client, f"/admin/categories/{cat(db, 'kroki').id}/active", active="0")
     assert add(client, "Nowa E", "Naruszenia", "traveling").status_code == 422
     assert db.query(Category).filter(Category.name.like("Nowa %")).count() == 0
@@ -90,12 +85,10 @@ def test_update_name_group_aliases(client, db):
     assert r.status_code == 200
     c = cat(db, "rotacja sędziów")
     assert c.group_name == "Naruszenia" and c.alias_list == ["rotacje", "obrót"]
-    # przeniesiona na koniec nowej grupy, grupy ciągłe
     names = [x.name for x in categories.ordered(db)]
     assert names.index("rotacja sędziów") > names.index("goaltending / interferencja")
     groups = [x.group_name for x in categories.ordered(db)]
     assert groups == sorted(groups, key=lambda g: categories.GROUPS.index(g))
-    # zmiana nazwy nie psuje klipów: wskazują kategorię przez id
     match = make_match(db)
     video = make_ready_video(db, match)
     clip = Clip(match_id=match.id, video_id=video.id, time_sec=5, category_id=c.id)
@@ -111,7 +104,6 @@ def test_update_validation_keeps_entered_values_and_allows_own_name(client, db):
     r = post(client, f"/admin/categories/{c.id}/update", name="kroki", group="Mechanika", aliases="x")
     assert r.status_code == 422 and "koliduje" in r.text and 'value="kroki"' in r.text
     assert cat(db, "rotacja") is not None
-    # własna nazwa i własne aliasy nie są konfliktem; zmiana wielkości liter też
     assert post(client, f"/admin/categories/{c.id}/update", name="Rotacja", group="Mechanika", aliases="rotacje, rotacji").status_code == 200
     assert post(client, "/admin/categories/99999/update", name="X", group="Inne", aliases="").status_code == 404
 
@@ -127,9 +119,7 @@ def test_deactivation_hides_from_forms_and_parser_but_keeps_existing_clips(clien
     assert post(client, f"/admin/categories/{kroki.id}/active", active="0").status_code == 200
     assert not cat(db, "kroki").is_active
     assert "kroki" not in [c.name for c in services.active_categories(db)]
-    # parser: „krok”/„kroki” przestaje być rozpoznawany
     assert services.parse_for_match(db, match, "1:00 CC kroki")[0].category is None
-    # formularz opisu innego klipu nie oferuje kategorii, ale ten klip ją zachowuje
     other = Clip(match_id=match.id, video_id=video.id, time_sec=60)
     db.add(other)
     db.commit()
@@ -137,19 +127,15 @@ def test_deactivation_hides_from_forms_and_parser_but_keeps_existing_clips(clien
     assert ">kroki<" not in client.get(f"/clips/{other.id}").text.split('name="category_id"')[1].split("</select>")[0]
     page = client.get(f"/clips/{clip.id}").text
     assert "kroki (nieaktywna)" in page
-    # zapis bez zmian zachowuje nieaktywną kategorię
     r = client.post(f"/clips/{clip.id}/update", data={"official": "team", "category_id": str(kroki.id),
                                                       "description": "nowy opis"}, follow_redirects=False)
     assert r.status_code == 303
     db.refresh(clip)
     assert clip.category_id == kroki.id and clip.description == "nowy opis"
-    # ale wybrać nieaktywnej kategorii dla innego klipu nie można
     r = client.post(f"/clips/{other.id}/update", data={"official": "team", "category_id": str(kroki.id)},
                     follow_redirects=False)
     assert r.status_code == 422 and "nieaktywna" in r.text
-    # filtr klipów nadal zna nieaktywną kategorię
     assert "kroki (nieaktywna)" in client.get("/clips").text
-    # ponowna aktywacja
     post(client, f"/admin/categories/{kroki.id}/active", active="1")
     assert services.parse_for_match(db, match, "1:00 CC kroki")[0].category == "kroki"
 
@@ -199,24 +185,23 @@ def test_move_within_group(client, db):
     assert post(client, f"/admin/categories/{c.id}/move", direction="up").status_code == 200
     db.expire_all()
     assert names()[:2] == [before[1], before[0]] and names()[2:] == before[2:]
-    assert post(client, f"/admin/categories/{c.id}/move", direction="up").status_code == 200   # już pierwsza
+    assert post(client, f"/admin/categories/{c.id}/move", direction="up").status_code == 200
     db.expire_all()
     assert names()[0] == before[1]
     assert post(client, f"/admin/categories/{c.id}/move", direction="down").status_code == 200
     db.expire_all()
     assert names() == before
     last = cat(db, before[-1])
-    post(client, f"/admin/categories/{last.id}/move", direction="down")      # ostatnia w grupie: bez zmian
+    post(client, f"/admin/categories/{last.id}/move", direction="down")
     db.expire_all()
     assert names() == before
     assert post(client, f"/admin/categories/{c.id}/move", direction="sideways").status_code == 422
-    # kolejność widać w formularzu opisu
     other = [c.name for c in services.active_categories(db) if c.group_name == "Faule"]
     assert other == before
 
 
 def test_seeded_dictionary_has_no_alias_conflicts(db):
-    """Zasady panelu nie mogą odrzucać zapisu domyślnych kategorii z powodu konfliktów w seedzie."""
+    """The panel's rules must not reject saving the default categories because of conflicts in the seed."""
     seen: dict[str, str] = {}
     for c in db.scalars(select(Category)):
         for text in (c.name, *c.alias_list):
@@ -268,7 +253,7 @@ def test_category_posts_redirect_to_list_with_one_time_notice(admin, db):
     assert r.status_code == 303 and r.headers["location"] == "/admin/categories"
     page = client.get("/admin/categories")
     assert 'id="admin-notice"' in page.text and "Dodano kategorię „Przekierowanie”" in page.text
-    assert 'id="admin-notice"' not in client.get("/admin/categories").text      # po odświeżeniu znika
+    assert 'id="admin-notice"' not in client.get("/admin/categories").text
     c = cat(db, "Przekierowanie")
     for path, data in ((f"/admin/categories/{c.id}/update", {"name": "Przekierowanie 2", "group": "Inne", "aliases": ""}),
                        (f"/admin/categories/{c.id}/active", {"active": "0"}),
@@ -276,6 +261,5 @@ def test_category_posts_redirect_to_list_with_one_time_notice(admin, db):
                        (f"/admin/categories/{c.id}/delete", {})):
         r = client.post(path, data=data, follow_redirects=False)
         assert r.status_code == 303 and r.headers["location"] == "/admin/categories", path
-    # błąd walidacji: strona z kodem błędu i wpisanymi wartościami, bez przekierowania
     r = client.post("/admin/categories", data={"name": "", "group": "Inne", "aliases": "x"}, follow_redirects=False)
     assert r.status_code == 422 and 'value="x"' in r.text

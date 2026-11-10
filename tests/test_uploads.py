@@ -1,5 +1,3 @@
-"""Wgrywanie wznawialne (tus): protokół, uprawnienia, limity, rezerwacja miejsca, sprzątanie,
-deklaracja zawartości pliku."""
 from datetime import timedelta
 
 import pytest
@@ -11,7 +9,7 @@ from app.storage import storage
 from app.timeutil import utcnow
 from tests.helpers import TUS, make_match, tus_create, tus_metadata, tus_patch, tus_upload
 
-DATA = bytes(range(256)) * 400  # ~100 kB
+DATA = bytes(range(256)) * 400
 
 
 def latest_video(db):
@@ -19,7 +17,6 @@ def latest_video(db):
     return db.scalars(select(Video).order_by(Video.id.desc())).first()
 
 
-# --- protokół ----------------------------------------------------------------------
 def test_options_announces_extensions_and_limit(client):
     r = client.options("/uploads/")
     assert r.status_code == 204
@@ -43,7 +40,7 @@ def test_create_head_patch_in_chunks_creates_video(client, db):
     r = tus_patch(client, url, 0, DATA[:third])
     assert r.status_code == 204 and r.headers["Upload-Offset"] == str(third)
     assert client.head(url, headers=TUS).headers["Upload-Offset"] == str(third)
-    assert db.scalar(select(Video)) is None  # nagranie powstaje dopiero po ostatnim bajcie
+    assert db.scalar(select(Video)) is None
 
     r = tus_patch(client, url, third, DATA[third:2 * third])
     r = tus_patch(client, url, 2 * third, DATA[2 * third:])
@@ -57,9 +54,8 @@ def test_create_head_patch_in_chunks_creates_video(client, db):
     assert not storage.exists(uploads.part_key(url.rsplit("/", 1)[1]))
     job = db.scalar(select(Job))
     assert job.type == "transcode" and job.status == "pending" and job.video_id == video.id
-    # po zakończeniu HEAD nadal pokazuje pełny rozmiar (klient, który nie dostał odpowiedzi)
     assert client.head(url, headers=TUS).headers["Upload-Offset"] == str(len(DATA))
-    assert db.scalar(select(Video).where(Video.id != video.id)) is None  # bez duplikatu
+    assert db.scalar(select(Video).where(Video.id != video.id)) is None
 
 
 def test_expires_at_follows_retention_setting(client, db):
@@ -72,11 +68,9 @@ def test_expires_at_follows_retention_setting(client, db):
 
 
 def test_resume_after_interrupted_patch(client, db):
-    """Przerwane połączenie: HEAD zwraca zapisany offset, kolejny PATCH idzie od niego."""
     match = make_match(db)
     url = tus_create(client, match.id, len(DATA)).headers["Location"]
     tus_patch(client, url, 0, DATA[:30000])
-    # klient nie wie, ile dotarło: pyta HEAD i wznawia od tego miejsca
     offset = int(client.head(url, headers=TUS).headers["Upload-Offset"])
     assert offset == 30000
     assert tus_patch(client, url, offset, DATA[offset:]).status_code == 204
@@ -88,7 +82,7 @@ def test_wrong_offset_is_409_with_current_offset(client, db):
     tus_patch(client, url, 0, DATA[:1000])
     r = tus_patch(client, url, 500, DATA[500:1500])
     assert r.status_code == 409 and r.headers["Upload-Offset"] == "1000"
-    assert client.head(url, headers=TUS).headers["Upload-Offset"] == "1000"  # nic nie zapisano
+    assert client.head(url, headers=TUS).headers["Upload-Offset"] == "1000"
 
 
 def test_data_beyond_declared_length_is_413(client, db):
@@ -104,7 +98,7 @@ def test_patch_requires_offset_content_type(client, db):
                                                       "Content-Type": "application/octet-stream"})
     assert r.status_code == 415
     r = client.patch(url, content=b"x", headers={**TUS, "Content-Type": "application/offset+octet-stream"})
-    assert r.status_code == 400  # brak Upload-Offset
+    assert r.status_code == 400
 
 
 def test_file_over_max_size_is_413(client, db, monkeypatch):
@@ -156,10 +150,9 @@ def test_part_file_is_streamed_to_disk_while_uploading(client, db):
     assert storage.size(uploads.part_key(url.rsplit("/", 1)[1])) == 5 * 1024 * 1024
 
 
-# --- uprawnienia ---------------------------------------------------------------------
 def test_other_users_upload_is_not_accessible(make_client, db):
     owner, _ = make_client("coach")
-    intruder, _ = make_client("admin")  # nawet administrator nie dotyka cudzego uploadu
+    intruder, _ = make_client("admin")
     url = tus_create(owner, make_match(db).id, len(DATA)).headers["Location"]
     tus_patch(owner, url, 0, DATA[:1000])
     assert intruder.head(url, headers=TUS).status_code == 404
@@ -200,7 +193,7 @@ def test_referee_in_the_crew_can_upload_and_loses_access_when_removed(make_clien
     services.set_officials(db, match, [("CC", None, "Ktoś Inny"), ("U1", None, "Kasia Żółć")])
     db.commit()
     assert tus_patch(ref_client, url, 100, DATA[100:]).status_code == 403
-    assert ref_client.delete(url, headers=TUS).status_code == 204  # sprzątanie własnego uploadu zawsze możliwe
+    assert ref_client.delete(url, headers=TUS).status_code == 204
 
 
 def test_every_tus_route_requires_login(anon_client):
@@ -209,7 +202,6 @@ def test_every_tus_route_requires_login(anon_client):
         assert getattr(anon_client, method)(url).status_code == 401, method
 
 
-# --- limity i rezerwacja miejsca --------------------------------------------------------
 def test_one_active_upload_per_user(client, db):
     match = make_match(db)
     first = tus_create(client, match.id, 1000, filename="q1.mp4")
@@ -217,7 +209,6 @@ def test_one_active_upload_per_user(client, db):
     r = tus_create(client, match.id, 2000, filename="q2.mp4")
     assert r.status_code == 409
     assert "q1.mp4" in r.json()["detail"] and r.headers["X-Active-Upload"] == first.headers["Location"]
-    # przerwanie poprzedniego odblokowuje kolejny
     assert client.delete(r.headers["X-Active-Upload"], headers=TUS).status_code == 204
     assert tus_create(client, match.id, 2000, filename="q2.mp4").status_code == 201
 
@@ -230,7 +221,6 @@ def test_second_upload_allowed_after_first_completes(client, db):
 
 
 def test_same_file_restarts_instead_of_blocking(client, db):
-    """Klient, który zgubił adres uploadu, zaczyna ten sam plik od nowa (bez błędu limitu)."""
     match = make_match(db)
     first = tus_create(client, match.id, 1000).headers["Location"]
     tus_patch(client, first, 0, b"a" * 500)
@@ -250,7 +240,7 @@ def test_limit_is_per_user(make_client, db):
 
 @pytest.fixture()
 def fixed_space(monkeypatch):
-    """Ustawia wolne miejsce na dysku i małe rezerwy (1 000 B wersji roboczej, 500 B zapasu)."""
+    """Sets free disk space and small reserves (1000 B draft, 500 B margin)."""
     monkeypatch.setattr(config, "DRAFT_RESERVE_BYTES", 1000)
     monkeypatch.setattr(config, "DISK_SAFETY_BYTES", 500)
 
@@ -261,7 +251,7 @@ def fixed_space(monkeypatch):
 
 def test_space_reservation_rejects_with_507(client, db, fixed_space):
     match = make_match(db)
-    fixed_space(5000 + 1000 + 500 - 1)  # o bajt za mało na plik + wersję roboczą + zapas
+    fixed_space(5000 + 1000 + 500 - 1)  # one byte too little for file + draft + margin
     r = tus_create(client, match.id, 5000)
     assert r.status_code == 507 and "brak miejsca" in r.json()["detail"].lower()
     assert db.scalar(select(UploadSession)) is None
@@ -274,23 +264,23 @@ def test_space_reservation_counts_other_active_uploads(make_client, db, fixed_sp
     b, _ = make_client("coach")
     match = make_match(db)
     fixed_space(10_000)
-    assert tus_create(a, match.id, 4000).status_code == 201   # rezerwuje 4000 + 1000
-    # drugi: 3000 + 1000 + 500 + cudza rezerwacja 5000 = 9500 <= 10000
+    assert tus_create(a, match.id, 4000).status_code == 201  # reserves 4000 + 1000
+    # second: 3000 + 1000 + 500 + the other's reservation 5000 = 9500 <= 10000
     assert tus_create(b, match.id, 3000).status_code == 201
     c, _ = make_client("admin")
-    assert tus_create(c, match.id, 500).status_code == 507     # 500 + 1500 + 5000 + 4000 > 10000
+    assert tus_create(c, match.id, 500).status_code == 507  # 500 + 1500 + 5000 + 4000 > 10000
 
 
 def test_reservation_shrinks_as_bytes_arrive_and_counts_pending_conversions(client, db, fixed_space):
     match = make_match(db)
     url = tus_create(client, match.id, 4000).headers["Location"]
     tus_patch(client, url, 0, b"x" * 1500)
-    assert uploads.reserved_bytes(db) == (4000 + 1000) - 1500  # zapisane bajty zajmują już dysk
-    tus_patch(client, url, 1500, b"x" * 2500)                   # koniec: powstaje nagranie czekające na konwersję
+    assert uploads.reserved_bytes(db) == (4000 + 1000) - 1500  # written bytes already occupy the disk
+    tus_patch(client, url, 1500, b"x" * 2500)
     db.expire_all()
-    assert uploads.reserved_bytes(db) == 1000                   # miejsce na jego wersję roboczą
+    assert uploads.reserved_bytes(db) == 1000  # room for its draft
     video = latest_video(db)
-    video.status, video.original_path = "ready", None            # po konwersji rezerwacja znika
+    video.status, video.original_path = "ready", None
     db.commit()
     assert uploads.reserved_bytes(db) == 0
 
@@ -301,7 +291,6 @@ def test_space_error_does_not_leave_files(client, db, fixed_space):
     assert list((config.DATA_DIR / "uploads").glob("tus-*")) == []
 
 
-# --- sprzątanie -------------------------------------------------------------------------
 def test_stale_uploads_are_removed_after_24h(client, db):
     match = make_match(db)
     url = tus_create(client, match.id, len(DATA)).headers["Location"]
@@ -336,7 +325,7 @@ def test_cleanup_removes_orphaned_part_files(db):
     old.write_bytes(b"x")
     fresh.write_bytes(b"x")
     import os
-    past = (utcnow() - timedelta(hours=30)).timestamp() - 7200  # zapas na strefę czasową
+    past = (utcnow() - timedelta(hours=30)).timestamp() - 7200  # margin for the timezone
     os.utime(old, (past, past))
     uploads.cleanup_stale(db)
     assert not old.exists() and fresh.exists()
@@ -355,7 +344,6 @@ def test_worker_maintenance_runs_cleanup(client, db):
     assert db.get(UploadSession, upload_id) is None
 
 
-# --- deklaracja zawartości pliku -------------------------------------------------------------
 def test_normalize_content():
     assert services.normalize_content(None) == "full" and services.normalize_content("") == "full"
     assert services.normalize_content("FULL") == "full"
@@ -386,7 +374,6 @@ def test_single_quarter_gets_default_start_mark_and_needs_no_marks(client, db):
     assert video.content == "Q3"
     assert [(m.period, m.time_sec) for m in video.marks] == [("Q3", 0.0)]
     assert services.match_state(match.videos).code == "ready"
-    # klip z takiego pliku ma kwartę bez ręcznego znacznika
     clip = services.create_clip(db, video, None, time_sec=125, cut=False)
     assert services.period_position(video.marks, clip.time_sec) == ("Q3", 125)
     assert services.period_short(video.marks, 125) == "Q3 · 2:05"
@@ -398,9 +385,9 @@ def test_several_quarters_declaration_requires_all_marks(client, db):
     video = latest_video(db)
     video.status = "ready"
     db.commit()
-    assert video.content == "Q1,Q2" and video.marks == []   # znaczniki ustawia użytkownik (segment 4)
+    assert video.content == "Q1,Q2" and video.marks == []
     assert services.match_state(match.videos).code == "no_marks"
-    assert services.period_position(video.marks, 100) is None  # „brak znaczników kwart”
+    assert services.period_position(video.marks, 100) is None
     video.marks.append(PeriodMark(period="Q1", time_sec=10))
     db.commit()
     assert services.match_state(match.videos).code == "no_marks"
@@ -427,7 +414,6 @@ def test_content_declaration_can_be_corrected_after_upload(client, db):
     assert [(m.period, m.time_sec) for m in video.marks] == [("Q2", 0.0)]
     assert services.match_state(match.videos).code == "ready"
 
-    # zmiana na inną kwartę: znacznik 0:00 przechodzi na nową; przesunięty znacznik zachowuje czas
     edit(client, video, content_kind="Q4")
     db.refresh(video)
     assert [(m.period, m.time_sec) for m in video.marks] == [("Q4", 0.0)]
@@ -437,7 +423,6 @@ def test_content_declaration_can_be_corrected_after_upload(client, db):
     db.refresh(video)
     assert [(m.period, m.time_sec) for m in video.marks] == [("Q1", 42.0)]
 
-    # na kilka kwart / cały mecz: samotny 0:00 niepasujący do nowej deklaracji znika
     video.marks[0].time_sec = 0
     db.commit()
     edit(client, video, content_kind="multi", periods=["Q3", "Q4"])
@@ -474,7 +459,6 @@ def test_match_page_has_tus_client_and_content_picker(client, db):
 
 
 def test_connection_dropped_mid_patch_keeps_received_bytes(client, db):
-    """Klient znika w połowie PATCH: to, co dotarło, zostaje zapisane, a HEAD podaje nowy offset."""
     import asyncio
 
     from app.main import app
@@ -503,13 +487,12 @@ def test_connection_dropped_mid_patch_keeps_received_bytes(client, db):
     asyncio.run(app(scope, receive, send))
 
     assert client.head(url, headers=TUS).headers["Upload-Offset"] == str(21000)
-    r = tus_patch(client, url, 21000, DATA[21000:])   # wznowienie od zapisanego offsetu
+    r = tus_patch(client, url, 21000, DATA[21000:])
     assert r.status_code == 204
     assert storage.local_path(latest_video(db).original_path).read_bytes() == DATA
 
 
 def test_delete_during_patch_does_not_crash(client, db, monkeypatch):
-    """Anulowanie (DELETE) w trakcie dopisywania: PATCH kończy się 404, a nie błędem serwera."""
     from app.db import SessionLocal
     from app.routers import uploads as router
 
@@ -529,9 +512,8 @@ def test_delete_during_patch_does_not_crash(client, db, monkeypatch):
     assert client.head(url, headers=TUS).status_code == 404
 
 
-# --- poprawki po review ---------------------------------------------------------------------
 def test_offset_is_rechecked_after_acquiring_the_lock(client, db, monkeypatch):
-    """Równoległy PATCH kończy się tuż przed blokadą: nieaktualny offset daje 409, nic się nie dopisuje."""
+    """A parallel PATCH ends just before the lock: a stale offset gives 409 and nothing is appended."""
     from app.db import SessionLocal
     from app.routers import uploads as router
 
@@ -541,7 +523,7 @@ def test_offset_is_rechecked_after_acquiring_the_lock(client, db, monkeypatch):
 
     def after_other_patch(key):
         fh = real(key)
-        fh.write(DATA[:1000])   # „drugie żądanie” zdążyło dopisać 1000 B i zapisać offset
+        fh.write(DATA[:1000])  # the "second request" managed to append 1000 B and store the offset
         fh.flush()
         with SessionLocal() as other:
             other.get(UploadSession, upload_id).offset_bytes = 1000
@@ -573,13 +555,15 @@ def test_patch_after_completion_is_409_and_leaves_no_part_file(client, db):
 
 
 def test_head_of_finished_upload_for_deleted_match_is_410(client, db):
-    """Mecz zniknął (np. brak kaskady): HEAD kończący upload nie wybucha, tylko sprząta i zwraca 410."""
+    """The match is gone (e.g. no cascade): a HEAD that finishes the upload does not blow up, it cleans
+    up and returns 410.
+    """
     match = make_match(db)
     url = tus_create(client, match.id, 100).headers["Location"]
     upload_id = url.rsplit("/", 1)[1]
     tus_patch(client, url, 0, b"x" * 99)
     up = db.get(UploadSession, upload_id)
-    up.offset_bytes, up.match_id = up.size_bytes, None   # upload kompletny, ale bez meczu
+    up.offset_bytes, up.match_id = up.size_bytes, None  # upload complete, but without a match
     db.commit()
     storage.local_path(uploads.part_key(upload_id)).write_bytes(b"x" * 100)
     with pytest.raises(uploads.UploadError, match="Mecz został usunięty") as exc:
@@ -587,7 +571,6 @@ def test_head_of_finished_upload_for_deleted_match_is_410(client, db):
     assert exc.value.status_code == 410
     assert db.get(UploadSession, upload_id) is None and not storage.exists(uploads.part_key(upload_id))
     assert db.scalar(select(Video)) is None
-    # to samo przez HTTP (HEAD nie ma treści): 410, bez błędu serwera
     url2 = tus_create(client, make_match(db).id, 100).headers["Location"]
     id2 = url2.rsplit("/", 1)[1]
     up2 = db.get(UploadSession, id2)

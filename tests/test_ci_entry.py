@@ -1,4 +1,3 @@
-"""deploy/ci-entry.sh: wejście dla klucza CI na serwerze, przetestowane z podstawionymi `docker` i `curl`."""
 import io
 import os
 import subprocess
@@ -48,7 +47,6 @@ else echo '{"status":"ok"}' > "$out"; printf 200; fi
 
 @pytest.fixture()
 def server(tmp_path):
-    """Udawany serwer: /opt/ref-clips w tmp_path, podstawione docker i curl, archiwum wersji v1.2.3."""
     stub, app_dir, bin_dir = tmp_path / "stub", tmp_path / "opt", tmp_path / "bin"
     for d in (stub, app_dir / "deploy", bin_dir):
         d.mkdir(parents=True)
@@ -100,8 +98,8 @@ def server(tmp_path):
 def test_niedozwolone_polecenia_sa_odrzucone_bez_skutkow(server, command):
     r = server.run(command)
     assert r.returncode == 2 and "Niedozwolone polecenie" in r.stderr
-    assert server.calls() == ""                         # ani docker, ani curl
-    assert not (server.dir / ".deploy.lock").exists()   # nic nie ruszone
+    assert server.calls() == ""
+    assert not (server.dir / ".deploy.lock").exists()
     assert "STARE" in (server.dir / "compose.yaml").read_text()
 
 
@@ -117,7 +115,7 @@ def test_zajete_czeka_i_po_limicie_konczy_bez_zmian(server):
     assert r.returncode == 3
     assert r.stdout.count("Czekam") >= 1 and "konwersja nagrania #1" in r.stdout
     assert "NIE zostało wykonane" in r.stderr
-    assert "STARE" in (server.dir / "compose.yaml").read_text()          # pliki i .env bez zmian
+    assert "STARE" in (server.dir / "compose.yaml").read_text()
     assert f"REFCLIPS_IMAGE={IMG}:v1.1.0" in server.env_lines()
     assert "docker pull" not in server.calls() and " up " not in server.calls()
 
@@ -135,19 +133,18 @@ def test_nieznany_tag_konczy_sie_od_razu(server):
 
 
 def test_sukces_czeka_na_wolne_podmienia_pliki_i_sprzata(server):
-    r = server.run("deploy v1.2.3", busy=["busy", "busy"])     # dwa razy zajęte, potem wolne (i wolne przed restartem)
+    r = server.run("deploy v1.2.3", busy=["busy", "busy"])  # busy twice, then free (and free before the restart)
     assert r.returncode == 0, r.stderr
     assert r.stdout.count("Czekam") == 2 and "Gotowe: wdrożono v1.2.3" in r.stdout
     assert (server.dir / "compose.yaml").read_text() == "NOWE compose\n"
     assert (server.dir / "deploy" / "Caddyfile").read_text() == "nowy caddyfile\n"
     assert (server.dir / ".deploy-commit").read_text().startswith("v1.2.3 ")
-    # .env: dokładnie jedna linia REFCLIPS_IMAGE z nową wersją, reszta bez zmian
     assert server.env_lines() == ["REFCLIPS_SITE=x.example", "REFCLIPS_TRUST_PROXY=1", f"REFCLIPS_IMAGE={IMG}:v1.2.3"]
     calls = server.calls()
     assert f"docker pull --quiet {IMG}:v1.2.3" in calls
     assert "up -d --no-build --remove-orphans --wait --wait-timeout 300" in calls
-    assert "restart caddy" in calls                                      # Caddyfile się zmienił
-    assert f"image rm {IMG}:v1.0.0" in calls                             # poza 3 najnowszymi, bieżącym i poprzednim (v1.1.0)
+    assert "restart caddy" in calls
+    assert f"image rm {IMG}:v1.0.0" in calls  # outside the 3 newest, the current one and the previous one (v1.1.0)
     assert f"image rm {IMG}:v1.1.0" not in calls and "prune" not in calls and "image rm ref-clips" not in calls
     assert not list(server.dir.glob(".ci-incoming.*")) and not (server.dir / ".rollback").exists()
 

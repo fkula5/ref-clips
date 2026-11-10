@@ -1,4 +1,3 @@
-"""Tokeny zaproszeń nie wyciekają do logów ani przez nagłówek Referer."""
 import logging
 
 from app import accounts, logfilter
@@ -26,7 +25,7 @@ def test_redact_ukrywa_kod_linku_udostepniajacego_i_zachowuje_reszte_sciezki():
 
 def test_dziennik_dostepu_uvicorna_ukrywa_token(caplog):
     logfilter.install()
-    logfilter.install()   # idempotentne
+    logfilter.install()
     access = logging.getLogger("uvicorn.access")
     assert sum(isinstance(f, logfilter.RedactTokens) for f in access.filters) == 1
     seen = []
