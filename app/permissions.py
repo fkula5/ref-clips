@@ -148,3 +148,8 @@ def can_view_sheet(user, sheet) -> bool:
     if sheet.coach_id == user.id:
         return True
     return sheet.status == "published" and (_has(user, ADMIN, COACH) or is_official(user, sheet.match))
+
+
+def can_view_notification(user, notification) -> bool:
+    """Somebody else's notification is answered with 404, so its existence is not revealed."""
+    return can_view(user) and notification.recipient_id == user.id
