@@ -1,5 +1,5 @@
-// Formularze filtrów z atrybutem data-clean-params wysyłane przez HTMX nie niosą pustych pól,
-// więc adres po filtrowaniu jest czysty (np. ?period=Q2 zamiast ?person=&category_id=&period=Q2&described=).
+// HTMX forms with data-clean-params send no empty fields, so the URL stays clean (e.g. ?period=Q2
+// instead of ?person=&category_id=&period=Q2&described=).
 document.addEventListener("htmx:configRequest", (event) => {
   const source = event.detail.elt;
   if (!source || !source.closest || !source.closest("[data-clean-params]")) return;

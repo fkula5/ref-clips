@@ -1,13 +1,12 @@
-// Odtwarzacz: skróty klawiszowe, znaczniki „Zaznacz” (Z), początki kwart i znacznik z notatką (M).
 (function () {
   const state = JSON.parse(document.getElementById("init-state").textContent);
   const video = document.getElementById("player");
   const wrap = document.getElementById("video-wrap");
   const $ = (id) => document.getElementById(id);
   const SPEEDS = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2];
-  const CAN_MARK = !!window.CAN_MARK;  // początki kwart
-  const CAN_CLIP = !!window.CAN_CLIP;  // znaczniki (klipy)
-  const DEBOUNCE_MS = 1000;            // jak na serwerze: podwójne kliknięcie
+  const CAN_MARK = !!window.CAN_MARK;
+  const CAN_CLIP = !!window.CAN_CLIP;
+  const DEBOUNCE_MS = 1000;  // as on the server
   const STATE_KEYS = ["marks", "periods", "missing_periods", "clips", "next_period"];
   let fps = state.fps || 25;
   let lastMarkAt = -Infinity;
@@ -29,14 +28,14 @@
     toast.timer = setTimeout(() => el.classList.add("hidden"), 3500);
   }
 
-  // Krótki „błysk” na obrazie (widoczny także w pełnym ekranie, bo jest wewnątrz kontenera wideo).
+  // visible in fullscreen too, because it is inside the video container
   function flash(text, isError) {
     const el = $("flash");
     el.textContent = text;
     el.classList.toggle("error", !!isError);
     el.classList.remove("hidden");
     el.style.animation = "none";
-    void el.offsetWidth;  // restart animacji
+    void el.offsetWidth;  // restart the animation
     el.style.animation = "";
     clearTimeout(flash.timer);
     flash.timer = setTimeout(() => el.classList.add("hidden"), 1300);
@@ -53,7 +52,7 @@
     });
     if (!res.ok) {
       let detail = "";
-      try { detail = (await res.json()).detail; } catch (e) { /* brak JSON */ }
+      try { detail = (await res.json()).detail; } catch (e) { /* not JSON */ }
       const err = new Error(typeof detail === "string" && detail ? detail : `Błąd serwera (${res.status})`);
       err.status = res.status;
       throw err;
@@ -74,7 +73,6 @@
     $("speed").value = String(rate);
   }
 
-  // --- render ---
   function renderPeriods() {
     const box = $("periods");
     box.replaceChildren();
@@ -158,7 +156,7 @@
       list.appendChild(empty);
     }
     $("dec-count").textContent = `(${state.clips.length})`;
-    const undescribed = $("undescribed-count");  // przycisk „Opisz znaczniki (N)” w nagłówku
+    const undescribed = $("undescribed-count");
     if (undescribed) undescribed.textContent = String(state.clips.filter((c) => !c.described).length);
     $("mark-count").textContent = `Znaczniki: ${state.clips.length}`;
   }
@@ -190,7 +188,6 @@
     renderTimeline();
   }
 
-  // --- początki kwart ---
   async function addMark(period) {
     if (!CAN_MARK) return;
     period = period || state.next_period;
@@ -212,14 +209,13 @@
     } catch (err) { toast(err.message, true); }
   }
 
-  // --- znaczniki „Zaznacz” ---
   async function addMarker() {
     if (!CAN_CLIP) return;
     const now = performance.now();
-    if (now - lastMarkAt < DEBOUNCE_MS) return;  // podwójne kliknięcie
+    if (now - lastMarkAt < DEBOUNCE_MS) return;
     lastMarkAt = now;
     const t = video.currentTime;
-    flash(`Znacznik ${clock(t)}`);  // natychmiast, przed odpowiedzią serwera
+    flash(`Znacznik ${clock(t)}`);  // immediately, before the server responds
     try {
       const res = await api("POST", `/api/videos/${state.video_id}/markers`, { time_sec: t });
       applyState(res);
@@ -253,7 +249,6 @@
     } catch (err) { toast(err.message, true); }
   }
 
-  // --- znacznik z notatką (M) ---
   function openQuick() {
     if (!$("quick-form")) return;
     video.pause();
@@ -283,7 +278,6 @@
     } catch (err) { toast(err.message, true); }
   });
 
-  // --- pełny ekran: kontener z wideo, żeby znaczniki i błysk były widoczne ---
   function toggleFullscreen() {
     const current = document.fullscreenElement || document.webkitFullscreenElement;
     if (current) { (document.exitFullscreen || document.webkitExitFullscreen).call(document); return; }
@@ -327,7 +321,7 @@
   });
 
   $("speed").addEventListener("change", (e) => { setSpeed(parseFloat(e.target.value)); e.target.blur(); });
-  // Po kliknięciu przycisku fokus wraca do strony, żeby Spacja i Z nie „klikały” przycisku ponownie.
+  // After a button click focus returns to the page, so Space and Z do not "click" it again.
   document.addEventListener("click", (e) => {
     const button = e.target.closest && e.target.closest("button");
     if (button) button.blur();
@@ -349,13 +343,12 @@
     renderTimeline();
     if (window.START_AT) seek(window.START_AT);
   });
-  // Spacja na fokusowanym <video> przełączałaby odtwarzanie dwa razy.
+  // Space on a focused <video> would toggle playback twice.
   video.addEventListener("keydown", (e) => { if (e.key === " ") e.preventDefault(); });
 
-  // Stan cięcia klipów odświeża się sam, dopóki któryś czeka w kolejce.
   setInterval(async () => {
     if (document.hidden || !state.clips.some((c) => c.status === "new" || c.status === "queued")) return;
-    try { applyState(await api("GET", `/api/videos/${state.video_id}/state`)); render(); } catch (err) { /* następna próba */ }
+    try { applyState(await api("GET", `/api/videos/${state.video_id}/state`)); render(); } catch (err) { /* next attempt */ }
   }, 4000);
 
   render();

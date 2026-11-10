@@ -1,5 +1,3 @@
-// Assessment sheet form: warns before leaving with unsaved changes (not on submit) and asks for
-// confirmation before publishing, stating how many fields are still empty.
 (() => {
   const form = document.getElementById("sheet-form");
   if (!form) return;
@@ -16,10 +14,10 @@
   window.addEventListener("beforeunload", (event) => {
     if (!isDirty()) return;
     event.preventDefault();
-    event.returnValue = "";   // required by some browsers to show the prompt
+    event.returnValue = "";  // required by some browsers to show the prompt
   });
 
-  window.addEventListener("pageshow", () => { submitting = false; });   // page restored from the back/forward cache
+  window.addEventListener("pageshow", () => { submitting = false; });  // page restored from the back/forward cache
 
   form.addEventListener("submit", (event) => {
     const action = event.submitter && event.submitter.value;
@@ -29,7 +27,7 @@
       const message = `Opublikować arkusz? Puste pola: ${empty} z ${all.length}.\n`
         + "Opublikowany arkusz zobaczą sędziowie z obsady, szkoleniowcy i administratorzy.";
       if (!window.confirm(message)) {
-        event.preventDefault();   // stays on the form, nothing is lost
+        event.preventDefault();
         return;
       }
     }

@@ -1,5 +1,3 @@
-{# Pola opisu klipu (ekran opisywania i strona klipu). Zmienne: c, values, categories, form_action,
-   submit_label, keys (czy pokazać skróty 1/2/3/0), skip_url (opcjonalnie), error. #}
 {% from "_clips_macros.html" import category_options %}
 <form method="post" action="{{ form_action }}" class="form clip-form" id="clip-form">
   {{ csrf_input() }}

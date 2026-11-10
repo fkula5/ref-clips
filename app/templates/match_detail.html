@@ -98,7 +98,6 @@
 </div>
 </section>
 
-{# Komentarze do meczu: poza #videos-panel, #clips-head i #clips-list (odświeżanie co 3 s ich nie rusza). #}
 {% if comments is not none %}{% set cbase = "/matches/" ~ match.id %}{% include "_comments.html" %}{% endif %}
 {% endblock %}
 {% block scripts %}<script src="/static/vendor/tus-js-client-4.3.1.min.js"></script><script src="/static/upload.js"></script><script src="/static/feedback.js"></script><script src="/static/share.js"></script>{% endblock %}

@@ -1,5 +1,3 @@
-// Wgrywanie wznawialne (tus): kawałki po 50 MB, ponawianie po zerwaniu połączenia,
-// wznowienie po odświeżeniu strony (wybierz ten sam plik), pasek postępu i przerwanie.
 (function () {
   const form = document.getElementById("upload-form");
   if (!form || !window.tus) return;
@@ -13,12 +11,11 @@
   const MAX_CHARS = parseInt(form.dataset.notesChars || "20000", 10);
   const MAX_LINES = parseInt(form.dataset.notesLines || "300", 10);
   const csrf = document.querySelector('meta[name="csrf-token"]').content;
-  const CHUNK = parseInt(form.dataset.chunkBytes || "", 10) || 50 * 1024 * 1024;  // mniejszy tylko w trybie testowym (E2E)
+  const CHUNK = parseInt(form.dataset.chunkBytes || "", 10) || 50 * 1024 * 1024;  // smaller only in test mode (E2E)
   let busy = false, rows = [];
 
   const mb = (n) => (n / 1048576).toFixed(n >= 10485760 ? 0 : 1);
 
-  // --- deklaracja zawartości każdego pliku ---------------------------------------
   function togglePeriods(row) {
     row.querySelector(".content-periods").hidden = row.querySelector(".content-kind").value !== "multi";
   }
@@ -29,7 +26,7 @@
       const row = document.createElement("div");
       row.className = "file-row";
       const name = document.createElement("strong");
-      name.textContent = file.name;  // tekst, nie HTML
+      name.textContent = file.name;  // text, not HTML
       row.append(name, " ", template.content.cloneNode(true));
       row.querySelector(".content-kind").addEventListener("change", () => togglePeriods(row));
       togglePeriods(row);
@@ -42,7 +39,6 @@
     });
   });
 
-  // --- notatki: podgląd przed wysłaniem i zapis razem z uploadem ----------------------------
   function notesOf(row) {
     const area = row.querySelector(".notes-text");
     return area ? area.value.replace(/\s+$/, "") : "";
@@ -70,7 +66,7 @@
       });
       if (!res.ok) {
         let detail = "";
-        try { detail = (await res.json()).detail; } catch (e) { /* brak JSON */ }
+        try { detail = (await res.json()).detail; } catch (e) { /* not JSON */ }
         throw new Error(typeof detail === "string" && detail ? detail : "Błąd serwera (" + res.status + ")");
       }
       renderPreview(box, await res.json());
@@ -99,7 +95,7 @@
       [r.line_no, r.ok ? r.clock : "—", r.official || "—", r.category || "—", r.description, r.warnings.join("; ")]
         .forEach((value, i) => {
           const td = tr.insertCell();
-          td.textContent = String(value);  // tekst, nie HTML
+          td.textContent = String(value);  // text, not HTML
           if (i === 5) td.className = "warn-text";
         });
     });
@@ -116,7 +112,7 @@
       });
       if (!res.ok) {
         let detail = "";
-        try { detail = (await res.json()).detail; } catch (e) { /* brak JSON */ }
+        try { detail = (await res.json()).detail; } catch (e) { /* not JSON */ }
         throw new Error(typeof detail === "string" && detail ? detail : "błąd " + res.status);
       }
     } catch (err) {
@@ -135,13 +131,12 @@
     return periods.join(",");
   }
 
-  // --- błędy ----------------------------------------------------------------------
   function errorText(err) {
     const res = err.originalResponse;
     if (!res) return "Przerwano połączenie z serwerem. Wybierz plik i kliknij „Wgraj” ponownie — wgrywanie wznowi się od miejsca przerwania.";
     const status = res.getStatus();
     let detail = "";
-    try { detail = JSON.parse(res.getBody()).detail; } catch (e) { /* brak JSON */ }
+    try { detail = JSON.parse(res.getBody()).detail; } catch (e) { /* not JSON */ }
     if (typeof detail !== "string") detail = "";
     if (status === 507) return "Brak miejsca na serwerze, spróbuj później.";
     if (status === 401) return "Sesja wygasła — zaloguj się ponownie i spróbuj jeszcze raz.";
@@ -150,7 +145,7 @@
     return detail || "Błąd serwera (" + status + ").";
   }
 
-  // Ponawiamy zerwane połączenia i błędy serwera, ale nie brak miejsca ani odmowę limitu.
+  // Retry dropped connections and server errors, but not out-of-space or limit refusals.
   function shouldRetry(err) {
     const res = err.originalResponse;
     if (!res) return navigator.onLine !== false;
@@ -160,7 +155,6 @@
     return status >= 500 || status === 423;
   }
 
-  // --- jeden plik -----------------------------------------------------------------
   function uploadOne(file, content, label, notes) {
     return new Promise((resolve, reject) => {
       const row = document.createElement("div");
@@ -210,13 +204,12 @@
         upload.abort(true).then(() => { pct.textContent = "przerwano"; stop.remove(); reject(new Error("abort")); });
       });
 
-      // Wznowienie po odświeżeniu strony: ten sam plik i mecz => dalej od miejsca przerwania.
       upload.findPreviousUploads().then((previous) => {
         const same = previous.find((p) => p.metadata && p.metadata.match_id === matchId);
         if (same) {
           upload.resumeFromPreviousUpload(same);
           pct.textContent = "wznawianie…";
-          notesDone = sendNotes(upload.url, notes, pct);  // wznowienie nie tworzy sesji, więc nie woła onUploadUrlAvailable
+          notesDone = sendNotes(upload.url, notes, pct);  // a resume does not create a session, so onUploadUrlAvailable is not called
         }
         upload.start();
       });

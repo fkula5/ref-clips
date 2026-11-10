@@ -1,5 +1,3 @@
-{# Wspólne elementy zakładki „Klipy” meczu i globalnej listy /clips: filtry (HTMX nad zwykłym formularzem GET)
-   i tabela, która na telefonie zamienia się w karty. #}
 {% from "_share_macros.html" import share_days %}
 
 {% macro category_options(categories, selected) %}
@@ -10,8 +8,6 @@
   {% endfor %}
 {% endmacro %}
 
-{# Filtry w adresie (person, category_id, period, described; na /clips także match_id). Działa bez JS;
-   HTMX podmienia tylko #clips-list i wpisuje filtry do adresu. #}
 {% macro clip_filters(f, action, people, categories, matches=none) %}
 <form method="get" action="{{ action }}" class="card row filters clip-filters" id="clip-filters" data-clean-params
       hx-get="{{ action }}" hx-target="#clips-list" hx-select="#clips-list" hx-swap="outerHTML"
@@ -43,9 +39,8 @@
 </form>
 {% endmacro %}
 
-{# Pasek „Udostępnij zaznaczone” (import z kontekstem: potrzebny token CSRF). Leży poza #clips-list, więc
-   przeżywa odświeżanie listy; pola wyboru z listy należą do niego przez atrybut form. static/share.js
-   pamięta zaznaczenie między odświeżeniami i filtrami. `shareable` to id klipów, które użytkownik może udostępnić. #}
+{# Lives outside #clips-list so it survives list refreshes; the list's checkboxes belong to it via the
+   form attribute. static/share.js remembers the selection across refreshes and filters. #}
 {% macro share_bar(shareable) %}
 <form method="post" action="/share-links" id="share-form" class="card row share-bar {{ 'hidden' if not shareable }}" data-max="{{ SHARE_MAX_CLIPS }}">
   {{ csrf_input() }}
@@ -57,8 +52,8 @@
 </form>
 {% endmacro %}
 
-{# Tabela klipów; `nav` to filtry (bez meczu) dopisywane do linków, żeby strona klipu wiedziała,
-   z jakiej listy przyszedł użytkownik (poprzedni/następny). `shareable`: id klipów z polem wyboru do udostępnienia. #}
+{# `nav` = filters (no match) appended to links, so the clip page knows which list the user came from
+   (previous/next). #}
 {% macro clips_table(clips, nav, show_match=false, stats=none, shareable=none) %}
 {% set nav_q = '?' ~ nav if nav else '' %}
 <table class="responsive clips-table">

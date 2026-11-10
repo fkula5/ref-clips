@@ -1,6 +1,7 @@
-// Strzałki w każdym odtwarzaczu: ←/→ ±1 s, z Shift ±5 s.
-// Pasek przeglądarki kliknięty myszą dostaje fokus i przejmuje strzałki (skok o 1% długości filmu, bez Shift),
-// a klawisze w ogóle nie docierają wtedy do strony — dlatego zabieramy mu fokus. Fokus z klawiatury (Tab) zostaje.
+// Arrow keys in every player: left/right +-1 s, with Shift +-5 s.
+// The browser's slider, once clicked with the mouse, takes focus and the arrow keys (a jump of 1% of
+// the movie, no Shift), and the keys then do not reach the page at all, so we take focus away from it.
+// Keyboard focus (Tab) stays.
 document.addEventListener("focusin", (e) => {
   if (e.target.tagName === "VIDEO" && !e.target.matches(":focus-visible")) e.target.blur();
 });

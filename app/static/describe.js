@@ -1,24 +1,22 @@
-// Ekran opisywania: podgląd klipu, skróty klawiszowe (nie działają w polach tekstowych) i zapis z klawiatury.
 (function () {
   const video = document.getElementById("preview");
   const form = document.getElementById("clip-form");
   const play = document.getElementById("btn-play");
 
-  // Podgląd z wersji roboczej: tylko zakres klipu, zatrzymanie na jego końcu.
   if (video && video.dataset.end) {
     const start = parseFloat(video.dataset.start), end = parseFloat(video.dataset.end);
     const toStart = () => { video.currentTime = start; };
     video.addEventListener("loadedmetadata", toStart);
     if (video.readyState >= 1) toStart();
     video.addEventListener("timeupdate", () => {
-      // Spóźnione zdarzenie z poprzedniej pozycji (podczas przewijania) nie może zatrzymać nowego odtwarzania.
+      // A late event from the previous item (during seeking) must not stop the new playback.
       if (!video.seeking && !video.paused && video.currentTime >= end) video.pause();
     });
     video.addEventListener("play", () => {
       if (video.currentTime >= end - 0.05 || video.currentTime < start) toStart();
     });
   }
-  // Spacja na fokusowanym <video> przełączałaby odtwarzanie dwa razy.
+  // Space on a focused <video> would toggle playback twice.
   if (video) video.addEventListener("keydown", (e) => { if (e.key === " ") e.preventDefault(); });
 
   function togglePlay() {
@@ -31,7 +29,7 @@
     video.play().catch(() => {});
   }
   if (play) play.addEventListener("click", togglePlay);
-  // Po kliknięciu przycisku fokus wraca do strony, żeby Spacja nie „klikała” go ponownie.
+  // After a button click focus returns to the page, so Space does not "click" it again.
   document.addEventListener("click", (e) => {
     const button = e.target.closest && e.target.closest("button");
     if (button && button.type === "button") button.blur();
@@ -47,7 +45,6 @@
     const tag = (e.target.tagName || "").toLowerCase();
     const typing = tag === "input" && !["radio", "checkbox", "button", "submit"].includes(e.target.type);
     if (typing || tag === "textarea" || tag === "select") {
-      // Ctrl+Enter w opisie, Enter w polu tekstowym lub liście kategorii zapisują formularz.
       if (form && e.key === "Enter" && !e.isComposing && (tag !== "textarea" || e.ctrlKey || e.metaKey)) {
         e.preventDefault();
         form.requestSubmit();
@@ -55,7 +52,7 @@
       return;
     }
     if (e.ctrlKey || e.metaKey || e.altKey) return;
-    if (tag === "button" || tag === "a") return;  // Enter i Spacja działają tam jak zwykle
+    if (tag === "button" || tag === "a") return;
     if (e.key === "Enter" && form && tag !== "video") {
       e.preventDefault();
       form.requestSubmit();

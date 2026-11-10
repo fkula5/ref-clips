@@ -1,6 +1,6 @@
-// Oceny i komentarze (HTMX): odpowiedź 422 to błąd walidacji z formularzem do podmiany (domyślnie HTMX
-// nie podmienia treści przy kodach 4xx); inne błędy (np. komentarz usunięty przez kogoś w międzyczasie,
-// brak uprawnień, brak sieci) pokazują krótki komunikat zamiast cichej bezczynności.
+// HTMX does not swap content on 4xx by default: 422 is a validation error with a form to swap in. Other
+// errors (e.g. comment deleted meanwhile, no permission, no network) show a short message instead of
+// silent inaction.
 (function () {
   function inFeedback(elt) {
     return !!(elt && elt.closest && elt.closest("#komentarze, #oceny"));
@@ -25,7 +25,7 @@
   document.body.addEventListener("htmx:responseError", (event) => {
     if (!inFeedback(event.detail.elt)) return;
     let message = "Nie udało się wykonać operacji.";
-    try { message = JSON.parse(event.detail.xhr.responseText).detail || message; } catch (e) { /* nie JSON */ }
+    try { message = JSON.parse(event.detail.xhr.responseText).detail || message; } catch (e) { /* not JSON */ }
     toast(message);
   });
 

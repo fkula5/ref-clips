@@ -1,5 +1,3 @@
-// Formularz opisu klipu (strona klipu i ekran opisywania): pole „nazwa własnej kategorii” jest widoczne
-// i wymagane tylko dla kategorii „własna”.
 (function () {
   const select = document.getElementById("category-select");
   const label = document.getElementById("custom-label");
