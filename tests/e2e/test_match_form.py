@@ -30,7 +30,7 @@ def test_new_match_with_crew_from_an_account_and_a_typed_name(ui):
     page.get_by_role("button", name="Zapisz").click()
 
     expect(page).to_have_url(re.compile(r"/matches/\d+$"))
-    expect(page.get_by_role("heading", name="2026-10-30 · Arka – Bałtyk")).to_be_visible()
+    expect(page.get_by_role("heading", name="30.10.2026 · Arka – Bałtyk")).to_be_visible()
     officials = page.locator(".chip.official")
     expect(officials).to_have_count(3)
     expect(officials.nth(0)).to_contain_text("CC Roman Sędzia")

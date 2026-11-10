@@ -129,11 +129,19 @@ class Match(Base):
     sheets: Mapped[list[Sheet]] = relationship(
         back_populates="match", cascade="all, delete-orphan", order_by="Sheet.id")
 
-    @property
-    def title(self) -> str:
+    def _title(self, date_text: str) -> str:
         a = self.team_a_name or self.team_a_color or "A"
         b = self.team_b_name or self.team_b_color or "B"
-        return f"{self.date.isoformat()} · {a} – {b}"
+        return f"{date_text} · {a} – {b}"
+
+    @property
+    def title(self) -> str:
+        return self._title(self.date.strftime("%d.%m.%Y"))
+
+    @property
+    def export_title(self) -> str:
+        """The title with the ISO date: the CSV export keeps its machine format."""
+        return self._title(self.date.isoformat())
 
     def official(self, function: str) -> MatchOfficial | None:
         return next((o for o in self.officials if o.function == function), None)

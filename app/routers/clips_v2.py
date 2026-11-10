@@ -34,7 +34,7 @@ def _csv_text(clips: list[Clip], names: dict[int, str]) -> str:
                      "kategoria", "opis", "komentarze"])
     for c in clips:
         writer.writerow([
-            names[c.id], c.match.date.isoformat(), c.match.title, c.official_label,
+            names[c.id], c.match.date.isoformat(), c.match.export_title, c.official_label,
             format_clock(c.time_sec), services.period_for(c.video.marks, c.time_sec) or "",
             c.category_label, c.description, " | ".join(cm.body for cm in c.comments),
         ])
