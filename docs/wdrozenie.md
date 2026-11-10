@@ -1,64 +1,51 @@
-# Wdrożenie na serwer (produkcja)
+# Deployment to the server (production)
 
-> Segmenty 8–9. Stan: konfiguracja gotowa i przetestowana lokalnie; przygotowanie serwera i pierwsze
-> wdrożenie wykonuje osoba z dostępem do VPS.
+> Segments 8–9. Status: the configuration is ready and tested locally; preparing the server and the first deployment is done by a person with access to the VPS.
 
-**Zwykłe wdrożenia robi GitHub Actions** po scaleniu PR-a wydania (obraz z GHCR, klucz CI z wymuszonym poleceniem,
-automatyczny powrót przy nieudanym starcie): [docs/ci-cd.md](ci-cd.md). Ten dokument opisuje serwer, pierwsze wdrożenie
-oraz ręczne wyjście awaryjne (`deploy/deploy.sh`).
+**Regular deployments are done by GitHub Actions** after merging the release PR (image from GHCR, a CI key with a forced command, automatic rollback when the start fails): [docs/ci-cd.md](ci-cd.md). This document describes the server, the first deployment and the manual emergency exit (`deploy/deploy.sh`).
 
-Docelowo: OVH VPS (Ubuntu 24.04, 2 vCPU, ok. 3,7 GB RAM, 38 GB dysku), Docker Engine z wtyczką Compose,
-`ufw` z otwartymi portami 22/80/443. Bez własnej domeny adres to `https://57-131-162-204.sslip.io`
-(sslip.io zamienia nazwę z IP na ten adres IP; Caddy dostaje certyfikat Let's Encrypt).
+Planned: an OVH VPS (Ubuntu 24.04, 2 vCPU, approx. 3.7 GB RAM, 38 GB disk), Docker Engine with the Compose plugin, and `ufw` with ports 22/80/443 open. Without its own domain the address is `https://57-131-162-204.sslip.io` (sslip.io turns the IP into a name that points to that IP; Caddy gets a Let's Encrypt certificate).
 
-## Jak to jest zbudowane
+## How it is built
 
 ```
 przeglądarka ──HTTPS──► Caddy (80, 443, 443/udp) ──sieć compose──► app:8000 ──► SQLite (WAL, wolumin „dane”)
                                                                     worker ──► ffmpeg (ten sam wolumin)
 ```
 
-| Plik | Do czego |
+| File | What for |
 |---|---|
-| `compose.yaml` | usługi `init`, `app`, `worker` (jak w testach lokalnych) |
-| `compose.prod.yaml` | **nakładka** na `compose.yaml`: usuwa port aplikacji z hosta, dodaje `caddy`, rotację logów |
-| `deploy/Caddyfile` | HTTPS, nagłówki bezpieczeństwa, kompresja, `reverse_proxy` do aplikacji |
-| `deploy/env.prod.example` | wzór pliku `.env` na serwerze (bez sekretów) |
-| `deploy/deploy.sh` | wdrożenie awaryjne z komputera lokalnego przez ssh (build na serwerze; z blokadą, gdy coś trwa: `app/busy.py`) |
-| `deploy/ci-entry.sh`, `deploy/known_hosts` | wejście klucza CI na serwerze (`deploy vX.Y.Z`, `status`) i przypięty klucz hosta — [docs/ci-cd.md](ci-cd.md) |
-| `deploy/backup.sh`, `backup_snapshot.py`, `ref-clips-backup.service/.timer` | nocna kopia zapasowa |
-| `deploy/restore.md` | odtwarzanie z kopii |
+| `compose.yaml` | services `init`, `app`, `worker` (as in the local tests) |
+| `compose.prod.yaml` | **overlay** on `compose.yaml`: removes the application port from the host, adds `caddy`, log rotation |
+| `deploy/Caddyfile` | HTTPS, security headers, compression, `reverse_proxy` to the application |
+| `deploy/env.prod.example` | template of the `.env` file on the server (no secrets) |
+| `deploy/deploy.sh` | emergency deployment from the local computer via ssh (build on the server; with a lock when something is running: `app/busy.py`) |
+| `deploy/ci-entry.sh`, `deploy/known_hosts` | the entry point of the CI key on the server (`deploy vX.Y.Z`, `status`) and the pinned host key — [docs/ci-cd.md](ci-cd.md) |
+| `deploy/backup.sh`, `backup_snapshot.py`, `ref-clips-backup.service/.timer` | nightly backup |
+| `deploy/restore.md` | restoring from a backup |
 
-Nakładka zamiast osobnego pliku: usługi `init`/`app`/`worker` są zdefiniowane w jednym miejscu, więc test
-dymny (`scripts/docker-smoke.sh`) i produkcja nie rozjadą się. Cena: zawsze podajemy oba pliki
-(`-f compose.yaml -f compose.prod.yaml`) albo ustawiamy `COMPOSE_FILE=compose.yaml:compose.prod.yaml`
-(deploy.sh i backup.sh robią to same).
+An overlay instead of a separate file: the services `init`/`app`/`worker` are defined in one place, so the smoke test (`scripts/docker-smoke.sh`) and production do not drift apart. The price: we always give both files (`-f compose.yaml -f compose.prod.yaml`) or set `COMPOSE_FILE=compose.yaml:compose.prod.yaml` (deploy.sh and backup.sh do this themselves).
 
-Aplikacja **nie ma żadnego sekretu** (klucza podpisu itp.): sesje i zaproszenia to losowe tokeny
-w bazie, hasła są hashowane (argon2). W `.env` są tylko ustawienia, a hasło administratora wpisujesz
-interaktywnie. Wszystkie dane (baza, nagrania, klipy) są w wolumenie Dockera `ref-clips_dane`,
-certyfikaty Caddy w `ref-clips_caddy_data`.
+The application has **no secret** (no signing key etc.): sessions and invitations are random tokens in the database, and passwords are hashed (argon2). The `.env` holds only settings, and you enter the administrator password interactively. All data (database, recordings, clips) is in the Docker volume `ref-clips_dane`, and the Caddy certificates are in `ref-clips_caddy_data`.
 
-Uwaga o `ufw`: porty publikowane przez Dockera omijają reguły `ufw`. Tu publikuje je tylko Caddy
-(80, 443, 443/udp), a aplikacja nie ma portu na hoście — nie zmieniaj tego (np. nie dodawaj `ports:` do `app`).
+A note on `ufw`: ports published by Docker bypass the `ufw` rules. Here only Caddy publishes ports (80, 443, 443/udp), and the application has no port on the host — do not change this (e.g. do not add `ports:` to `app`).
 
-## Pierwsze wdrożenie
+## First deployment
 
-Na serwerze (jednorazowo, z `sudo`):
+On the server (one-off, with `sudo`):
 
 ```bash
 sudo install -d -o ubuntu -g ubuntu -m 755 /opt/ref-clips
 docker compose version     # użytkownik ubuntu musi móc uruchamiać docker (grupa docker) albo mieć sudo bez hasła
 ```
 
-Na komputerze lokalnym, w repozytorium (wszystko zacommitowane na gałęzi, którą wdrażasz):
+On the local computer, in the repository (everything committed on the branch you are deploying):
 
 ```bash
 deploy/deploy.sh            # domyślnie ubuntu@57.131.162.204, klucz ~/.ssh/ref_clips_deploy
 ```
 
-Przy pierwszym uruchomieniu skrypt wyśle pliki, po czym zatrzyma się z komunikatem o braku `.env` — to
-oczekiwane. Na serwerze:
+On the first run the script sends the files and then stops with a message about the missing `.env` — this is expected. On the server:
 
 ```bash
 cd /opt/ref-clips
@@ -66,20 +53,19 @@ cp deploy/env.prod.example .env && chmod 600 .env
 nano .env        # sprawdź REFCLIPS_SITE i REFCLIPS_PUBLIC_URL; limity dopasowane do dysku 38 GB
 ```
 
-Potem ponownie `deploy/deploy.sh` (lokalnie). Pierwsze budowanie obrazu trwa kilka minut, a Caddy potrzebuje
-chwili na certyfikat. Skrypt czeka, aż `app` będzie zdrowa, i sprawdza `https://57-131-162-204.sslip.io/login`.
+Then `deploy/deploy.sh` again (locally). The first image build takes several minutes, and Caddy needs a moment for the certificate. The script waits until `app` is healthy and checks `https://57-131-162-204.sslip.io/login`.
 
-**Konto administratora** (interaktywnie, hasło min. 10 znaków; `-t` potrzebne, by hasło nie było widoczne):
+**Administrator account** (interactively, the password at least 10 characters; `-t` is needed so the password is not visible):
 
 ```bash
 ssh -t -i ~/.ssh/ref_clips_deploy ubuntu@57.131.162.204 \
   'cd /opt/ref-clips && COMPOSE_FILE=compose.yaml:compose.prod.yaml docker compose run --rm app python -m app.create_admin'
 ```
 
-(albo na serwerze: `docker compose -f compose.yaml -f compose.prod.yaml run --rm app python -m app.create_admin`).
-Nie podawaj hasła w parametrze `--password`: trafiłoby do historii poleceń.
+(or on the server: `docker compose -f compose.yaml -f compose.prod.yaml run --rm app python -m app.create_admin`).
+Do not pass the password in the `--password` parameter: it would end up in the command history.
 
-**Kopie zapasowe** — włączenie timera (raz, na serwerze):
+**Backups** — enabling the timer (once, on the server):
 
 ```bash
 cd /opt/ref-clips
@@ -92,169 +78,119 @@ journalctl -u ref-clips-backup.service -n 20 --no-pager
 ls -la /var/backups/ref-clips/
 ```
 
-Po zmianie plików `.service`/`.timer` w repozytorium skopiuj je ponownie i wykonaj `daemon-reload`.
+After changing the `.service`/`.timer` files in the repository, copy them again and run `daemon-reload`.
 
-**Sprawdzenie końcowe:** otwórz `https://57-131-162-204.sslip.io`, zaloguj się, utwórz zaproszenie
-(link musi zaczynać się od `https://57-131-162-204.sslip.io`), wgraj krótkie wideo. Pomiar czasu konwersji
-2-godzinnego nagrania na tym VPS jest nadal do zrobienia (patrz `TODO.md`).
+**Final check:** open `https://57-131-162-204.sslip.io`, log in, create an invitation (the link must start with `https://57-131-162-204.sslip.io`), and upload a short video. Measuring the conversion time of a 2-hour recording on this VPS is still to be done (see `TODO.md`).
 
-## Kolejne wdrożenia
+## Subsequent deployments
 
-Normalnie: merge PR-a wydania na GitHubie ([docs/ci-cd.md](ci-cd.md)). Poniżej wdrożenie z komputera, gdy GitHub jest
-niedostępny albo trzeba wdrożyć kod spoza `main`. Jeśli w `.env` jest `REFCLIPS_IMAGE` z GHCR (zapisuje go wdrożenie
-z GitHuba), `deploy.sh` na czas wdrożenia wymusza `REFCLIPS_IMAGE=ref-clips:local` (obraz zbudowany na serwerze) i zapisuje
-to w `.env` tuż przed restartem, żeby `backup.sh` używał tego samego obrazu co działający stos.
+Normally: merge the release PR on GitHub ([docs/ci-cd.md](ci-cd.md)). Below is deployment from the computer, for when GitHub is unavailable or code from outside `main` has to be deployed. If `.env` has a `REFCLIPS_IMAGE` from GHCR (written by a deployment from GitHub), `deploy.sh` forces `REFCLIPS_IMAGE=ref-clips:local` (the image built on the server) for the duration of the deployment and writes this to `.env` just before the restart, so that `backup.sh` uses the same image as the running stack.
 
 ```bash
 git commit ...              # deploy.sh wdraża commit (HEAD), nie katalog roboczy; odmawia przy niezacommitowanych zmianach
 deploy/deploy.sh
 ```
 
-Skrypt: **najpierw sprawdza, czy coś trwa** (patrz niżej), potem wysyła `git archive HEAD` do `/opt/ref-clips`
-(usuwa pliki skasowane w repozytorium, **zostawia `.env`**; dane są w wolumenach, więc nie są ruszane), buduje obrazy,
-uruchamia `docker compose up -d --wait`, pokazuje status i usuwa nieużywane obrazy (`docker image prune -f`),
-a na końcu sprawdza `/login` i `/health`. Migracje bazy wykonuje usługa `init` przy starcie (nowe tabele i kolumny
-dochodzą same; wdrożenie bez migracji nie wymaga żadnych dodatkowych kroków).
-Podczas przebudowy aplikacja jest niedostępna przez kilkanaście sekund; trwające wgrywanie tus wznowi się samo, ale
-konwersja w toku zaczyna od początku (dla 2-godzinnego nagrania to ponad godzina straty), dlatego:
+The script **first checks whether anything is running** (see below), then sends `git archive HEAD` to `/opt/ref-clips` (it deletes files removed from the repository and **keeps `.env`**; the data is in volumes, so it is not touched), builds the images, runs `docker compose up -d --wait`, shows the status and removes unused images (`docker image prune -f`), and at the end checks `/login` and `/health`. Database migrations are run by the `init` service at start (new tables and columns come by themselves; a deployment without migrations requires no extra steps).
+During the rebuild the application is unavailable for a dozen seconds or so; an ongoing tus upload resumes by itself, but a conversion in progress starts from the beginning (for a 2-hour recording that is over an hour lost), therefore:
 
-**Blokada „coś trwa”.** Przed jakąkolwiek zmianą na serwerze skrypt uruchamia w działającym kontenerze `app`
-sprawdzenie `app/busy.py` (jego treść wysyła na wejście `python -`, więc działa też na obrazie sprzed dodania tego
-modułu). Za „trwające” uznaje: upload tus z aktywnością w ostatnich 10 minutach, zadanie w stanie `running`
-(konwersja, wycinanie klipu) oraz zadania czekające w kolejce. Jeśli coś trwa, wypisuje co (np. `konwersja nagrania #1
-(mecz.mp4) — 43%`, `upload IMG_2056.MOV — 1,6 GB/2,7 GB, ostatnia aktywność 2 min temu`) i kończy z kodem 3
-**bez podmiany plików i bez restartu** — stan katalogu na serwerze zgadza się wtedy z działającą wersją. Niedokończone
-uploady bez aktywności od ponad 10 minut nie blokują (wznowią się po wdrożeniu). Gdy stos nie działa (pierwsze
-wdrożenie, brak `.env`, kontener `app` zatrzymany), nic nie blokuje. Jeśli samo sprawdzenie się nie uda (np. błąd
-dockera), skrypt też się zatrzymuje, żeby nie wdrażać „na ślepo”.
+**The "something is running" lock.** Before any change on the server, the script runs the check `app/busy.py` in the running `app` container (its content is sent to the input of `python -`, so it also works on an image from before this module was added). It counts as "running": a tus upload with activity in the last 10 minutes, a job in the `running` state (conversion, clip cutting) and jobs waiting in the queue. If something is running, it lists what (e.g. `konwersja nagrania #1
+(mecz.mp4) — 43%`, `upload IMG_2056.MOV — 1,6 GB/2,7 GB, ostatnia aktywność 2 min temu`) and ends with code 3
+**without replacing files and without restarting** — the state of the directory on the server then matches the running version. Unfinished uploads with no activity for more than 10 minutes do not block (they resume after the deployment). When the stack is not running (first deployment, no `.env`, the `app` container stopped), nothing blocks. If the check itself fails (e.g. a Docker error), the script also stops, so as not to deploy "blind".
 
-| Opcja | Działanie |
+| Option | Action |
 |---|---|
-| (brak) | zajęte → komunikat i koniec, nic nie zmienione; ponów później |
-| `--wait` | czeka na koniec zajętości (sprawdza co 60 s, maks. 120 min: `REFCLIPS_DEPLOY_WAIT_INTERVAL`, `REFCLIPS_DEPLOY_WAIT_MINUTES`), potem wdraża |
-| `--force` lub `REFCLIPS_DEPLOY_FORCE=1` | wdraża mimo to, z ostrzeżeniem (przerwie konwersję i wgrywanie) |
+| (none) | busy → a message and an end, nothing changed; retry later |
+| `--wait` | waits for the end of the busy state (checks every 60 s, max 120 min: `REFCLIPS_DEPLOY_WAIT_INTERVAL`, `REFCLIPS_DEPLOY_WAIT_MINUTES`), then deploys |
+| `--force` or `REFCLIPS_DEPLOY_FORCE=1` | deploys anyway, with a warning (it interrupts the conversion and uploads) |
 
-Budowanie obrazu trwa minuty, więc tuż przed `up` sprawdzenie jest powtarzane na serwerze. Jeśli w międzyczasie ktoś
-zaczął wgrywać plik, skrypt kończy się (kod 3) z komunikatem, że pliki są już wysłane i obrazy zbudowane, ale stos
-działa dalej na poprzedniej wersji — wystarczy uruchomić `deploy/deploy.sh` ponownie, gdy będzie wolne (szybko, bo
-obrazy są w pamięci podręcznej). Ręczne sprawdzenie bez wdrażania:
+Building the image takes minutes, so right before `up` the check is repeated on the server. If in the meantime someone started uploading a file, the script ends (code 3) with a message that the files are already sent and the images built, but the stack keeps running the previous version — just run `deploy/deploy.sh` again when it is free (it is quick, because the images are in the cache). A manual check without deploying:
 `ssh ... 'cd /opt/ref-clips && COMPOSE_FILE=compose.yaml:compose.prod.yaml docker compose exec -T app python -m app.busy'`
-(kod wyjścia 0 = wolne, 1 = zajęte, 2 = błąd sprawdzania).
+(exit code 0 = free, 1 = busy, 2 = check error).
 
-Przed ryzykowną zmianą bazy: `sudo /opt/ref-clips/deploy/backup.sh`.
+Before a risky database change: `sudo /opt/ref-clips/deploy/backup.sh`.
 
-Inny serwer lub klucz: `deploy/deploy.sh -H user@host -i ~/.ssh/klucz -d /opt/ref-clips` albo zmienne
-`REFCLIPS_DEPLOY_HOST`, `REFCLIPS_DEPLOY_KEY`, `REFCLIPS_DEPLOY_DIR`, `REFCLIPS_DEPLOY_URL` (adres do końcowego
-sprawdzenia, puste = pomiń). Skrypt używa `StrictHostKeyChecking=accept-new`: pierwsze połączenie zapamiętuje klucz
-serwera, późniejsza zmiana klucza zatrzyma wdrożenie.
+Another server or key: `deploy/deploy.sh -H user@host -i ~/.ssh/klucz -d /opt/ref-clips`, or the variables `REFCLIPS_DEPLOY_HOST`, `REFCLIPS_DEPLOY_KEY`, `REFCLIPS_DEPLOY_DIR`, `REFCLIPS_DEPLOY_URL` (the address for the final check; empty = skip). The script uses `StrictHostKeyChecking=accept-new`: the first connection remembers the server's key, and a later change of the key stops the deployment.
 
-## Codzienna obsługa
+## Day-to-day operation
 
-Na serwerze, w `/opt/ref-clips` (jednorazowo `export COMPOSE_FILE=compose.yaml:compose.prod.yaml`):
+On the server, in `/opt/ref-clips` (once: `export COMPOSE_FILE=compose.yaml:compose.prod.yaml`):
 
-| Co | Polecenie |
+| What | Command |
 |---|---|
 | Status | `docker compose ps` |
-| Logi aplikacji / workera / Caddy | `docker compose logs -f --tail 100 app` (`worker`, `caddy`) |
+| Logs of the application / worker / Caddy | `docker compose logs -f --tail 100 app` (`worker`, `caddy`) |
 | Restart | `docker compose restart app worker` |
-| Wersja na serwerze | `cat .deploy-commit` (numer `vX.Y.Z` po wdrożeniu z GitHuba, hash commita po `deploy.sh`) |
-| Miejsce na dysku | `df -h /`, `docker system df`, panel admina → „Retencja i dysk” |
-| Zatrzymanie (dane zostają) | `docker compose stop` |
+| Version on the server | `cat .deploy-commit` (the number `vX.Y.Z` after a deployment from GitHub, the commit hash after `deploy.sh`) |
+| Disk space | `df -h /`, `docker system df`, admin panel → „Retencja i dysk” |
+| Stop (data is kept) | `docker compose stop` |
 
-Logi kontenerów rotują się same (5 plików po 20 MB na usługę). Dziennik dostępu Caddy (`docker compose logs caddy`)
-zawiera adresy żądań, ale token z linku zaproszenia jest w nim zastąpiony napisem `[ukryty]`
-(`/set-password/[ukryty]`; filtr w `deploy/Caddyfile` obejmuje adres żądania i nagłówek Referer), tak samo w dzienniku
-dostępu aplikacji (`app/logfilter.py`); ciasteczek i nagłówka Authorization Caddy nie zapisuje. Strona ustawiania
-hasła odpowiada z `Referrer-Policy: no-referrer` i `Cache-Control: no-store`.
-**Nie wykonuj `docker compose down -v`** — usuwa wolumin z danymi i certyfikatami.
+Container logs rotate by themselves (5 files of 20 MB per service). The Caddy access log (`docker compose logs caddy`) contains request addresses, but the token from an invitation link is replaced in it with `[ukryty]` (`/set-password/[ukryty]`; the filter in `deploy/Caddyfile` covers the request address and the Referer header), and the same in the application's access log (`app/logfilter.py`); Caddy does not record cookies or the Authorization header. The set-password page responds with `Referrer-Policy: no-referrer` and `Cache-Control: no-store`.
+**Do not run `docker compose down -v`** — it removes the volume with the data and the certificates.
 
 ## Monitoring (`/health`)
 
-`GET /health` (także `HEAD`) jest publiczny: bez logowania, bez ciasteczek, bez cache (`Cache-Control: no-store`),
-odpowiada w kilka milisekund i sprawdza trzy rzeczy:
+`GET /health` (also `HEAD`) is public: no login, no cookies, no cache (`Cache-Control: no-store`). It answers in a few milliseconds and checks three things:
 
-| Sprawdzenie | Zdrowe, gdy | Stany w odpowiedzi |
+| Check | Healthy when | States in the response |
 |---|---|---|
-| `db` | proste zapytanie do bazy się udaje | `ok`, `error` |
-| `worker` | worker odnowił znacznik życia w ciągu ostatnich 3 minut (`settings.worker_heartbeat`, zapis co 30 s w osobnym wątku, więc bije także podczas godzinnej konwersji) | `ok`, `stale` (za stary), `missing` (nigdy nie zapisany), `unknown` (baza niedostępna) |
-| `disk` | wolne miejsce na dysku danych (`statvfs`, bez przeglądania katalogów) jest co najmniej równe `REFCLIPS_DISK_SAFETY_GB` — poniżej tego aplikacja i tak odrzuca każdy upload | `ok`, `low`, `error` |
+| `db` | a simple query to the database succeeds | `ok`, `error` |
+| `worker` | the worker has renewed its liveness marker in the last 3 minutes (`settings.worker_heartbeat`, written every 30 s in a separate thread, so it beats also during an hour-long conversion) | `ok`, `stale` (too old), `missing` (never written), `unknown` (database unavailable) |
+| `disk` | free space on the data disk (`statvfs`, without browsing directories) is at least `REFCLIPS_DISK_SAFETY_GB` — below this the application rejects every upload anyway | `ok`, `low`, `error` |
 
-Odpowiedź: `200 {"status":"ok"}` albo `503 {"status":"error","checks":{"db":"ok","worker":"stale","disk":"ok"}}` — wyłącznie
-nazwy i stany, bez ścieżek, rozmiarów, wersji ani treści wyjątków (szczegóły są w logach: `docker compose logs app worker`).
-Próby można zmienić w `.env`: `REFCLIPS_HEALTH_WORKER_STALE_SECONDS` (domyślnie 180), `REFCLIPS_HEALTH_DISK_MIN_GB`.
+The response is `200 {"status":"ok"}` or `503 {"status":"error","checks":{"db":"ok","worker":"stale","disk":"ok"}}` — only names and states, with no paths, sizes, versions or exception contents (the details are in the logs: `docker compose logs app worker`).
+The thresholds can be changed in `.env`: `REFCLIPS_HEALTH_WORKER_STALE_SECONDS` (default 180), `REFCLIPS_HEALTH_DISK_MIN_GB`.
 
-**Zewnętrzny ping** (np. UptimeRobot, plan darmowy): monitor HTTP(s) na `https://57-131-162-204.sslip.io/health`, interwał
-5 min, alert e-mail przy kodzie innym niż 200 (sprawdzanie słowa kluczowego `"ok"` nie jest potrzebne). Przy 503 odczytaj
-które sprawdzenie nie przechodzi: `curl -s https://57-131-162-204.sslip.io/health`.
+**External ping** (e.g. UptimeRobot, free plan): an HTTP(S) monitor on `https://57-131-162-204.sslip.io/health`, interval 5 min, an e-mail alert for a code other than 200 (checking the keyword `"ok"` is not needed). On a 503, read which check fails: `curl -s https://57-131-162-204.sslip.io/health`.
 
-**Healthchecki Dockera.** `app` zostaje na `/login` — tylko „czy serwer odpowiada”. Celowo nie `/health`: 503 z powodu
-workera albo pełnego dysku nie jest awarią serwera WWW i restart aplikacji niczego by nie naprawił, a zablokowałby
-`up --wait` (wdrożenie) i start Caddy (`depends_on`). `worker` ma własny healthcheck (`python -m app.health worker`:
-znacznik życia młodszy niż 3 minuty); `docker compose ps` pokaże `unhealthy`, ale Docker sam go nie zrestartuje —
-`docker compose restart worker`. Znacznik bije wątek, nie pętla zadań, więc wiszący (zablokowany) ffmpeg go nie
-przeterminuje; takie zadanie widać w panelu jako konwersję bez postępu.
+**Docker healthchecks.** `app` stays on `/login` — it only answers "does the web server respond". Deliberately not `/health`: a 503 caused by the worker or a full disk is not a web server failure, restarting the application would fix nothing, and it would block `up --wait` (deployment) and the start of Caddy (`depends_on`). `worker` has its own healthcheck (`python -m app.health worker`: a liveness marker younger than 3 minutes); `docker compose ps` will show `unhealthy`, but Docker does not restart it by itself — use `docker compose restart worker`. The marker is beaten by a thread, not by the job loop, so a hung (blocked) ffmpeg does not let it expire; such a job is visible in the panel as a conversion without progress.
 
-## Linki do klipów bez konta (`/s/<kod>`)
+## Links to clips without an account (`/s/<kod>`)
 
-Pierwsza funkcja dostępna bez logowania: osoba z linkiem ogląda i pobiera klipy. Domyślnie pokazujemy jak najmniej.
+The first feature available without logging in: a person with the link can view and download clips. By default we show as little as possible.
 
-- **Co widać publicznie:** wideo, liga (`Match.level`) i kategoria decyzji (`Clip.category_label`). Nie ma nazwisk
-  sędziów, drużyn, daty i godziny meczu, opisów, ocen, komentarzy, nawigacji ani nazwy użytkownika, który udostępnił
-  (także w nazwach plików i w ZIP-ie). **Uwaga:** tekst wpisany ręcznie jako kategoria „własna” oraz liga są wolnym
-  tekstem i też są publiczne; przy tworzeniu linku strona pokazuje, co zobaczy odbiorca.
-- **Kod poza logami:** kod (256 bitów losowości) jest tylko w adresie. Filtr dziennika Caddy (`deploy/Caddyfile`, adres
-  żądania i Referer) oraz dziennika aplikacji (`app/logfilter.py`) zamienia go na `/s/[ukryty]`, reszta ścieżki zostaje.
-  W bazie jest wyłącznie skrót SHA-256. Zmiana `Caddyfile` wymaga restartu Caddy: `deploy/deploy.sh` robi to sam.
-  Sprawdzenie po wdrożeniu: `docker compose logs caddy | grep '"/s/'` nie może pokazać kodu.
-- **Nagłówki:** na `/s/*` aplikacja ustawia `X-Robots-Tag: noindex, nofollow`, `Referrer-Policy: no-referrer`,
-  `Cache-Control: no-store` (plik wideo: `private, no-store`, Range działa). Caddy nie nadpisuje `Referrer-Policy` na tej ścieżce.
-- **Ważność i unieważnianie:** 1, 7 albo 30 dni, bez linków bezterminowych; unieważnia twórca albo administrator.
-  Unieważnienie nie cofa plików już pobranych. Wygasłe i unieważnione linki zostają w bazie (bez czyszczenia).
-- **ZIP:** budowany w `DATA_DIR/tmp`, usuwany po wysłaniu; najwyżej `SHARE_ZIP_MAX_PARALLEL` (2) naraz, kolejne dostają
-  503, tak samo przy braku wolnego miejsca. Pozostałości po awarii sprząta worker (pliki `.zip` w `tmp/` starsze niż godzina).
-- **Przy pierwszym wdrożeniu tej funkcji:** migracja `mvp0005` wykonuje się sama (usługa `init`). Klipy wycięte wcześniej mogą
-  mieć metadane pliku źródłowego (tytuł, lokalizacja GPS, data nagrania); nowe już ich nie mają. Jednorazowo wyczyść stare
-  (bez przekodowania, idempotentne):
+- **What is visible publicly:** the video, the league (`Match.level`) and the decision category (`Clip.category_label`). There are no referees' surnames, teams, the date and time of the match, descriptions, ratings, comments, navigation or the name of the user who shared it (also in file names and in the ZIP). **Caution:** text typed by hand as the „własna” (custom) category and the league are free text and are public too; when creating a link, the page shows what the recipient will see.
+- **Code outside the logs:** the code (256 bits of randomness) is only in the address. The Caddy log filter (`deploy/Caddyfile`, request address and Referer) and the application log (`app/logfilter.py`) replace it with `/s/[ukryty]`; the rest of the path stays. The database holds only a SHA-256 hash. A change to `Caddyfile` requires restarting Caddy: `deploy/deploy.sh` does this itself. A check after deployment: `docker compose logs caddy | grep '"/s/'` must not show the code.
+- **Headers:** on `/s/*` the application sets `X-Robots-Tag: noindex, nofollow`, `Referrer-Policy: no-referrer`, `Cache-Control: no-store` (the video file: `private, no-store`, Range works). Caddy does not override `Referrer-Policy` on this path.
+- **Validity and revoking:** 1, 7 or 30 days, no open-ended links; revoked by the creator or the administrator. Revoking does not undo files already downloaded. Expired and revoked links stay in the database (no cleanup).
+- **ZIP:** built in `DATA_DIR/tmp`, deleted after sending; at most `SHARE_ZIP_MAX_PARALLEL` (2) at once, the others get a 503, as does a request when there is no free space. Leftovers after a crash are cleaned by the worker (`.zip` files in `tmp/` older than an hour).
+- **At the first deployment of this feature:** migration `mvp0005` runs by itself (the `init` service). Clips cut earlier may carry metadata of the source file (title, GPS location, recording date); new ones no longer do. Clear the old ones once (without re-encoding, idempotent):
   `COMPOSE_FILE=compose.yaml:compose.prod.yaml docker compose exec -T app python -m app.strip_metadata`.
-- **Podgląd przez komunikatory:** roboty podglądu linków (np. Messenger) mogą otworzyć stronę i zwiększyć licznik wejść.
+- **Preview by messengers:** link preview bots (e.g. Messenger) may open the page and increase the visit counter.
 
-## Kopie zapasowe
+## Backups
 
-`deploy/backup.sh` (timer: codziennie ok. 03:30 UTC) tworzy migawkę `/var/backups/ref-clips/RRRR-MM-DD`:
+`deploy/backup.sh` (timer: daily at approx. 03:30 UTC) creates a snapshot `/var/backups/ref-clips/RRRR-MM-DD`:
 
-- `ref-clips.db` — baza przez API kopii zapasowej SQLite (spójna przy działającej aplikacji), sprawdzona `integrity_check`,
-- `clips/` — klipy; niezmienione pliki są twardymi dowiązaniami do poprzedniej migawki, więc dzień kosztuje tylko nowe klipy,
-- `INFO.txt` — podsumowanie.
+- `ref-clips.db` — the database via the SQLite backup API (consistent while the application is running), checked with `integrity_check`,
+- `clips/` — the clips; unchanged files are hard links to the previous snapshot, so a day costs only the new clips,
+- `INFO.txt` — a summary.
 
-Pełne nagrania (wersje robocze), oryginały i niedokończone uploady **nie** są kopiowane — są tymczasowe (retencja).
-Zostaje 14 ostatnich migawek. Praca idzie w jednorazowym kontenerze aplikacji, więc na hoście nie trzeba `sqlite3` ani `rsync`.
-Katalog kopii ma uprawnienia 700 (w klipach jest wizerunek zawodników, w tym niepełnoletnich).
+Full recordings (proxies), originals and unfinished uploads are **not** copied — they are temporary (retention).
+The last 14 snapshots are kept. The work runs in a one-off container of the application, so no `sqlite3` or `rsync` is needed on the host.
+The backup directory has permissions 700 (the clips show images of players, including minors).
 
-**Ważne:** kopia leży na tym samym dysku co dane, więc chroni przed pomyłką i uszkodzeniem bazy, ale **nie** przed
-utratą serwera. Kopia poza serwerem jest w `TODO.md` (OVH Object Storage lub Hetzner Storage Box + rclone).
-Do czasu jej wdrożenia warto okresowo pobierać najnowszą migawkę na swój komputer, np.:
+**Important:** the backup is on the same disk as the data, so it protects against mistakes and database corruption, but **not** against loss of the server. An off-server backup is in `TODO.md` (OVH Object Storage or a Hetzner Storage Box + rclone). Until it is set up, it is worth periodically downloading the latest snapshot to your computer, e.g.:
 `ssh -i ~/.ssh/ref_clips_deploy ubuntu@57.131.162.204 'sudo tar -C /var/backups/ref-clips -cf - "$(sudo ls /var/backups/ref-clips | tail -1)"' > ref-clips-kopia.tar`.
 
-Miejsce: 38 GB dysku to mało na obrazy Dockera (ok. 2 GB), kopie i nagrania. Obserwuj `df -h /`; limity wgrywania w `.env`
-(`REFCLIPS_UPLOAD_MAX_GB`, `REFCLIPS_DISK_SAFETY_GB`) chronią przed zapełnieniem dysku uploadem, ale nie przed kopiami.
+Space: 38 GB of disk is little for Docker images (approx. 2 GB), backups and recordings. Watch `df -h /`; the upload limits in `.env` (`REFCLIPS_UPLOAD_MAX_GB`, `REFCLIPS_DISK_SAFETY_GB`) protect against filling the disk with an upload, but not against the backups.
 
-## Odtwarzanie z kopii
+## Restoring from a backup
 
-Patrz [deploy/restore.md](../deploy/restore.md). Zalecane jest próbne odtworzenie raz na kwartał (na osobnym stosie Compose).
+See [deploy/restore.md](../deploy/restore.md). A test restore once a quarter (on a separate Compose stack) is recommended.
 
-## Zmiana adresu na własną domenę
+## Changing the address to your own domain
 
-1. U rejestratora ustaw rekord `A` (i ewentualnie `AAAA`) domeny, np. `klipy.example.pl`, na `57.131.162.204`. Poczekaj, aż `dig +short klipy.example.pl` pokaże ten adres.
-2. W `/opt/ref-clips/.env` zmień:
-   `REFCLIPS_SITE=klipy.example.pl` i `REFCLIPS_PUBLIC_URL=https://klipy.example.pl`.
-3. `docker compose -f compose.yaml -f compose.prod.yaml up -d` (Caddy wystawi nowy certyfikat; porty 80/443 muszą być osiągalne z internetu).
-4. Lokalnie ustaw `REFCLIPS_DEPLOY_URL=https://klipy.example.pl` (deploy.sh sprawdza ten adres).
-5. Zaproszenia wysłane wcześniej mają stary adres w treści linku; wystaw je ponownie. Stare ciasteczka sesji
-   dotyczą starej nazwy hosta — użytkownicy zalogują się ponownie.
+1. At the registrar, set an `A` record (and possibly `AAAA`) for the domain, e.g. `klipy.example.pl`, to `57.131.162.204`. Wait until `dig +short klipy.example.pl` shows this address.
+2. In `/opt/ref-clips/.env` change:
+   `REFCLIPS_SITE=klipy.example.pl` and `REFCLIPS_PUBLIC_URL=https://klipy.example.pl`.
+3. `docker compose -f compose.yaml -f compose.prod.yaml up -d` (Caddy will issue a new certificate; ports 80/443 must be reachable from the internet).
+4. Locally, set `REFCLIPS_DEPLOY_URL=https://klipy.example.pl` (deploy.sh checks this address).
+5. Invitations sent earlier have the old address in the link; issue them again. Old session cookies refer to the old host name — users will have to log in again.
 
-## Odebranie dostępu kluczowi `claude-deploy-ref-clips`
+## Revoking the access of the key `claude-deploy-ref-clips`
 
-Klucz jest w `~ubuntu/.ssh/authorized_keys` (komentarz `claude-deploy-ref-clips`). Na serwerze, po zalogowaniu własnym kluczem:
+The key is in `~ubuntu/.ssh/authorized_keys` (comment `claude-deploy-ref-clips`). On the server, after logging in with your own key:
 
 ```bash
 cp ~/.ssh/authorized_keys ~/.ssh/authorized_keys.bak
@@ -262,22 +198,15 @@ sed -i '/claude-deploy-ref-clips/d' ~/.ssh/authorized_keys
 grep -c claude-deploy-ref-clips ~/.ssh/authorized_keys     # ma być 0
 ```
 
-Sprawdź z komputera, na którym jest ten klucz, że `ssh -i ~/.ssh/ref_clips_deploy -o IdentitiesOnly=yes ubuntu@57.131.162.204 true`
-kończy się odmową, a potem usuń `authorized_keys.bak` i lokalny plik klucza (`~/.ssh/ref_clips_deploy*`).
-Jeśli klucz miał wpis w `sudoers` lub inny sposób dostępu, usuń go także (`sudo grep -r claude /etc/sudoers /etc/sudoers.d`).
+Check from the computer that has this key that `ssh -i ~/.ssh/ref_clips_deploy -o IdentitiesOnly=yes ubuntu@57.131.162.204 true` ends with a refusal, and then delete `authorized_keys.bak` and the local key file (`~/.ssh/ref_clips_deploy*`).
+If the key had an entry in `sudoers` or some other way of access, remove it too (`sudo grep -r claude /etc/sudoers /etc/sudoers.d`).
 
-## Rozwiązywanie problemów
+## Troubleshooting
 
-- **Brak certyfikatu / błąd TLS po pierwszym starcie:** `docker compose logs caddy`. Adres musi wskazywać na ten serwer, a porty 80 i 443
-  muszą być osiągalne (ufw, firewall OVH). `sslip.io` to wspólna domena wielu osób i Let's Encrypt potrafi zwrócić limit zapytań —
-  Caddy próbuje wtedy automatycznie innego wystawcy (ZeroSSL); gdyby się nie udało, użyj własnej domeny.
-- **`deploy.sh`: „brak pliku .env”:** patrz „Pierwsze wdrożenie”. **„permission denied” przy docker:** dodaj użytkownika do grupy `docker` albo skonfiguruj `sudo` bez hasła.
-- **Wgrywanie dużych plików się zrywa:** Caddy nie ma limitu czasu ciała żądania, a kawałek tus ma 50 MB (limit w Caddy to 64 MB); sprawdź
-  `docker compose logs app caddy` i wolne miejsce na dysku.
-- **`deploy.sh` kończy z kodem 3 („na serwerze coś trwa”):** to blokada ochronna, nic nie zostało zmienione. Poczekaj,
-  użyj `--wait` albo `--force` (patrz „Kolejne wdrożenia”). Jeśli blokuje „konwersja nagrania #N — 0%” od wielu godzin,
-  a `docker compose ps` pokazuje worker `unhealthy`: `docker compose restart worker` (zadania wracają do kolejki).
-- **`/health` zwraca 503:** `curl -s .../health` pokazuje, które sprawdzenie. `worker: stale/missing` — `docker compose
-  logs --tail 50 worker`, `docker compose restart worker`; `disk: low` — `df -h /`, panel admina → „Retencja i dysk”.
-- **Zaproszenie ma adres `http://...`:** brak `REFCLIPS_PUBLIC_URL` w `.env`.
-- **Limit prób logowania blokuje wszystkich naraz:** `REFCLIPS_TRUST_PROXY=1` musi być ustawione, inaczej każdy użytkownik ma adres kontenera Caddy.
+- **No certificate / TLS error after the first start:** `docker compose logs caddy`. The address must point to this server, and ports 80 and 443 must be reachable (ufw, the OVH firewall). `sslip.io` is a shared domain of many people and Let's Encrypt may return a rate limit — Caddy then tries another issuer automatically (ZeroSSL); if that fails too, use your own domain.
+- **`deploy.sh`: „brak pliku .env”:** see "First deployment". **"permission denied" with docker:** add the user to the `docker` group or set up `sudo` without a password.
+- **Large uploads break off:** Caddy has no time limit for the request body, and a tus chunk is 50 MB (the Caddy limit is 64 MB); check `docker compose logs app caddy` and the free disk space.
+- **`deploy.sh` ends with code 3 („na serwerze coś trwa”):** this is a protective lock, nothing has changed. Wait, or use `--wait` or `--force` (see "Subsequent deployments"). If „konwersja nagrania #N — 0%” blocks for many hours and `docker compose ps` shows the worker as `unhealthy`: `docker compose restart worker` (the jobs return to the queue).
+- **`/health` returns 503:** `curl -s .../health` shows which check fails. `worker: stale/missing` — `docker compose logs --tail 50 worker`, then `docker compose restart worker`; `disk: low` — `df -h /`, admin panel → „Retencja i dysk”.
+- **The invitation has an `http://...` address:** there is no `REFCLIPS_PUBLIC_URL` in `.env`.
+- **The login attempt limit blocks everyone at once:** `REFCLIPS_TRUST_PROXY=1` must be set, otherwise every user has the address of the Caddy container.

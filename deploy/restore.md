@@ -1,10 +1,10 @@
-# Odtwarzanie ref-clips z kopii zapasowej
+# Restoring ref-clips from a backup
 
-Kopie leżą w `/var/backups/ref-clips/RRRR-MM-DD` (baza `ref-clips.db` i katalog `clips/`; patrz `docs/wdrozenie.md`).
-Odtwarzamy na serwerze, w `/opt/ref-clips`. **Pełnych nagrań nie ma w kopii** — po odtworzeniu na nowym serwerze
-klipy i opisy są, a nagrań do ponownego oglądania trzeba wgrać od nowa (retencja i tak je usuwa).
+Backups are in `/var/backups/ref-clips/RRRR-MM-DD` (the database `ref-clips.db` and the `clips/` directory; see `docs/wdrozenie.md`).
+Restore on the server, in `/opt/ref-clips`. **Full recordings are not in the backup** — after restoring on a new server
+the clips and descriptions are there, but recordings for re-watching must be uploaded again (retention deletes them anyway).
 
-## 1. Wybór migawki i sprawdzenie
+## 1. Choosing a snapshot and checking it
 
 ```bash
 cd /opt/ref-clips
@@ -14,7 +14,7 @@ SNAP=/var/backups/ref-clips/2026-11-05              # wybrany dzień
 sudo cat "$SNAP/INFO.txt"
 ```
 
-## 2. Odtworzenie na tym samym serwerze
+## 2. Restoring on the same server
 
 ```bash
 docker compose stop app worker                      # Caddy zostaje, pokaże błąd 502 do końca
@@ -32,23 +32,23 @@ docker compose run --rm --no-deps --user root -v "$SNAP:/backup:ro" app sh -c '
 docker compose up -d --wait                         # init zastosuje migracje, jeśli kopia jest starsza od kodu
 ```
 
-Zaloguj się i sprawdź listę meczów i odtwarzanie klipu. Gdy wszystko gra, zwolnij miejsce:
+Log in and check the match list and clip playback. When everything works, free the space:
 
 ```bash
 docker compose run --rm --no-deps --user root app sh -c 'rm -rf /data/przed-odtworzeniem.db /data/clips.przed-odtworzeniem'
 ```
 
-Jeśli odtworzenie się nie udało, wróć do stanu sprzed (`przed-odtworzeniem.db`, `clips.przed-odtworzeniem`) analogicznym `mv`.
+If the restore failed, go back to the state before (`przed-odtworzeniem.db`, `clips.przed-odtworzeniem`) with the analogous `mv`.
 
-## 3. Odtworzenie na nowym serwerze
+## 3. Restoring on a new server
 
-1. Przygotuj serwer i wdróż aplikację według `docs/wdrozenie.md` (bez zakładania administratora).
-2. Skopiuj migawkę na serwer, np. `scp -r` do `/var/backups/ref-clips/RRRR-MM-DD` (uprawnienia katalogu bez zmian, własność roota).
-3. Wykonaj krok 2. Konta, role, oceny i komentarze wracają razem z bazą, więc administratora nie trzeba zakładać.
-   Jeśli adres się zmienił, ustaw nowy w `.env` (`REFCLIPS_SITE`, `REFCLIPS_PUBLIC_URL`).
+1. Prepare the server and deploy the application according to `docs/wdrozenie.md` (without creating an administrator).
+2. Copy the snapshot to the server, e.g. `scp -r` to `/var/backups/ref-clips/RRRR-MM-DD` (directory permissions unchanged, owned by root).
+3. Perform step 2. Accounts, roles, ratings and comments come back together with the database, so there is no need to create an administrator.
+   If the address has changed, set the new one in `.env` (`REFCLIPS_SITE`, `REFCLIPS_PUBLIC_URL`).
 
-## 4. Próbne odtworzenie (raz na kwartał)
+## 4. Test restore (once a quarter)
 
-Na osobnym stosie, żeby nie dotykać produkcji: zrób kopię repozytorium w innym katalogu, uruchom z innym projektem
-(`COMPOSE_PROJECT_NAME=ref-clips-test`, inne porty `REFCLIPS_HTTP_PORT`/`REFCLIPS_HTTPS_PORT`, `REFCLIPS_SITE=localhost`),
-wykonaj krok 2 i sprawdź logowanie oraz odtwarzanie klipu. Na końcu `docker compose down -v` **tego** projektu.
+On a separate stack, so as not to touch production: make a copy of the repository in another directory, run it with another project
+(`COMPOSE_PROJECT_NAME=ref-clips-test`, other ports `REFCLIPS_HTTP_PORT`/`REFCLIPS_HTTPS_PORT`, `REFCLIPS_SITE=localhost`),
+perform step 2 and check login and clip playback. At the end run `docker compose down -v` for **this** project.

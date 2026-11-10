@@ -1,172 +1,173 @@
-# ref-clips: katalog funkcjonalności (MVP)
+# ref-clips: feature catalogue (MVP)
 
-> Wersja robocza 0.1, 2026-10-29. Dokument służy do zaprojektowania MVP od nowa: każdą funkcję możemy zostawić, zmienić albo wyrzucić.
-> Kolumna **Stan** opisuje, co już działa w obecnym prototypie (etap 1). Nie przesądza o tym, co znajdzie się w MVP.
+> Draft version 0.1, 2026-10-29. This document is used to design the MVP from scratch: each feature can be kept, changed or dropped.
+> The **Status** column describes what already works in the current prototype (stage 1). It does not decide what goes into the MVP.
 
-## 1. Cel produktu
+## 1. Product purpose
 
-Narzędzie dla sędziów koszykówki i szkoleniowców do **analizy decyzji sędziowskich na nagraniach meczów**:
-- szybkie oznaczanie sytuacji na nagraniu (z gwizdkiem i bez),
-- automatyczne wycinanie klipów wokół tych sytuacji,
-- opis, ocena i dyskusja nad klipem,
-- docelowo wspólna biblioteka klipów szkoleniowych dla grupy sędziowskiej.
+A tool for basketball referees and coaches for **analysing referee decisions in match recordings**:
+- quick marking of situations in the recording (with and without a whistle),
+- automatic cutting of clips around those situations,
+- description, rating and discussion of a clip,
+- eventually a shared library of training clips for the referee group.
 
-**Czego produkt nie robi:** nie ocenia decyzji sam. Automatyka może co najwyżej *podpowiadać* momenty (np. gwizdek), decyzję zawsze ocenia człowiek.
+**What the product does not do:** it does not judge decisions by itself. Automation may at most *suggest* moments (e.g. a whistle); a human always rates the decision.
 
-## 2. Użytkownicy i role
+## 2. Users and roles
 
-| Rola | Kto to | Co robi |
+| Role | Who it is | What it does |
 |---|---|---|
-| **Sędzia** | członek grupy szkoleniowej | wgrywa mecze, oznacza i opisuje swoje sytuacje, odpowiada na uwagi, ogląda bibliotekę |
-| **Szkoleniowiec** | obserwator / instruktor | wskazuje sytuacje do opisania, ocenia, komentuje, publikuje klipy do biblioteki |
-| **Admin** | prowadzący grupę | zarządza kontami, słownikami (tagi, poziomy rozgrywek), ustawieniami |
+| **Referee** | member of a training group | uploads matches, marks and describes their own situations, responds to comments, browses the library |
+| **Coach** | observer / instructor | points out situations to describe, rates, comments, publishes clips to the library |
+| **Admin** | group leader | manages accounts, dictionaries (tags, league levels), settings |
 
-Funkcje sędziowskie w obsadzie meczu: **CC** (pierwszy sędzia), **U1** (drugi), **U2** (opcjonalny trzeci).
+Referee functions in a match crew: **CC** (first referee), **U1** (second), **U2** (optional third).
 
-## 3. Słownik pojęć
+## 3. Glossary
 
-- **Mecz:** data, drużyny (nazwa + kolor stroju), poziom rozgrywek, obsada (CC/U1/U2).
-- **Nagranie:** plik wideo przypisany do meczu. Mecz może mieć kilka nagrań, np. osobne kwarty albo różne kamery.
-- **Wersja robocza:** kopia nagrania przekonwertowana do formatu wygodnego w przeglądarce (H.264/AAC MP4, max 720p, klatka kluczowa co 1 s). Oryginał zostaje bez zmian.
-- **Znacznik okresu:** moment w nagraniu, w którym zaczyna się Q1–Q4 lub dogrywka. Z tych znaczników liczy się kwarta każdej decyzji, bez odczytu zegara z obrazu.
-- **Decyzja (klip):** sytuacja w konkretnym momencie nagrania. Ma sędziego, tagi, opis, ocenę i plik klipu (domyślnie ±10 s).
-- **Notatka:** linia tekstu w formacie `czas sędzia opis`, np. `2:54 Filip PTS`, z której powstaje decyzja.
-- **Tag:** kategoria sytuacji (PTS, blok/szarża, kroki, aut, brak gwizdka…) z aliasami w słowniku.
-- **Ocena:** poprawna / błędna / wątpliwa / do omówienia.
+- **Match:** date, teams (name + kit colour), league level, crew (CC/U1/U2).
+- **Recording:** a video file assigned to a match. A match may have several recordings, e.g. separate quarters or different cameras.
+- **Proxy:** a copy of the recording converted to a format that is convenient in the browser (H.264/AAC MP4, max 720p, a keyframe every 1 s). The original stays unchanged.
+- **Period marker:** the moment in the recording where Q1–Q4 or overtime starts. The quarter of each decision is calculated from these markers, without reading the clock from the image.
+- **Decision (clip):** a situation at a specific moment of the recording. It has a referee, tags, a description, a rating and a clip file (default ±10 s).
+- **Note:** a line of text in the format `time referee description`, e.g. `2:54 Filip PTS`, from which a decision is created.
+- **Tag:** a category of situation (PTS, block/charge, travel, out of bounds, no whistle…) with aliases in the dictionary.
+- **Rating:** correct / incorrect / doubtful / to be discussed.
 
-## 4. Funkcjonalności
+## 4. Features
 
-Legenda stanu: ✅ jest w prototypie · 🔧 jest, ale do zmiany · ⬜ brak.
-Priorytet: **M** = musi być w MVP · **S** = warto mieć · **P** = później (poza MVP). Kolumnę priorytetu uzupełniamy razem.
+Status legend: ✅ is in the prototype · 🔧 is there, but needs changes · ⬜ missing.
+Priority: **M** = must be in the MVP · **S** = worth having · **P** = later (outside the MVP). The priority column is filled in together.
 
-### 4.1 Mecze
+### 4.1 Matches
 
-| ID | Funkcja | Stan | Priorytet |
+| ID | Feature | Status | Priority |
 |---|---|---|---|
-| M-01 | Utworzenie meczu: data, poziom, drużyny (nazwa + kolor) | ✅ | |
-| M-02 | Obsada meczu z funkcjami CC / U1 / U2, przypisanie domyślne według kolejności | 🔧 obecnie „R” i „U” | |
-| M-03 | Edycja i usunięcie meczu (z nagraniami i klipami) | ✅ | |
-| M-04 | Lista meczów na stronie głównej | ✅ | |
-| M-05 | Słownik sędziów (osoby wielokrotnie wybierane do obsad) | ✅ (tworzony automatycznie) | |
-| M-06 | Słownik poziomów rozgrywek (lista zamiast wolnego tekstu) | ⬜ | |
+| M-01 | Creating a match: date, level, teams (name + colour) | ✅ | |
+| M-02 | Crew of the match with functions CC / U1 / U2, default assignment by order | 🔧 currently „R” and „U” | |
+| M-03 | Editing and deleting a match (with its recordings and clips) | ✅ | |
+| M-04 | Match list on the home page | ✅ | |
+| M-05 | Dictionary of referees (people repeatedly chosen for crews) | ✅ (created automatically) | |
+| M-06 | Dictionary of league levels (a list instead of free text) | ⬜ | |
 
-### 4.2 Nagrania
+### 4.2 Recordings
 
-| ID | Funkcja | Stan | Priorytet |
+| ID | Feature | Status | Priority |
 |---|---|---|---|
-| N-01 | Wgranie pliku (także 2–6 GB) z paskiem postępu, zapis strumieniowy | ✅ (niesprawdzone na dużych plikach) | |
-| N-02 | Kilka nagrań w jednym meczu, z etykietą (np. „Q1–Q2”) i źródłem (Veo / telefon / YouTube / plik) | ✅ | |
-| N-03 | Automatyczna konwersja do wersji roboczej w tle, ze statusem i postępem | ✅ | |
-| N-04 | Ponowienie konwersji po błędzie | ✅ | |
-| N-05 | Wybór jakości wersji roboczej (720p / 1080p) albo cięcie klipów z oryginału | ⬜ | |
-| N-06 | Pobranie nagrania z linku YouTube | ⬜ | |
-| N-07 | Synchronizacja kilku nagrań tego samego meczu (np. kamera Veo + telefon) | ⬜ | |
+| N-01 | Uploading a file (also 2–6 GB) with a progress bar, streaming save | ✅ (not tested on large files) | |
+| N-02 | Several recordings in one match, with a label (e.g. „Q1–Q2”) and a source (Veo / phone / YouTube / file) | ✅ | |
+| N-03 | Automatic conversion to a proxy in the background, with status and progress | ✅ | |
+| N-04 | Retrying the conversion after an error | ✅ | |
+| N-05 | Choice of proxy quality (720p / 1080p) or cutting clips from the original | ⬜ | |
+| N-06 | Downloading a recording from a YouTube link | ⬜ | |
+| N-07 | Synchronising several recordings of the same match (e.g. a Veo camera + a phone) | ⬜ | |
 
-### 4.3 Odtwarzacz
+### 4.3 Player
 
-| ID | Funkcja | Stan | Priorytet |
+| ID | Feature | Status | Priority |
 |---|---|---|---|
-| O-01 | Odtwarzanie z przewijaniem (HTTP Range) | ✅ | |
-| O-02 | Skróty: spacja, ←/→ ±1 s, Shift ±5 s, `,`/`.` klatka po klatce | ✅ (niesprawdzone w przeglądarce) | |
-| O-03 | Tempo 0,25×–2× | ✅ | |
-| O-04 | `M` dodaje decyzję w bieżącym momencie (szybki wpis tekstem) | ✅ | |
-| O-05 | `Q` dodaje znacznik kolejnej kwarty, z możliwością edycji i usuwania | ✅ | |
-| O-06 | Oś czasu ze znacznikami kwart i decyzji (kliknięcie przenosi do momentu) | ⬜ | |
-| O-07 | Powiększenie fragmentu obrazu (zoom), np. przy dalekim ujęciu z Veo | ⬜ | |
+| O-01 | Playback with seeking (HTTP Range) | ✅ | |
+| O-02 | Shortcuts: space, ←/→ ±1 s, Shift ±5 s, `,`/`.` frame by frame | ✅ (not checked in the browser) | |
+| O-03 | Speed 0.25×–2× | ✅ | |
+| O-04 | `M` adds a decision at the current moment (quick text entry) | ✅ | |
+| O-05 | `Q` adds a marker for the next quarter, with the option to edit and delete | ✅ | |
+| O-06 | Timeline with markers for quarters and decisions (clicking moves to the moment) | ⬜ | |
+| O-07 | Zoom into part of the picture, e.g. for a distant shot from Veo | ⬜ | |
 
-### 4.4 Notatki i tworzenie decyzji
+### 4.4 Notes and creating decisions
 
-| ID | Funkcja | Stan | Priorytet |
+| ID | Feature | Status | Priority |
 |---|---|---|---|
-| D-01 | Wklejenie bloku notatek, w którym jedna linia to jedna decyzja | ✅ | |
-| D-02 | Czas w formatach `m:ss`, `h:mm:ss`, także `2.54` / `2,54` | ✅ | |
-| D-03 | Rozpoznanie sędziego z obsady (bez względu na wielkość liter i polskie znaki) | ✅ | |
-| D-04 | Rozpoznanie sędziego po funkcji (`CC`, `U1`, `U2`) i po zdrobnieniach / ksywkach | ⬜ | |
-| D-05 | Rozpoznanie tagów i drużyny z tekstu | ✅ | |
-| D-06 | Tabela podglądu z możliwością poprawy przed zapisem i ostrzeżeniami | ✅ | |
-| D-07 | „Wytnij wszystkie”: masowe wycięcie klipów ±10 s | ✅ | |
-| D-08 | Domyślne marginesy klipu ustawiane per użytkownik lub per tag | ⬜ | |
+| D-01 | Pasting a block of notes, where one line is one decision | ✅ | |
+| D-02 | Time in the formats `m:ss`, `h:mm:ss`, also `2.54` / `2,54` | ✅ | |
+| D-03 | Recognising a referee from the crew (regardless of letter case and Polish diacritics) | ✅ | |
+| D-04 | Recognising a referee by function (`CC`, `U1`, `U2`) and by diminutives / nicknames | ⬜ | |
+| D-05 | Recognising tags and the team from the text | ✅ | |
+| D-06 | Preview table with the option to correct before saving, and warnings | ✅ | |
+| D-07 | „Cut all”: mass cutting of clips ±10 s | ✅ | |
+| D-08 | Default clip margins set per user or per tag | ⬜ | |
 
-### 4.5 Klipy
+### 4.5 Clips
 
-| ID | Funkcja | Stan | Priorytet |
+| ID | Feature | Status | Priority |
 |---|---|---|---|
-| K-01 | Lista klipów z filtrami: mecz, sędzia, tag, ocena, kwarta | ✅ | |
-| K-02 | Strona klipu: odtwarzanie, edycja opisu, tagów, oceny | ✅ | |
-| K-03 | Korekta początku i końca klipu z automatycznym ponownym wycięciem | ✅ | |
-| K-04 | Pobranie klipu MP4 z czytelną nazwą (`kategoria-rozgrywek_nazwisko_decyzja.mp4`) | ✅ | |
-| K-05 | Eksport ZIP: wybrane klipy + `opisy.csv` | ✅ | |
-| K-06 | Usunięcie klipu | ✅ | |
-| K-07 | Playlista: zestaw klipów do omówienia (kolejność, tytuł) | ⬜ | |
-| K-08 | Link do jednego albo kilku klipów dla osób **bez konta** (`/s/<kod>`): oglądanie i pobranie (MP4 albo jeden ZIP), ważność 1/7/30 dni, unieważnianie, lista linków i liczba wejść przy klipie | ✅ | |
+| K-01 | Clip list with filters: match, referee, tag, rating, quarter | ✅ | |
+| K-02 | Clip page: playback, editing of the description, tags, rating | ✅ | |
+| K-03 | Correction of the clip start and end with automatic re-cutting | ✅ | |
+| K-04 | Downloading the clip as MP4 with a readable name (`kategoria-rozgrywek_nazwisko_decyzja.mp4`) | ✅ | |
+| K-05 | ZIP export: selected clips + `opisy.csv` | ✅ | |
+| K-06 | Deleting a clip | ✅ | |
+| K-07 | Playlist: a set of clips to discuss (order, title) | ⬜ | |
+| K-08 | Link to one or several clips for people **without an account** (`/s/<kod>`): viewing and downloading (MP4 or one ZIP), validity 1/7/30 days, revoking, list of links and visit count at the clip | ✅ | |
 
-**K-08, szczegóły.** Tworzą: administrator, szkoleniowiec i autor znacznika (`Clip.author_id`); zaznaczenie na liście
-klipów (`/clips`, zakładka meczu) albo przycisk na stronie klipu. Gdy w zaznaczeniu jest klip niedozwolony albo
-niewycięty, cały formularz zwraca błąd i nic się nie tworzy. W linku najwyżej 30 klipów. Unieważnia twórca linku albo
-administrator. Pełny adres widać **raz**, zaraz po utworzeniu (potem w bazie jest tylko skrót kodu). Strona publiczna
-pokazuje wyłącznie wideo, ligę i kategorię decyzji — bez nazwisk, drużyn, daty, opisów, ocen, komentarzy i nawigacji
-aplikacji; nazwa pliku to `liga_decyzja.mp4` (np. `III-liga_blok-szarza.mp4`), w ZIP-ie powtórzenia dostają `_2`, `_3`.
-Zalogowani nadal pobierają klipy z nazwiskiem sędziego. Odbiorca linku może go przesłać dalej, a unieważnienie nie cofa
-pobranych plików. Uwaga: tekst wpisany ręcznie jako kategoria „własna” oraz pole „liga” meczu są publiczne.
+**K-08, details.** Created by: the administrator, the coach and the marker's author (`Clip.author_id`); selection in the clip list
+(`/clips`, the match tab) or a button on the clip page. If the selection contains a clip that is not allowed or not cut, the whole
+form returns an error and nothing is created. A link holds at most 30 clips. Revoked by the link's creator or the administrator.
+The full address is visible **once**, right after creation (afterwards only a hash of the code is in the database). The public page
+shows only the video, the league and the decision category — without surnames, teams, date, descriptions, ratings, comments and
+app navigation; the file name is `liga_decyzja.mp4` (e.g. `III-liga_blok-szarza.mp4`), and in the ZIP repeats get `_2`, `_3`.
+Logged-in users still download clips with the referee's surname. The recipient of a link may pass it on, and revoking does not
+undo files that were already downloaded. Note: text typed manually as the „własna” (custom) category and the match's „liga” (league)
+field are public.
 
-### 4.6 Komentarze i ocena
+### 4.6 Comments and rating
 
-| ID | Funkcja | Stan | Priorytet |
+| ID | Feature | Status | Priority |
 |---|---|---|---|
-| C-01 | Komentarze do klipu z odpowiedziami (wątki) | ✅ | |
-| C-02 | Komentarz przypięty do sekundy klipu (kliknięcie przenosi do momentu) | ✅ | |
-| C-03 | Rysowanie na stopklatce (strzałki, linie, pozycje) przy komentarzu | ⬜ | |
-| C-04 | Ocena szkoleniowca odrębna od samooceny sędziego | ⬜ | |
-| C-05 | Odniesienie do przepisu / interpretacji FIBA przy klipie | ⬜ | |
-| C-06 | Arkusz oceny kwalifikatora: opisowa ocena obsady meczu (komentarz do każdego elementu dla każdego sędziego, ocena ogólna i rekomendacja, uwaga o parze), szkic i publikacja, wydruk do PDF; elementy edytowalne w panelu admina. Szczegóły: `docs/arkusz-kwalifikatora.md` | ✅ | |
+| C-01 | Clip comments with replies (threads) | ✅ | |
+| C-02 | A comment pinned to a second of the clip (clicking moves to the moment) | ✅ | |
+| C-03 | Drawing on a still frame (arrows, lines, positions) attached to a comment | ⬜ | |
+| C-04 | A coach's rating separate from the referee's self-assessment | ⬜ | |
+| C-05 | A reference to the FIBA rule / interpretation for a clip | ⬜ | |
+| C-06 | Qualifier assessment sheet: a descriptive assessment of the match crew (a comment on each item for each referee, overall assessment and recommendation, a note about the pair), draft and publication, printing to PDF; items editable in the admin panel. Details: `docs/arkusz-kwalifikatora.md` | ✅ | |
 
-### 4.7 Słowniki i ustawienia
+### 4.7 Dictionaries and settings
 
-| ID | Funkcja | Stan | Priorytet |
+| ID | Feature | Status | Priority |
 |---|---|---|---|
-| S-01 | Słownik tagów z aliasami, edytowalny | ✅ | |
-| S-02 | Znaczenie skrótów w słowniku (np. co dokładnie oznacza „PTS”) | ⬜ | |
+| S-01 | Tag dictionary with aliases, editable | ✅ | |
+| S-02 | Meaning of abbreviations in the dictionary (e.g. what exactly „PTS” means) | ⬜ | |
 
-### 4.8 Praca w grupie (etap 2)
+### 4.8 Group work (stage 2)
 
-| ID | Funkcja | Stan | Priorytet |
+| ID | Feature | Status | Priority |
 |---|---|---|---|
-| G-01 | Konta, logowanie, zaproszenia od admina | ⬜ (model danych gotowy) | |
-| G-02 | Role sędzia / szkoleniowiec / admin i uprawnienia | ⬜ | |
-| G-03 | Widoczność klipu: prywatny / grupa / biblioteka | ⬜ (pole w bazie jest) | |
-| G-04 | Zadania od szkoleniowca („opisz sytuację 3:17”) i lista zadań sędziego | ⬜ | |
-| G-05 | Powiadomienia w aplikacji (nowy komentarz, nowe zadanie) | ⬜ | |
-| G-06 | Biblioteka szkoleniowa: wyszukiwanie po tagach, ocena wzorcowa, opcja ukrycia nazwisk | ⬜ | |
+| G-01 | Accounts, login, invitations from the admin | ⬜ (data model ready) | |
+| G-02 | Roles referee / coach / admin and permissions | ⬜ | |
+| G-03 | Clip visibility: private / group / library | ⬜ (the field exists in the database) | |
+| G-04 | Tasks from the coach („describe the situation at 3:17”) and the referee's task list | ⬜ | |
+| G-05 | In-app notifications (new comment, new task) | ⬜ | |
+| G-06 | Training library: search by tags, model rating, option to hide surnames | ⬜ | |
 
-### 4.9 Wdrożenie i automatyzacja (etap 3)
+### 4.9 Deployment and automation (stage 3)
 
-| ID | Funkcja | Stan | Priorytet |
+| ID | Feature | Status | Priority |
 |---|---|---|---|
-| W-01 | Hosting na serwerze (Docker, Postgres, magazyn plików S3) | ⬜ | |
-| W-02 | API JSON obok stron, pod przyszły frontend lub aplikację mobilną | ⬜ | |
-| W-03 | Podpowiedzi gwizdka z audio (znaczniki na osi czasu) | ⬜ | |
-| W-04 | Odczyt zegara meczowego z obrazu (OCR), gdy jest widoczny | ⬜ | |
+| W-01 | Hosting on a server (Docker, Postgres, S3 file storage) | ⬜ | |
+| W-02 | A JSON API next to the pages, for a future frontend or mobile app | ⬜ | |
+| W-03 | Whistle suggestions from audio (markers on the timeline) | ⬜ | |
+| W-04 | Reading the match clock from the image (OCR) when it is visible | ⬜ | |
 
-## 5. Wymagania niefunkcjonalne
+## 5. Non-functional requirements
 
-- **Interfejs po polsku**, czytelny także dla osób nietechnicznych.
-- **Przeglądarki:** Chrome i Edge na Windowsie. Docelowo również telefon do oglądania i komentowania.
-- **Źródła wideo:** Veo, telefon (w tym HEVC/.mov z iPhone), YouTube.
-- **Skala (szacunek):** ~25 nagranych meczów na sędziego na sezon, 2–6 GB na mecz.
-- **Dane:** nagrania mogą pokazywać zawodników, w tym niepełnoletnich. Dostęp do nich musi być ograniczony do grupy (ważne przy etapie 2/3, RODO).
+- **Polish-language interface**, readable also for non-technical people.
+- **Browsers:** Chrome and Edge on Windows. Ultimately also a phone for viewing and commenting.
+- **Video sources:** Veo, phone (including HEVC/.mov from an iPhone), YouTube.
+- **Scale (estimate):** ~25 recorded matches per referee per season, 2–6 GB per match.
+- **Data:** recordings may show players, including minors. Access to them must be limited to the group (important in stages 2/3, GDPR).
 
-## 6. Decyzje architektoniczne (na teraz)
+## 6. Architectural decisions (for now)
 
-- Backend w Pythonie (FastAPI, SQLAlchemy, ffmpeg) zostaje na stałe.
-- Frontend: szablony + HTMX. Najbardziej interaktywne elementy (oś czasu, rysowanie) mogą powstać jako osobne komponenty (np. Svelte/React). Pełna aplikacja SPA dopiero przy potrzebie aplikacji mobilnej.
-- Przy etapie 2 dodajemy API JSON (W-02).
+- The Python backend (FastAPI, SQLAlchemy, ffmpeg) stays permanently.
+- Frontend: templates + HTMX. The most interactive elements (timeline, drawing) may be built as separate components (e.g. Svelte/React). A full SPA only when a mobile app is needed.
+- At stage 2 we add a JSON API (W-02).
 
-## 7. Otwarte pytania do MVP
+## 7. Open questions for the MVP
 
-1. **Zakres MVP:** czy MVP to wersja dla jednej osoby (etap 1), czy ma już zawierać pracę w grupie (G-01…G-04)?
-2. **Kto wgrywa nagrania:** każdy sędzia sam, czy np. tylko szkoleniowiec lub admin?
-3. **„PTS” i inne skróty:** jaka jest lista skrótów używanych w Waszej grupie? (do słownika S-01/S-02)
-4. **Ocena:** czy cztery stany (poprawna / błędna / wątpliwa / do omówienia) wystarczą? Czy potrzebna jest skala, kategoria błędu (np. pozycja, interpretacja, mechanika) albo podział na samoocenę i ocenę szkoleniowca (C-04)?
-5. **Jakość obrazu:** czy 720p wystarczy do oceny, czy potrzeba 1080p lub cięcia z oryginału (N-05)?
-6. **Marginesy klipu:** czy ±10 s zawsze pasuje, czy np. faul w akcji rzutowej potrzebuje więcej „przed”?
-7. **Telefon:** czy w MVP trzeba wygodnie oglądać i komentować klipy na telefonie?
+1. **Scope of the MVP:** is the MVP a version for one person (stage 1), or should it already include group work (G-01…G-04)?
+2. **Who uploads recordings:** each referee themselves, or e.g. only the coach or admin?
+3. **„PTS” and other abbreviations:** what is the list of abbreviations used in your group? (for the dictionary S-01/S-02)
+4. **Rating:** are four states (correct / incorrect / doubtful / to be discussed) enough? Is a scale, an error category (e.g. position, interpretation, mechanics) or a split into self-assessment and coach assessment (C-04) needed?
+5. **Image quality:** is 720p enough for assessment, or is 1080p or cutting from the original needed (N-05)?
+6. **Clip margins:** does ±10 s always fit, or does e.g. a foul in a shooting action need more "before"?
+7. **Phone:** does the MVP need comfortable viewing and commenting of clips on a phone?
