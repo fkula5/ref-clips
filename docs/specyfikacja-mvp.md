@@ -1,145 +1,145 @@
-# Narzędzie do wycinania klipów meczowych dla sędziów koszykówki
+# Tool for cutting match clips for basketball referees
 
-> Specyfikacja dla Claude Code. **Budujemy tylko MVP** (sekcja 1). Pozostałe sekcje opisują docelową wizję – traktuj je jako kontekst, nie jako zakres pracy.
-> Wersja 0.3, 2026-11-01. Uwzględnia decyzje z przeglądu specyfikacji.
+> Specification for Claude Code. **We build only the MVP** (section 1). The other sections describe the target vision — treat them as context, not as scope of work.
+> Version 0.3, 2026-11-01. Takes into account the decisions from the specification review.
 
-## 0. Kontekst
+## 0. Context
 
-Aplikacja webowa, w której sędziowie i szkoleniowcy koszykówki wgrywają nagrania meczów, zaznaczają momenty do analizy (decyzje, sytuacje bez gwizdka, poruszanie się sędziów), a narzędzie automatycznie wycina z nich klipy do analizy, komentowania i oceny.
+A web application in which basketball referees and coaches upload match recordings and mark moments for analysis (decisions, situations without a whistle, referees' movement), and the tool automatically cuts clips from them for analysis, commenting and rating.
 
-**Problem:** po meczu ktoś przegląda 1,5–2 h nagrania, notuje czasy na kartce i ręcznie wycina fragmenty w ogólnym edytorze wideo. Trwa to godzinami, a klipy lądują w folderach bez opisu.
+**Problem:** after a match someone reviews 1.5–2 h of recording, writes down the times on paper and cuts out fragments by hand in a general video editor. This takes hours, and the clips end up in folders without descriptions.
 
-**Założenia:**
-- Na własny użytek, dla sędziów jednego okręgu (kilkudziesięciu użytkowników, nie tysiące)
-- Bezpłatne – brak płatności i subskrypcji
-- Tylko online – bez trybu offline
-- Interfejs po polsku
-- Nagrania pochodzą z dowolnego źródła (telefon sędziego, kamera Veo itp.) – zawsze jako plik wgrywany do systemu (MP4, MOV); pliki mogą być duże (kilka GB)
-- Istnieje prototyp `ref-clips` (FastAPI + SQLite + ffmpeg, bez logowania): konwersja nagrań, znaczniki kwart, parser notatek, cięcie klipów, strumieniowanie wideo. Plan techniczny ma uzasadnić, czy go rozwijamy, czy zastępujemy.
+**Assumptions:**
+- For our own use, for referees of one district (dozens of users, not thousands)
+- Free — no payments and no subscriptions
+- Online only — no offline mode
+- Interface in Polish
+- Recordings come from any source (a referee's phone, a Veo camera, etc.) — always as a file uploaded to the system (MP4, MOV); files may be large (several GB)
+- A prototype `ref-clips` exists (FastAPI + SQLite + ffmpeg, without login): conversion of recordings, quarter markers, notes parser, clip cutting, video streaming. The technical plan is to justify whether we develop it further or replace it.
 
-## 1. MVP – zakres do zbudowania
+## 1. MVP – scope to build
 
 ### Happy path
 
-1. Użytkownik loguje się na platformę.
-2. Wgrywa mecz, wpisuje obsadę sędziowską (CC, U1, opcjonalnie U2) i opcjonalnie wkleja notatki z momentami do wycięcia.
-3. Jeśli plik zawiera więcej niż jedną kwartę, ustawia znaczniki początku kwart.
-4. Ogląda mecz i zaznacza kolejne momenty (bez przerywania oglądania). Opisuje je później, w jednym miejscu.
-5. Z każdego znacznika powstaje klip 30 s: 15 s przed i 15 s po.
-6. Klipy meczu pojawiają się pod nagraniem lub w osobnej zakładce. Każdy ma opis: sędzia, kategoria, kwarta i czas od początku kwarty.
-7. Po wejściu w klip widać jego opis, komentarze i oceny szkoleniowców.
+1. The user logs in to the platform.
+2. Uploads a match, enters the referee crew (CC, U1, optionally U2) and optionally pastes notes with the moments to cut.
+3. If the file contains more than one quarter, sets the quarter-start markers.
+4. Watches the match and marks subsequent moments (without interrupting the viewing). Describes them later, in one place.
+5. From each marker a clip of 30 s is created: 15 s before and 15 s after.
+6. The clips of the match appear under the recording or in a separate tab. Each has a description: referee, category, quarter and time since the start of the quarter.
+7. After opening a clip one sees its description, comments and coaches' ratings.
 
-### Role i uprawnienia
+### Roles and permissions
 
-Użytkownik może mieć **kilka ról naraz** (np. administrator + szkoleniowiec). Uprawnienia sumują się.
+A user may have **several roles at once** (e.g. administrator + coach). Permissions add up.
 
-| Uprawnienie | Administrator | Szkoleniowiec | Sędzia |
+| Permission | Administrator | Coach | Referee |
 | --- | --- | --- | --- |
-| Zarządzanie kontami i przypisywanie ról | Tak | Nie | Nie |
-| Zarządzanie słownikiem kategorii | Tak | Nie | Nie |
-| Przeglądanie wszystkich meczów i klipów | Tak | Tak | Tak |
-| Wgrywanie meczów i wpisanie obsady | Tak | Tak | Tak, tylko mecze, w których był w obsadzie |
-| Tworzenie i opisywanie klipów | Tak, każdy mecz | Tak, każdy mecz | Tylko mecze, w których był w obsadzie |
-| Ocena klipu | Nie (chyba że ma też rolę szkoleniowca) | Tak, każdy własną | Nie |
-| Komentowanie meczów i klipów | Tak | Tak | Tak |
-| Edycja i usuwanie | Wszystko | Własne mecze, klipy, oceny, komentarze | Własne mecze, klipy, komentarze |
+| Managing accounts and assigning roles | Yes | No | No |
+| Managing the category dictionary | Yes | No | No |
+| Viewing all matches and clips | Yes | Yes | Yes |
+| Uploading matches and entering the crew | Yes | Yes | Yes, only matches in which they were in the crew |
+| Creating and describing clips | Yes, every match | Yes, every match | Only matches in which they were in the crew |
+| Rating a clip | No (unless they also have the coach role) | Yes, each their own | No |
+| Commenting on matches and clips | Yes | Yes | Yes |
+| Editing and deleting | Everything | Own matches, clips, ratings, comments | Own matches, clips, comments |
 
-**Widoczność w MVP:** każdy zalogowany użytkownik widzi wszystkie mecze i klipy. Ograniczenia widoczności (zakresy, „scopes”) są poza MVP.
+**Visibility in the MVP:** every logged-in user sees all matches and clips. Visibility restrictions ("scopes") are outside the MVP.
 
-### Obsada sędziowska
+### Referee crew
 
-- Funkcje: **CC** (pierwszy sędzia), **U1** (drugi), **U2** (trzeci, opcjonalny).
-- Każdą pozycję w obsadzie wypełnia się **wyborem użytkownika** z listy albo **wpisaniem imienia i nazwiska** (sędzia bez konta). Uprawnienia „był w obsadzie” działają tylko dla pozycji powiązanych z kontem.
-- Sędzia, który wgrywa mecz, musi być w jego obsadzie. Formularz wstawia go automatycznie na pierwszą wolną pozycję, a funkcję może zmienić.
+- Functions: **CC** (first referee), **U1** (second), **U2** (third, optional).
+- Each crew position is filled by **choosing a user** from a list or by **typing a first and last name** (a referee without an account). The "was in the crew" permission works only for positions linked to an account.
+- The referee who uploads a match must be in its crew. The form inserts them automatically into the first free position, and they may change the function.
 
-### Wgrywanie meczu
+### Uploading a match
 
-- Mecz wgrywany w całości (jeden plik) albo podzielony na kwarty (osobne pliki).
-- Przy wgrywaniu użytkownik określa, co zawiera plik: cały mecz, jedną kwartę (którą) lub kilka kwart (które).
-- Dane meczu: data, liga, drużyny (nazwa + kolor stroju), obsada sędziowska.
-- **Notatki przy wgrywaniu (opcjonalne):** pole tekstowe, jedna linia to jeden moment, np. `2:54 Filip PTS`, `3:17 U1 dlaczego nie blok?`.
-  - Czas oznacza **czas nagrania** w formacie `m:ss` / `h:mm:ss`, dopuszczalne `2.54` i `2,54`.
-  - Sędziego rozpoznajemy po imieniu, nazwisku lub funkcji (CC/U1/U2), bez względu na wielkość liter i polskie znaki.
-  - Kategorię rozpoznajemy ze słownika i jego aliasów. Reszta linii trafia do opisu.
-  - Przed zapisem użytkownik widzi tabelę podglądu z ostrzeżeniami i może ją poprawić.
-  - Z notatek powstają znaczniki, a z nich klipy, gdy nagranie jest gotowe.
-- **Znaczniki kwart:** jeśli plik zawiera więcej niż jedną kwartę, po wgraniu użytkownik ustawia początek każdej kwarty. Do tego czasu klipy z tego pliku mają kwartę „nieustaloną” i nie da się ich opisać. Wycinanie może już ruszyć.
-  - Plik z jedną kwartą: znacznik startu jest opcjonalny, domyślnie 0:00. Można go przesunąć, np. gdy na początku nagrania jest rozgrzewka.
+- A match is uploaded as a whole (one file) or split into quarters (separate files).
+- When uploading, the user states what the file contains: the whole match, one quarter (which one) or several quarters (which ones).
+- Match data: date, league, teams (name + kit colour), referee crew.
+- **Notes on upload (optional):** a text field, one line is one moment, e.g. `2:54 Filip PTS`, `3:17 U1 dlaczego nie blok?`.
+  - The time means the **recording time** in the format `m:ss` / `h:mm:ss`; `2.54` and `2,54` are allowed.
+  - The referee is recognised by first name, last name or function (CC/U1/U2), regardless of letter case and Polish diacritics.
+  - The category is recognised from the dictionary and its aliases. The rest of the line goes into the description.
+  - Before saving, the user sees a preview table with warnings and can correct it.
+  - Markers are created from the notes, and clips from them once the recording is ready.
+- **Quarter markers:** if the file contains more than one quarter, after uploading the user sets the start of each quarter. Until then, the clips from this file have the "nieustalona" („undetermined”) quarter and cannot be described. Cutting may already start.
+  - A file with one quarter: the start marker is optional, default 0:00. It can be moved, e.g. when there is a warm-up at the beginning of the recording.
 
-### Odtwarzacz i znaczniki
+### Player and markers
 
-- Odtwarzacz wideo z przewijaniem, zwolnionym tempem (0,25×–2×), klatka po klatce i skrótami klawiszowymi.
-- Przycisk / klawisz „Zaznacz” dodaje znacznik w bieżącym czasie nagrania **bez zatrzymywania odtwarzania**.
-- Znaczniki są widoczne na liście obok odtwarzacza (czas, kwarta). Kliknięcie przenosi do momentu, a znacznik można usunąć.
-- Opisywanie odbywa się **po obejrzeniu**: lista nieopisanych znaczników, przy każdym podgląd klipu i pola opisu.
+- A video player with seeking, slow motion (0.25×–2×), frame-by-frame stepping and keyboard shortcuts.
+- The „Zaznacz” ("Mark") button / key adds a marker at the current recording time **without stopping playback**.
+- Markers are visible in a list next to the player (time, quarter). Clicking moves to the moment, and a marker can be deleted.
+- Describing happens **after watching**: a list of undescribed markers, with a clip preview and the description fields beside each.
 
-### Klipy
+### Clips
 
-- Z każdego znacznika powstaje klip 30 s: 15 s przed i 15 s po (przycięty do granic nagrania).
-- Opis klipu:
-  - **sędzia** z obsady meczu, którego dotyczy sytuacja (wybór z CC/U1/U2) albo „cały zespół”,
-  - **kategoria** ze słownika (lista niżej) albo „własna” z krótką nazwą wpisaną ręcznie,
-  - **kwarta i czas od początku kwarty w nagraniu**, wyliczone automatycznie ze znaczników kwart. W interfejsie podpisane wprost, np. „Q2 · 4:12 od początku kwarty (czas nagrania)”. **To nie jest zegar meczowy.**
-  - opcjonalny opis tekstowy.
-- Słownik kategorii na start (edytowalny przez administratora, z aliasami do rozpoznawania w notatkach):
-  - **Faule:** osobisty, w akcji rzutowej, blok / szarża, niesportowy, techniczny, dyskwalifikujący.
-  - **Naruszenia:** kroki, podwójny kozioł, 3 s, 5 s, 8 s, 24 s, aut, goaltending / interferencja.
-  - **Bez gwizdka:** brak gwizdka (powinien być), gwizdek niepotrzebny.
-  - **Mechanika:** pozycja / poruszanie się, rotacja, współpraca w zespole, sygnalizacja.
-  - **Inne:** inne, własna.
-- Lista klipów meczu pod nagraniem lub w osobnej zakładce, z filtrem po sędzi, kategorii i kwarcie.
-- Widok klipu: odtwarzacz, opis, oceny szkoleniowców, komentarze użytkowników.
+- From each marker a clip of 30 s is created: 15 s before and 15 s after (trimmed to the recording boundaries).
+- Clip description:
+  - **referee** from the crew of the match the situation concerns (a choice of CC/U1/U2) or "whole team" („cały zespół”),
+  - **category** from the dictionary (list below) or "custom" („własna”) with a short name typed in by hand,
+  - **quarter and time since the start of the quarter in the recording**, calculated automatically from the quarter markers. The interface labels it directly, e.g. „Q2 · 4:12 od początku kwarty (czas nagrania)” ("Q2 · 4:12 since the start of the quarter (recording time)"). **This is not the match clock.**
+  - an optional text description.
+- Starting dictionary of categories (editable by the administrator, with aliases for recognition in notes):
+  - **Fouls:** personal, in a shooting action, block / charge, unsportsmanlike, technical, disqualifying.
+  - **Violations:** travelling, double dribble, 3 s, 5 s, 8 s, 24 s, out of bounds, goaltending / interference.
+  - **No whistle:** no whistle (there should have been one), whistle not needed.
+  - **Mechanics:** position / movement, rotation, teamwork, signalling.
+  - **Other:** other, custom.
+- Clip list of the match under the recording or in a separate tab, with filters by referee, category and quarter.
+- Clip view: player, description, coaches' ratings, user comments.
 
-### Ocena szkoleniowca
+### Coach rating
 
-- Każdy szkoleniowiec może wystawić **własną** ocenę klipu: prawidłowa / nieprawidłowa / dyskusyjna, plus komentarz.
-- Ocenę może zmienić lub usunąć jej autor lub administrator. Przy klipie widać wszystkie oceny z autorem.
+- Each coach may give **their own** rating of a clip: correct / incorrect / debatable, plus a comment.
+- The rating may be changed or deleted by its author or the administrator. The clip shows all ratings with their authors.
 
-### Komentarze
+### Comments
 
-- Każdy zalogowany użytkownik może komentować mecz i każdy klip.
-- Autor może edytować i usuwać swój komentarz. Administrator może usunąć każdy.
+- Every logged-in user may comment on a match and on every clip.
+- The author may edit and delete their own comment. The administrator may delete any comment.
 
-### Retencja danych
+### Data retention
 
-- Oryginalny plik jest usuwany po udanej konwersji do wersji roboczej. Zostaje tylko wersja robocza.
-- Wersja robocza pełnego meczu jest usuwana po **N dniach** od wgrania. N ustawia administrator, domyślnie 30. Klipy zostają na stałe.
-- Przed usunięciem mecz jest oznaczony w interfejsie („pełne nagranie dostępne jeszcze X dni”). Po usunięciu nie da się dodawać nowych znaczników.
-- Administrator widzi zajętość dysku i może ręcznie usunąć pełne nagranie wcześniej.
+- The original file is deleted after a successful conversion to a proxy. Only the proxy stays.
+- The proxy of a full match is deleted after **N days** from the upload. N is set by the administrator, default 30. Clips stay permanently.
+- Before deletion the match is marked in the interface ("full recording available for X more days"). After deletion no new markers can be added.
+- The administrator sees disk usage and can delete a full recording earlier, manually.
 
-## 2. Wymagania niefunkcjonalne
+## 2. Non-functional requirements
 
-- Przeglądarka na komputerze. Przeglądanie klipów i komentowanie wygodne także na telefonie.
-- Płynne przewijanie nagrań do 2 h. Wgrywanie dużych plików odporne na przerwanie (wznowienie od miejsca przerwania).
-- RODO: nagrania zawierają wizerunek zawodników, w tym niepełnoletnich. Dostęp tylko dla zalogowanych użytkowników, dane przechowywane w UE.
-- Logowanie kontem, role i uprawnienia sprawdzane po stronie serwera.
-- Konta zakłada administrator (brak publicznej rejestracji).
-- **Infrastruktura startowa:** VPS 2 vCPU, 4 GB RAM, 40 GB dysku, w UE. Rozwiązanie musi się w nim zmieścić, łącznie z kolejką konwersji (jedno zadanie naraz) i retencją. Musi też dać się później przenieść pliki do magazynu obiektowego (S3) bez przebudowy.
+- A desktop browser. Viewing clips and commenting comfortable also on a phone.
+- Smooth seeking through recordings of up to 2 h. Uploading large files robust against interruption (resume from where it stopped).
+- GDPR: the recordings contain the image of players, including minors. Access only for logged-in users; data stored in the EU.
+- Login with an account; roles and permissions checked on the server side.
+- Accounts are created by the administrator (no public registration).
+- **Starting infrastructure:** a VPS with 2 vCPU, 4 GB RAM, 40 GB disk, in the EU. The solution must fit on it, including the conversion queue (one job at a time) and retention. It must also be possible later to move the files to object storage (S3) without a rebuild.
 
-## 3. Poza zakresem MVP (wizja na później)
+## 3. Outside the MVP scope (vision for later)
 
-- **Wersja 2:**
-  - ręczna korekta granic klipu, rysowanie na stopklatce,
-  - biblioteka klipów z wyszukiwaniem (kategoria, sędzia, liga, ocena, data), zestawy szkoleniowe,
-  - kilka ujęć tego samego meczu,
-  - udostępnianie linkiem z datą ważności, eksport klipów,
-  - zakresy widoczności („scopes”) dla ról i meczów.
-- **Wersja 3:** statystyki sędziów, raporty PDF, aplikacja mobilna, integracja z systemem obsady meczów.
+- **Version 2:**
+  - manual correction of clip boundaries, drawing on a still frame,
+  - a clip library with search (category, referee, league, rating, date), training sets,
+  - several camera angles of the same match,
+  - sharing by link with a validity date, exporting clips,
+  - visibility scopes for roles and matches.
+- **Version 3:** referee statistics, PDF reports, a mobile app, integration with the match crew system.
 
-## 4. Do ustalenia w planie technicznym
+## 4. To be decided in the technical plan
 
-Zaproponuj i uzasadnij przed pisaniem kodu:
-- Stos technologiczny (frontend, backend, baza danych), z uwzględnieniem prototypu `ref-clips`
-- Przechowywanie plików wideo przy 40 GB dysku i retencji z sekcji 1, wgrywanie odporne na przerwanie
-- Wycinanie klipów: przy usuwaniu pełnych nagrań klipy muszą istnieć jako osobne pliki. Uzasadnij sposób cięcia i jakość.
-- Logowanie i zarządzanie kontami (zakładane przez administratora)
-- Wdrożenie na wskazanym VPS: kopie zapasowe bazy, HTTPS, aktualizacje
+Propose and justify before writing code:
+- Technology stack (frontend, backend, database), taking the `ref-clips` prototype into account
+- Storage of video files with a 40 GB disk and the retention from section 1; upload robust against interruption
+- Cutting clips: when full recordings are deleted, the clips must exist as separate files. Justify the cutting method and its quality.
+- Login and account management (accounts created by the administrator)
+- Deployment on the given VPS: database backups, HTTPS, updates
 
-## 5. Kryteria akceptacji MVP
+## 5. MVP acceptance criteria
 
-- Plik 4 GB wgrywa się do końca mimo zerwania połączenia w połowie.
-- Po wgraniu pliku z dwiema kwartami i ustawieniu znaczników każdy klip ma poprawną kwartę i czas od początku kwarty.
-- Notatki wklejone przy wgrywaniu tworzą klipy w podanych momentach, a nierozpoznane linie są pokazane z ostrzeżeniem.
-- Klip ma 30 s (krócej tylko przy granicy nagrania) i odtwarza się w Chrome na komputerze i w Safari/Chrome na telefonie.
-- Sędzia spoza obsady nie może tworzyć klipów z meczu. Serwer odrzuca takie żądanie także wysłane z pominięciem interfejsu.
-- Po upływie retencji pełne nagranie znika z dysku, a jego klipy dalej się odtwarzają.
+- A 4 GB file uploads to the end despite a connection drop halfway through.
+- After uploading a file with two quarters and setting the markers, every clip has a correct quarter and time since the start of the quarter.
+- Notes pasted during the upload create clips at the given moments, and unrecognised lines are shown with a warning.
+- A clip is 30 s long (shorter only at the recording boundary) and plays in Chrome on a computer and in Safari/Chrome on a phone.
+- A referee outside the crew cannot create clips from a match. The server rejects such a request, also one sent bypassing the interface.
+- After the retention period the full recording disappears from disk, and its clips still play.
