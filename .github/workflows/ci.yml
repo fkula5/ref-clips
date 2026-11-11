@@ -40,9 +40,8 @@ jobs:
             requirements.txt
             requirements-dev.txt
       - name: Zainstaluj ffmpeg
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends ffmpeg
+        timeout-minutes: 8
+        run: .github/scripts/install-ffmpeg.sh
       - name: Zainstaluj zależności
         run: |
           python -m venv .venv
@@ -79,9 +78,8 @@ jobs:
             requirements.txt
             requirements-dev.txt
       - name: Zainstaluj ffmpeg
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends ffmpeg
+        timeout-minutes: 8
+        run: .github/scripts/install-ffmpeg.sh
       - name: Zainstaluj zależności
         run: |
           python -m venv .venv
