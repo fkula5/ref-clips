@@ -4,11 +4,12 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from urllib.parse import urlencode
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
-from app import feedback, groups, services
-from app.models import PERIODS, RATING_VERDICTS, Clip, MatchOfficial, Rating, Video
+from app import config, feedback, groups, services
+from app.models import PERIODS, RATING_VERDICTS, Clip, MatchOfficial, PeriodMark, Rating, Video
+from app.pagination import Page, paginate, parse_page
 
 TEAM = "team"
 NO_PERIOD = "none"
@@ -35,6 +36,7 @@ class ClipFilters:
     described: str = ""
     rating: str = ""
     group_id: int | None = None
+    page: int = 1
 
     def pairs(self, *, scope: bool) -> list[tuple[str, str]]:
         pairs = [("person", self.person),
@@ -46,9 +48,15 @@ class ClipFilters:
                      ("video_id", str(self.video_id) if self.video_id else ""), *pairs]
         return [(k, v) for k, v in pairs if v]
 
-    def query(self, *, scope: bool = True) -> str:
+    def query(self, *, scope: bool = True, page: int | None = None) -> str:
         """`scope=False` omits match and recording (match-tab and clip-navigation filters only)."""
-        return urlencode(self.pairs(scope=scope))
+        pairs = self.pairs(scope=scope)
+        if page and page > 1:
+            pairs.append(("page", str(page)))
+        return urlencode(pairs)
+
+    def page_query(self, page: int, scope: bool = True) -> str:
+        return self.query(scope=scope, page=page)
 
     @property
     def active(self) -> bool:
@@ -66,18 +74,19 @@ def parse_filters(params: Mapping[str, str]) -> ClipFilters:
         period=period if period in PERIODS or period == NO_PERIOD else "",
         described=described if described in (DESCRIBED_YES, DESCRIBED_NO) else "",
         rating=rating if rating in (RATING_ANY, RATING_NONE, *RATING_VERDICTS) else "",
-        group_id=_int(params.get("group")))
+        group_id=_int(params.get("group")), page=parse_page(params.get("page")))
 
 
-def query_clips(db: Session, *, match_id=None, video_id=None, person=None, category_id=None,
-                period=None, described=None, rating=None, group_id=None, ids=None,
-                with_comments=False) -> list[Clip]:
-    stmt = (select(Clip)
-            .options(selectinload(Clip.video).selectinload(Video.marks),
-                     selectinload(Clip.official).selectinload(MatchOfficial.user))
-            .order_by(Clip.match_id.desc(), Clip.video_id, Clip.time_sec, Clip.id))
-    if with_comments:
-        stmt = stmt.options(selectinload(Clip.comments))
+def _period_of_clip():
+    """SQL twin of `services.period_for`: the latest quarter marker not after the clip."""
+    return (select(PeriodMark.period)
+            .where(PeriodMark.video_id == Clip.video_id, PeriodMark.time_sec <= Clip.time_sec + 0.001)
+            .order_by(PeriodMark.time_sec.desc(), PeriodMark.id.desc()).limit(1).scalar_subquery())
+
+
+def _filtered(db: Session, *, match_id=None, video_id=None, person=None, category_id=None, period=None,
+              described=None, rating=None, group_id=None, ids=None):
+    stmt = select(Clip)
     if match_id:
         stmt = stmt.where(Clip.match_id == match_id)
     if video_id:
@@ -98,6 +107,10 @@ def query_clips(db: Session, *, match_id=None, video_id=None, person=None, categ
         stmt = stmt.where(Clip.ratings.any())
     elif rating:
         stmt = stmt.where(Clip.ratings.any(Rating.verdict == rating))
+    if period == NO_PERIOD:
+        stmt = stmt.where(_period_of_clip().is_(None))
+    elif period:
+        stmt = stmt.where(_period_of_clip() == period)
     if person == TEAM:
         stmt = stmt.where(Clip.whole_team.is_(True))
     elif person:
@@ -106,18 +119,37 @@ def query_clips(db: Session, *, match_id=None, video_id=None, person=None, categ
             select(MatchOfficial.id, MatchOfficial.user_id, MatchOfficial.name))
             if services.person_key(user_id, name, accounts) == person]
         stmt = stmt.where(Clip.official_id.in_(official_ids))
-    clips = list(db.scalars(stmt))
-    if period:  # period is derived from markers, so filter in Python
-        wanted = "" if period == NO_PERIOD else period
-        clips = [c for c in clips if (services.period_for(c.video.marks, c.time_sec) or "") == wanted]
-    return clips
+    return stmt
+
+
+def _listing(stmt, *, with_comments: bool = False):
+    stmt = (stmt.options(selectinload(Clip.video).selectinload(Video.marks),
+                         selectinload(Clip.official).selectinload(MatchOfficial.user))
+            .order_by(Clip.match_id.desc(), Clip.video_id, Clip.time_sec, Clip.id))
+    return stmt.options(selectinload(Clip.comments)) if with_comments else stmt
+
+
+def query_clips(db: Session, *, with_comments=False, **filters) -> list[Clip]:
+    return list(db.scalars(_listing(_filtered(db, **filters), with_comments=with_comments)))
+
+
+def _arguments(filters: ClipFilters, match_id: int | None) -> dict:
+    return dict(match_id=match_id or filters.match_id, video_id=filters.video_id,
+                person=filters.person or None, category_id=filters.category_id,
+                period=filters.period or None, described=filters.described or None,
+                rating=filters.rating or None, group_id=filters.group_id)
 
 
 def select_clips(db: Session, filters: ClipFilters, *, match_id: int | None = None) -> list[Clip]:
-    return query_clips(db, match_id=match_id or filters.match_id, video_id=filters.video_id,
-                       person=filters.person or None, category_id=filters.category_id,
-                       period=filters.period or None, described=filters.described or None,
-                       rating=filters.rating or None, group_id=filters.group_id)
+    return query_clips(db, **_arguments(filters, match_id))
+
+
+def select_clip_page(db: Session, filters: ClipFilters, *, match_id: int | None = None) -> tuple[list[Clip], Page]:
+    size = config.CLIP_PAGE_SIZE
+    stmt = _filtered(db, **_arguments(filters, match_id))
+    pager = paginate(db.scalar(select(func.count()).select_from(stmt.subquery())) or 0, filters.page, size)
+    clips = list(db.scalars(_listing(stmt).limit(size).offset(pager.offset)))
+    return clips, pager
 
 
 @dataclass

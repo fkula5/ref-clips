@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session, selectinload
 
 from app import config, permissions
 from app.models import Clip, Comment, Match, Notification, Rating, Sheet, TrainingGroup, User, Video
+from app.pagination import Page, paginate
 from app.timeutil import utcnow
 
 
@@ -79,13 +80,17 @@ def bell_label(count: int) -> str:
     return f"Powiadomienia: {count} {'nowe' if few else 'nowych'}"
 
 
-def recent(db: Session, user_id: int, limit: int) -> list[Notification]:
-    return list(db.scalars(
-        select(Notification).where(Notification.recipient_id == user_id)
+def page_of(db: Session, user_id: int, requested: int) -> tuple[list[Notification], Page]:
+    size = config.NOTIFICATION_PAGE_SIZE
+    mine = Notification.recipient_id == user_id
+    pager = paginate(db.scalar(select(func.count()).select_from(Notification).where(mine)) or 0, requested, size)
+    items = list(db.scalars(
+        select(Notification).where(mine)
         .options(selectinload(Notification.actor), selectinload(Notification.match),
                  selectinload(Notification.group),
                  selectinload(Notification.clip).selectinload(Clip.video).selectinload(Video.marks))
-        .order_by(Notification.id.desc()).limit(limit)))
+        .order_by(Notification.id.desc()).limit(size).offset(pager.offset)))
+    return items, pager
 
 
 def mark_read(notification: Notification) -> None:

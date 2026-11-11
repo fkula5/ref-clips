@@ -12,15 +12,15 @@ from sqlalchemy import case, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
-from app import notify, permissions
+from app import config, notify, permissions
 from app.models import GROUP_ROLES, Clip, GroupMember, MatchOfficial, Rating, TrainingGroup, User, Video
+from app.pagination import Page, paginate
 from app.timeutil import utcnow
 
 NAME_MAX = 100
 DESCRIPTION_MAX = 1000
 PERIOD_CHOICES = (7, 14, 30, 90)
 DEFAULT_DAYS = 14
-REVIEW_LIMIT = 50
 
 
 class GroupError(Exception):
@@ -174,9 +174,12 @@ def review_count(db: Session, group: TrainingGroup, coach_id: int) -> int:
     return db.scalar(select(func.count()).select_from(Clip).where(*_unrated_clips(group, coach_id))) or 0
 
 
-def review_queue(db: Session, group: TrainingGroup, coach_id: int, limit: int = REVIEW_LIMIT) -> list[Clip]:
+def review_queue(db: Session, group: TrainingGroup, coach_id: int, requested: int = 1) -> tuple[list[Clip], Page]:
     """Newest described first."""
-    return list(db.scalars(
+    size = config.REVIEW_PAGE_SIZE
+    pager = paginate(review_count(db, group, coach_id), requested, size)
+    clips = list(db.scalars(
         select(Clip).where(*_unrated_clips(group, coach_id))
         .options(selectinload(Clip.video), selectinload(Clip.match), selectinload(Clip.official))
-        .order_by(Clip.described_at.desc(), Clip.id.desc()).limit(limit)))
+        .order_by(Clip.described_at.desc(), Clip.id.desc()).limit(size).offset(pager.offset)))
+    return clips, pager

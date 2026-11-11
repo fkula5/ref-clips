@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% from "_clips_macros.html" import clips_table with context %}
+{% from "_pager.html" import pagination %}
 {% block title %}Do oceny · {{ g.name }}{% endblock %}
 {% block content %}
 <p><a href="/groups/{{ g.id }}">← {{ g.name }}</a></p>
@@ -9,6 +10,6 @@
   <p class="card muted">Nie ma klipów czekających na Twoją ocenę.</p>
 {% else %}
   {{ clips_table(clips, '', true) }}
-  <p class="muted small-note">Klipów do oceny: {{ total }}{% if total > clips|length %} (pokazano {{ limit }} najnowszych){% endif %}.</p>
+  {{ pagination(pager, "Klipów do oceny", page_query, "/groups/" ~ g.id ~ "/review") }}
 {% endif %}
 {% endblock %}

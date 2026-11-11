@@ -15,7 +15,7 @@ from app.loaders import get_clip
 from app.models import Clip, Match, User
 from app.routers import describe
 from app.storage import storage
-from app.web import file_response, is_htmx, mark_seen, render
+from app.web import comment_context, file_response, is_htmx, mark_seen, render
 
 router = APIRouter()
 
@@ -28,9 +28,9 @@ def person_choices(db: Session) -> list[tuple[str, str]]:
 def clips_list(request: Request, db: Session = Depends(get_db),
                user: User = require(permissions.can_view), created: int | None = None, skipped: int = 0):
     f = clip_list.parse_filters(request.query_params)
-    clips = clip_list.select_clips(db, f)
+    clips, pager = clip_list.select_clip_page(db, f)
     return render(
-        request, "clips.html", clips=clips, f=f, created=created, skipped=skipped,
+        request, "clips.html", clips=clips, pager=pager, f=f, created=created, skipped=skipped,
         shareable={c.id for c in clips if share.offerable(user, c)},
         pending=any(c.status in ("new", "queued") for c in clips),
         stats=clip_list.clip_stats(db, clips),
@@ -59,7 +59,7 @@ def render_clip(request: Request, db: Session, clip: Clip, f: clip_list.ClipFilt
         blocker=services.describe_block(clip), error=error,
         values=values if values is not None else describe.form_values(clip),
         ratings=None if partial else feedback.ratings_of(db, clip),
-        comments=None if partial else feedback.comments_of(db, clip_id=clip.id), **extra)
+        **comment_context(request, db, clip_id=clip.id), **extra)
 
 
 @router.get("/clips/{clip_id}")

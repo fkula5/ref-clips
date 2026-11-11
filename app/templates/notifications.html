@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_pager.html" import pagination %}
 {% block title %}Powiadomienia{% endblock %}
 {% macro what(n) %}
   {%- set c = n.clip -%}
@@ -33,7 +34,7 @@
   </li>
   {% endfor %}
 </ul>
-{% if capped %}<p class="muted small-note">Pokazano {{ limit }} najnowszych powiadomień.</p>{% endif %}
+{{ pagination(pager, "Powiadomienia", page_query, "/notifications") }}
 <p class="muted small-note">Przeczytane powiadomienia znikają po 30 dniach, nieprzeczytane po 90.</p>
 {% else %}
 <p class="card muted">Brak powiadomień. Pojawią się tu nowe oceny, komentarze i opublikowane arkusze, które Cię dotyczą.</p>

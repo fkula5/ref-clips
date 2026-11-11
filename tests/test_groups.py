@@ -6,7 +6,7 @@ from types import SimpleNamespace
 import pytest
 from sqlalchemy import event, select
 
-from app import groups, match_list, notify
+from app import config, groups, match_list, notify
 from app.db import engine
 from app.models import Clip, GroupMember, Match, Notification, Rating, TrainingGroup, User, Video
 from tests.helpers import make_match, make_ready_video, make_user
@@ -236,7 +236,7 @@ def test_review_queue_lists_described_unrated_clips_of_the_groups_matches_newest
     db.add_all([Rating(clip_id=rated_by_me.id, coach_id=w.u["coach"].id, verdict="correct"),
                 Rating(clip_id=rated_by_other.id, coach_id=w.u["lead2"].id, verdict="correct")])
     db.commit()
-    queue = lambda who: [c.id for c in groups.review_queue(db, w.g, w.u[who].id)]  # noqa: E731
+    queue = lambda who: [c.id for c in groups.review_queue(db, w.g, w.u[who].id)[0]]  # noqa: E731
     assert queue("coach") == [new.id, rated_by_other.id, old.id]
     assert queue("lead2") == [new.id, rated_by_me.id, old.id]
     assert groups.review_count(db, w.g, w.u["coach"].id) == 3
@@ -245,6 +245,16 @@ def test_review_queue_lists_described_unrated_clips_of_the_groups_matches_newest
     assert f"/groups/{w.g.id}/review" in w.c["coach"].get(f"/groups/{w.g.id}").text
     w.c["coach"].post(f"/clips/{new.id}/rating", data={"verdict": "incorrect", "comment": ""})
     assert queue("coach") == [rated_by_other.id, old.id]
+
+
+def test_review_queue_is_paginated_and_a_page_past_the_end_shows_the_last(w, db, monkeypatch):
+    monkeypatch.setattr(config, "REVIEW_PAGE_SIZE", 2)
+    match, video = crew_match(w, "r1", "Ktoś")
+    clips = [add_clip(w, match, video, at=ago(days)) for days in (3, 2, 1)]  # oldest first
+    page = lambda **params: w.c["coach"].get(f"/groups/{w.g.id}/review", params=params).text  # noqa: E731
+    first, last = page(), page(page=99)
+    assert "strona 1 z 2" in first and f'href="/groups/{w.g.id}/review?page=2"' in first
+    assert "strona 2 z 2" in last and last.count("Otwórz klip") == 1 and f'/clips/{clips[0].id}' in last
 
 
 def test_group_filter_combines_with_other_filters_and_pagination_on_matches(w, db):

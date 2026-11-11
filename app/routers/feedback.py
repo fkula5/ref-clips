@@ -92,9 +92,6 @@ class CommentScope:
     def base(self, parent: Clip | Match) -> str:
         return f"{self.prefix}/{parent.id}"
 
-    def comments(self, db: Session, parent) -> list[Comment]:
-        return feedback.comments_of(db, **{self.column: parent.id})
-
     def page(self, request: Request, db: Session, parent, **extra):
         if self.column == "clip_id":
             return clips_router.render_clip(
@@ -134,6 +131,15 @@ def register_comment_routes(scope: CommentScope) -> None:
     def anchor(parent, comment: Comment | None = None) -> RedirectResponse:
         target = f"comment-{comment.id}" if comment is not None else "komentarze"
         return RedirectResponse(f"{scope.base(parent)}#{target}", status_code=303)
+
+    @router.get(f"{prefix}/{{{id_name}}}/comments")
+    def older_comments(request: Request, db: Session = Depends(get_db), parent=Depends(scope.loader),
+                       user: User = require(permissions.can_view), before: int | None = None):
+        if not is_htmx(request) or before is None:
+            return RedirectResponse(f"{scope.base(parent)}?comments=all#komentarze", status_code=303)
+        comments, older_before = feedback.comments_of(db, before=before, **{scope.column: parent.id})
+        return render(request, "_comments_older.html", comments=comments, older_before=older_before,
+                      cbase=scope.base(parent))
 
     @router.post(f"{prefix}/{{{id_name}}}/comments")
     def add_comment(request: Request, db: Session = Depends(get_db), parent=Depends(scope.loader),
@@ -197,7 +203,7 @@ def register_comment_routes(scope: CommentScope) -> None:
         db.commit()
         if is_htmx(request):
             return render(request, "_comment_removed.html",
-                          empty=not scope.comments(db, parent))
+                          empty=not feedback.has_comments(db, **{scope.column: parent.id}))
         return anchor(parent)
 
 

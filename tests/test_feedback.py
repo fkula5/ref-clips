@@ -4,7 +4,7 @@ import pytest
 from sqlalchemy import event, select
 from sqlalchemy.exc import IntegrityError
 
-from app import feedback
+from app import config, feedback
 from app.db import engine
 from app.models import Clip, Comment, Match, Rating, User
 from tests.conftest import login_client
@@ -607,3 +607,38 @@ def test_accounts_with_ratings_or_comments_cannot_be_deleted(world, db):
         db.flush()
     db.rollback()
     assert db.get(User, coach.id) is not None
+
+
+@pytest.mark.parametrize("scope", SCOPES)
+def test_only_the_newest_comments_load_and_older_ones_come_on_request(world, db, scope, monkeypatch):
+    monkeypatch.setattr(config, "COMMENT_PAGE_SIZE", 3)
+    coach = world["users"]["coach"]
+    ids = [comment_of(db, scope, world, coach, f"Treść {n}").id for n in range(1, 8)]
+    client, base = world["clients"]["coach"], comment_url(world, scope).removesuffix("/comments")
+
+    def bodies(html):
+        return re.findall(r"Treść \d", html)
+
+    page = client.get(base).text
+    assert bodies(page) == ["Treść 5", "Treść 6", "Treść 7"] and f'hx-get="{base}/comments?before={ids[4]}"' in page
+    older = client.get(f"{base}/comments?before={ids[4]}", headers=HTMX)
+    assert "<html" not in older.text and bodies(older.text) == ["Treść 2", "Treść 3", "Treść 4"]
+    assert f"comments?before={ids[1]}" in older.text  # one more batch is left
+    last = client.get(f"{base}/comments?before={ids[1]}", headers=HTMX).text
+    assert bodies(last) == ["Treść 1"] and "Pokaż starsze" not in last
+    everything = client.get(base, params={"comments": "all"}).text
+    assert len(bodies(everything)) == 7 and "Pokaż starsze" not in everything
+    fallback = client.get(f"{base}/comments?before={ids[4]}", follow_redirects=False)  # no JavaScript
+    assert fallback.status_code == 303 and fallback.headers["location"] == f"{base}?comments=all#komentarze"
+
+
+@pytest.mark.parametrize("scope", SCOPES)
+def test_adding_and_deleting_still_work_with_older_comments_hidden(world, db, scope, monkeypatch):
+    monkeypatch.setattr(config, "COMMENT_PAGE_SIZE", 2)
+    coach = world["users"]["coach"]
+    first = [comment_of(db, scope, world, coach, f"Stary {n}") for n in range(2)]
+    client = world["clients"]["coach"]
+    added = client.post(comment_url(world, scope), data={"body": "Nowy"}, headers=HTMX)
+    assert added.status_code == 200 and "Nowy" in added.text
+    gone = client.post(comment_url(world, scope, f"/{first[1].id}/delete"), headers=HTMX)
+    assert gone.status_code == 200 and "Brak komentarzy." not in gone.text  # others remain

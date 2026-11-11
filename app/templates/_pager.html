@@ -1,0 +1,16 @@
+{% macro page_link(p, number, text, href, base, target, fragment) %}
+  {% set query = href(number) %}{% set url = base ~ ('?' ~ query if query else '') %}
+  <a class="btn small" href="{{ url }}{{ fragment }}"{% if target %} hx-get="{{ url }}" hx-target="{{ target }}" hx-select="{{ target }}" hx-swap="outerHTML" hx-push-url="true"{% endif %}>{{ text }}</a>
+{%- endmacro %}
+
+{# `href(n)` is the query string of page n. With `target` the links swap that container through HTMX and push
+   the URL; without it they are plain links. #}
+{% macro pagination(p, noun, href, base, target="", fragment="", prev="‹ Nowsze", next="Starsze ›") %}
+<div class="row between pager">
+  <span class="muted">{{ noun }}: {{ p.total }} · strona {{ p.page }} z {{ p.pages }}</span>
+  <span class="row">
+    {% if p.has_prev %}{{ page_link(p, p.page - 1, prev, href, base, target, fragment) }}{% endif %}
+    {% if p.has_next %}{{ page_link(p, p.page + 1, next, href, base, target, fragment) }}{% endif %}
+  </span>
+</div>
+{% endmacro %}

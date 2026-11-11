@@ -5,17 +5,17 @@ from datetime import datetime
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.responses import RedirectResponse
-from sqlalchemy import select
+from sqlalchemy import case, func, select
 from sqlalchemy.orm import Session, selectinload
 
-from app import clip_list, feedback, groups, match_list, permissions, services, share, sheets, uploads
+from app import clip_list, groups, match_list, permissions, services, share, sheets, uploads
 from app.auth import require
 from app.db import get_db
 from app.loaders import get_match
-from app.models import OFFICIAL_FUNCTIONS, Match, UploadSession, User
+from app.models import OFFICIAL_FUNCTIONS, Clip, Match, UploadSession, User
 from app.storage import storage
 from app.timeutil import local_tz
-from app.web import is_htmx, mark_seen, render
+from app.web import comment_context, mark_seen, render
 
 router = APIRouter()
 
@@ -89,8 +89,7 @@ def index(request: Request, db: Session = Depends(get_db),
     filters = match_list.parse_filters(request.query_params)
     result = match_list.list_matches(db, filters, user.id)
     return render(request, "index.html", f=filters, result=result, levels=services.known_levels(db),
-                  people=services.people(db), groups=groups.all_groups(db),
-                  prev_query=filters.query(result.page - 1), next_query=filters.query(result.page + 1))
+                  people=services.people(db), groups=groups.all_groups(db))
 
 
 @router.get("/matches/new")
@@ -119,21 +118,25 @@ def render_match(request: Request, db: Session, match: Match, *, status_code: in
     list refresh) does not load them.
     """
     f = clip_list.parse_filters(request.query_params)
-    clips = clip_list.select_clips(db, f, match_id=match.id)
-    all_clips = match.clips
+    clips, pager = clip_list.select_clip_page(db, f, match_id=match.id)
+    total_clips, undescribed = db.execute(
+        select(func.count(), func.coalesce(func.sum(case((Clip.described_at.is_(None), 1), else_=0)), 0))
+        .where(Clip.match_id == match.id)).one()
     busy = any(v.status in ("uploading", "queued", "processing") for v in match.videos)
     user = request.state.user
     return render(request, "match_detail.html", status_code=status_code, match=match, busy=busy, clips=clips,
                   match_sheets=sheets.visible_to(user, match),
-                  f=f, stats=clip_list.clip_stats(db, clips),
+                  f=f, pager=pager, stats=clip_list.clip_stats(db, clips),
+                  page_href=lambda page: f.page_query(page, scope=False),
                   shareable={c.id for c in clips if share.offerable(request.state.user, c)},
                   pending=any(c.status in ("new", "queued") for c in clips),
-                  nav=f.query(scope=False), total_clips=len(all_clips),
+                  nav=f.query(scope=False), list_query=f.query(scope=False, page=pager.page),
+                  total_clips=total_clips,
                   people=[*clip_list.match_people(db, match), (clip_list.TEAM, "cały zespół")],
                   categories=services.all_categories(db),
                   state=services.match_state(match.videos, services.transcode_queue(db)),
-                  undescribed=sum(1 for c in all_clips if not c.is_described),
-                  comments=None if is_htmx(request) else feedback.comments_of(db, match_id=match.id), **extra)
+                  undescribed=undescribed,
+                  **comment_context(request, db, match_id=match.id), **extra)
 
 
 @router.get("/matches/{match_id}")

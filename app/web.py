@@ -9,7 +9,7 @@ from fastapi.templating import Jinja2Templates
 from jinja2 import pass_context
 from markupsafe import Markup, escape
 
-from app import clip_list, config, feedback, flash, notify, retention, services, share
+from app import clip_list, config, feedback, flash, notify, pagination, retention, services, share
 from app.auth import set_anon_csrf_cookie
 from app.db import SessionLocal
 from app import models as m
@@ -70,6 +70,7 @@ def unread_count(user) -> int:
 
 
 env.globals.update(
+    page_query=pagination.page_query,
     unread_count=unread_count, bell_label=notify.bell_label, NOTIFICATION_KINDS=m.NOTIFICATION_KINDS,
     ffmpeg_ok=vid.ffmpeg_available,
     app_version=config.VERSION,
@@ -148,6 +149,15 @@ def mark_seen(request: Request, db, **target) -> None:
         return
     if notify.mark_target_read(db, request.state.user.id, **target):
         db.commit()
+
+
+def comment_context(request: Request, db, **scope: int) -> dict:
+    """Comments for a full page; HTMX refreshes of the page do not render them."""
+    if is_htmx(request):
+        return {"comments": None, "older_before": None}
+    comments, older_before = feedback.comments_of(db, everything=request.query_params.get("comments") == "all",
+                                                  **scope)
+    return {"comments": comments, "older_before": older_before}
 
 
 def back_url(request: Request) -> str | None:

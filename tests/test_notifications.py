@@ -177,15 +177,14 @@ def test_list_is_newest_first_and_marks_unread_ones(w, feed):
     assert unread(w) == 2 and "Oznacz wszystkie jako przeczytane" in page
 
 
-def test_list_is_never_cached(w, feed):
-    assert w.c["crew"].get("/notifications").headers["cache-control"] == "no-store"
-
-
-def test_list_empty_state_and_cap(w, feed, monkeypatch):
+def test_list_is_paginated_and_never_cached(w, feed, monkeypatch):
     assert "Brak powiadomień" in w.c["outsider"].get("/notifications").text
-    monkeypatch.setattr(config, "NOTIFICATION_LIST_LIMIT", 2)
-    page = w.c["crew"].get("/notifications").text
-    assert page.count('<li class="notif') == 2 and "Pokazano 2 najnowszych" in page
+    monkeypatch.setattr(config, "NOTIFICATION_PAGE_SIZE", 2)
+    first = w.c["crew"].get("/notifications")
+    assert first.headers["cache-control"] == "no-store"
+    assert len(list_items(first.text)) == 2 and "strona 1 z 2" in first.text
+    assert 'href="/notifications?page=2"' in first.text
+    assert len(list_items(w.c["crew"].get("/notifications?page=2").text)) == 1
 
 
 @pytest.mark.parametrize("count,label", [

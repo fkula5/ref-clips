@@ -13,6 +13,7 @@ from app.auth import current_user, require
 from app.db import get_db
 from app.groups import GroupError
 from app.models import TrainingGroup, User
+from app.pagination import parse_page
 from app.web import mark_seen, render
 
 router = APIRouter(prefix="/groups")
@@ -85,8 +86,8 @@ def group_detail(request: Request, db: Session = Depends(get_db),
 def group_review(request: Request, db: Session = Depends(get_db),
                  group: TrainingGroup = group_for(permissions.can_view_group)):
     coach_id = request.state.user.id
-    return render(request, "group_review.html", g=group, clips=groups.review_queue(db, group, coach_id),
-                  total=groups.review_count(db, group, coach_id), limit=groups.REVIEW_LIMIT)
+    clips, pager = groups.review_queue(db, group, coach_id, parse_page(request.query_params.get("page")))
+    return render(request, "group_review.html", g=group, clips=clips, pager=pager)
 
 
 @router.get("/{group_id}/edit")

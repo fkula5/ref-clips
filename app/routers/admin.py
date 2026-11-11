@@ -9,6 +9,7 @@ from app import accounts, categories, config, disk, flash, permissions, retentio
 from app.auth import require
 from app.db import get_db
 from app.models import Category, SheetElement, User, Video
+from app.pagination import parse_page
 from app.web import render
 
 router = APIRouter(prefix="/admin")
@@ -278,10 +279,11 @@ def delete_sheet_element(request: Request, element_id: int, db: Session = Depend
 def _retention_page(request: Request, db: Session, *, status_code: int = 200, error: str | None = None,
                     notice: str | None = None, days_value: str | None = None):
     last_run, last_summary = retention.last_run(db)
+    rows, pager = disk.video_rows(db, parse_page(request.query_params.get("page")))
     return render_admin(
         request, db, "admin_retention.html", status_code=status_code, error=error, notice=notice,
         days=services.retention_days(db), days_value=days_value, days_min=config.RETENTION_DAYS_MIN,
-        days_max=config.RETENTION_DAYS_MAX, usage=disk.usage(db), rows=disk.video_rows(db),
+        days_max=config.RETENTION_DAYS_MAX, usage=disk.usage(db), rows=rows, pager=pager,
         rejections=disk.recent_rejections(db),
         last_run=last_run, last_summary=last_summary)
 

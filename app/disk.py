@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session, selectinload
 
 from app import config, retention, uploads
 from app.models import Clip, UploadRejection, UploadSession, Video
+from app.pagination import Page, paginate
 from app.storage import storage
 from app.timeutil import utcnow
 
@@ -64,19 +65,23 @@ class VideoRow:
         return (self.video.proxy_bytes or 0) + (self.video.size_bytes if self.video.original_path else 0)
 
 
-def video_rows(db: Session, now: datetime | None = None) -> list[VideoRow]:
+def video_rows(db: Session, requested: int = 1, now: datetime | None = None) -> tuple[list[VideoRow], Page]:
+    """Soonest expiry first; recordings without a deadline last."""
     now = now or utcnow()
-    videos = db.scalars(select(Video).where(Video.purged_at.is_(None)).options(
-        selectinload(Video.match))).all()
+    live = Video.purged_at.is_(None)
+    size = config.VIDEO_PAGE_SIZE
+    pager = paginate(db.scalar(select(func.count()).select_from(Video).where(live)) or 0, requested, size)
+    videos = db.scalars(select(Video).where(live).options(selectinload(Video.match))
+                        .order_by(Video.expires_at.is_(None), Video.expires_at, Video.id)
+                        .limit(size).offset(pager.offset)).all()
     counts = {vid: (n, pending or 0) for vid, n, pending in db.execute(
         select(Clip.video_id, func.count(),
                func.sum(case((Clip.status.in_(retention.PENDING_CLIP), 1), else_=0)))
-        .group_by(Clip.video_id))}
+        .where(Clip.video_id.in_([v.id for v in videos])).group_by(Clip.video_id))}
     rows = [VideoRow(v, counts.get(v.id, (0, 0))[0], counts.get(v.id, (0, 0))[1], retention.days_left(v, now),
                      retention.purge_blocker(db, v, pending=int(counts.get(v.id, (0, 0))[1])))
             for v in videos]
-    far = datetime.max
-    return sorted(rows, key=lambda r: (r.video.expires_at or far, r.video.id))
+    return rows, pager
 
 
 def recent_rejections(db: Session, now: datetime | None = None) -> list[UploadRejection]:

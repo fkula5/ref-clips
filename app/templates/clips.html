@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% from "_clips_macros.html" import clip_filters, clips_table, share_bar with context %}
+{% from "_pager.html" import pagination %}
 {% block title %}Klipy{% endblock %}
 {% block content %}
 <h1>Klipy</h1>
@@ -15,7 +16,8 @@
   <p class="muted">Brak klipów dla wybranych filtrów.</p>
 {% else %}
   {{ clips_table(clips, nav, true, stats, shareable) }}
-  <p class="muted small-note">Klipów: {{ clips|length }}. Czas w kolumnie „Kwarta” liczony jest od początku kwarty w nagraniu — to nie jest zegar meczowy.</p>
+  {{ pagination(pager, "Klipy", f.page_query, "/clips", "#clips-list") }}
+  <p class="muted small-note">Czas w kolumnie „Kwarta” liczony jest od początku kwarty w nagraniu — to nie jest zegar meczowy.</p>
 {% endif %}
 </div>
 {% endblock %}
