@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+{% block title %}{{ g.name }}{% endblock %}
+{% macro member_picker(role, label, options) %}
+  <form method="post" action="/groups/{{ g.id }}/{{ role }}s" class="card form row member-add">
+    {{ csrf_input() }}
+    <label class="grow">{{ label }}
+      <select name="user_id" required>
+        <option value="">Wybierz konto…</option>
+        {% for u in options %}<option value="{{ u.id }}" {{ 'selected' if add_values.get(role) == u.id|string }}>{{ u.name }}</option>{% endfor %}
+      </select></label>
+    <button class="btn primary">Dodaj</button>
+  </form>
+{% endmacro %}
+{% block content %}
+<p><a href="/groups">← Grupy</a></p>
+<div class="row between">
+  <h1>{{ g.name }}</h1>
+  <span class="row">
+    <a class="btn" href="/groups/{{ g.id }}/review">Do oceny{% if review_count %} <span class="chip warn">{{ review_count }}</span>{% endif %}</a>
+    <a class="btn" href="/groups/{{ g.id }}/edit">Edytuj</a>
+    <a class="btn danger" href="/groups/{{ g.id }}/delete">Usuń grupę</a>
+  </span>
+</div>
+{% if g.description %}<p>{{ g.description }}</p>{% endif %}
+{% if error %}<div class="banner error" role="alert" id="group-error">{{ error }}</div>{% endif %}
+
+<h2>Aktywność sędziów</h2>
+<form method="get" action="/groups/{{ g.id }}" class="card row filters" data-clean-params
+      hx-get="/groups/{{ g.id }}" hx-target="#activity" hx-select="#activity" hx-swap="outerHTML"
+      hx-trigger="change, submit" hx-push-url="true">
+  <label>Okres
+    <select name="days">
+      {% for d in periods %}<option value="{{ d }}" {{ 'selected' if d == days }}>ostatnie {{ d }} dni</option>{% endfor %}
+    </select></label>
+  <button class="btn">Pokaż</button>
+</form>
+<div id="activity">
+{% if not rows %}
+  <p class="muted">W grupie nie ma jeszcze żadnego sędziego. Dodaj pierwszego poniżej.</p>
+{% else %}
+<table class="responsive activity-table">
+  <thead><tr><th>Sędzia</th><th title="Wgrane nagrania w wybranym okresie">Nagrania</th><th title="Dodane znaczniki (klipy) w wybranym okresie">Znaczniki</th>
+    <th title="Klipy opisane w wybranym okresie">Opisane klipy</th><th title="Ostatnia aktywność z całego czasu">Ostatnia aktywność</th><th></th></tr></thead>
+  <tbody>
+  {% for r in rows %}
+    <tr class="{{ 'no-activity' if not r.total }}">
+      <td data-label="Sędzia" class="main-cell">{{ r.user.name }}{% if not r.total %} <span class="chip warn">brak aktywności</span>{% endif %}</td>
+      <td data-label="Nagrania">{{ r.recordings }}</td>
+      <td data-label="Znaczniki">{{ r.markers }}</td>
+      <td data-label="Opisane klipy">{{ r.described }}</td>
+      <td data-label="Ostatnia aktywność">{{ r.last|local if r.last else 'brak' }}</td>
+      <td class="actions-cell">
+        <form method="post" action="/groups/{{ g.id }}/referees/{{ r.user.id }}/remove" class="inline" onsubmit="return confirm('Usunąć {{ r.user.name|e }} z grupy? Jej mecze i klipy zostają bez zmian.')">
+          {{ csrf_input() }}<input type="hidden" name="days" value="{{ days }}"><button class="btn small danger" aria-label="Usuń z grupy: {{ r.user.name }}">Usuń z grupy</button></form>
+      </td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+<p class="muted small-note">Liczby dotyczą ostatnich {{ days }} dni; „Ostatnia aktywność” obejmuje cały czas.</p>
+{% endif %}
+</div>
+
+<h2>Dodaj sędziego</h2>
+{% if referee_options or add_values.referee %}{{ member_picker('referee', 'Sędzia', referee_options) }}
+{% else %}<p class="muted">Nie ma więcej aktywnych kont z rolą sędziego do dodania.</p>{% endif %}
+
+<h2>Szkoleniowcy</h2>
+<p>{% for m in g.coaches %}<span class="chip">{{ m.user.name }}</span>{% endfor %}</p>
+{% if coach_options or add_values.coach %}{{ member_picker('coach', 'Dodaj szkoleniowca', coach_options) }}
+{% else %}<p class="muted">Nie ma więcej aktywnych kont z rolą szkoleniowca do dodania.</p>{% endif %}
+{% endblock %}

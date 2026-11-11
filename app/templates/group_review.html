@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% from "_clips_macros.html" import clips_table with context %}
+{% block title %}Do oceny · {{ g.name }}{% endblock %}
+{% block content %}
+<p><a href="/groups/{{ g.id }}">← {{ g.name }}</a></p>
+<h1>Do oceny</h1>
+<p class="muted">Opisane klipy z meczów, w których występują sędziowie z grupy, a których jeszcze nie oceniłeś(-aś). Ocena innego szkoleniowca nie usuwa klipu z tej listy. Najnowsze na górze.</p>
+{% if not clips %}
+  <p class="card muted">Nie ma klipów czekających na Twoją ocenę.</p>
+{% else %}
+  {{ clips_table(clips, '', true) }}
+  <p class="muted small-note">Klipów do oceny: {{ total }}{% if total > clips|length %} (pokazano {{ limit }} najnowszych){% endif %}.</p>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}Grupy{% endblock %}
+{% block content %}
+<div class="row between">
+  <h1>Grupy</h1>
+  {% if perm.can_create_group(user) %}<a class="btn primary" href="/groups/new">+ Nowa grupa</a>{% endif %}
+</div>
+{% if not items %}
+  {% if perm.can_create_group(user) %}
+  <p class="muted">Nie ma jeszcze żadnej grupy. Utwórz grupę, żeby zebrać sędziów, z którymi pracujesz.</p>
+  {% else %}
+  <p class="card muted">Nie należysz jeszcze do żadnej grupy. Szkoleniowiec może Cię dodać do swojej grupy — dostaniesz wtedy powiadomienie.</p>
+  {% endif %}
+{% else %}
+<table class="responsive">
+  <thead><tr><th>Grupa</th><th>Opis</th><th>Szkoleniowcy</th>{% if viewable %}<th>Sędziowie</th>{% endif %}</tr></thead>
+  <tbody>
+  {% for g in items %}
+    <tr>
+      <td data-label="Grupa" class="main-cell">{% if g.id in viewable %}<a href="/groups/{{ g.id }}">{{ g.name }}</a>{% else %}{{ g.name }}{% endif %}</td>
+      <td data-label="Opis">{{ (g.description|truncate(80, true, '…')) if g.description else '—' }}</td>
+      <td data-label="Szkoleniowcy">{% for m in g.coaches %}<span class="chip">{{ m.user.name }}</span>{% else %}—{% endfor %}</td>
+      {% if viewable %}<td data-label="Sędziowie">{{ g.referees|length if g.id in viewable else '—' }}</td>{% endif %}
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+{% endblock %}

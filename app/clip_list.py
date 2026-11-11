@@ -7,7 +7,7 @@ from urllib.parse import urlencode
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
-from app import feedback, services
+from app import feedback, groups, services
 from app.models import PERIODS, RATING_VERDICTS, Clip, MatchOfficial, Rating, Video
 
 TEAM = "team"
@@ -34,11 +34,13 @@ class ClipFilters:
     period: str = ""
     described: str = ""
     rating: str = ""
+    group_id: int | None = None
 
     def pairs(self, *, scope: bool) -> list[tuple[str, str]]:
         pairs = [("person", self.person),
                  ("category_id", str(self.category_id) if self.category_id else ""),
-                 ("period", self.period), ("described", self.described), ("rating", self.rating)]
+                 ("period", self.period), ("described", self.described), ("rating", self.rating),
+                 ("group", str(self.group_id) if self.group_id else "")]
         if scope:
             pairs = [("match_id", str(self.match_id) if self.match_id else ""),
                      ("video_id", str(self.video_id) if self.video_id else ""), *pairs]
@@ -63,11 +65,13 @@ def parse_filters(params: Mapping[str, str]) -> ClipFilters:
         category_id=_int(params.get("category_id")),
         period=period if period in PERIODS or period == NO_PERIOD else "",
         described=described if described in (DESCRIBED_YES, DESCRIBED_NO) else "",
-        rating=rating if rating in (RATING_ANY, RATING_NONE, *RATING_VERDICTS) else "")
+        rating=rating if rating in (RATING_ANY, RATING_NONE, *RATING_VERDICTS) else "",
+        group_id=_int(params.get("group")))
 
 
 def query_clips(db: Session, *, match_id=None, video_id=None, person=None, category_id=None,
-                period=None, described=None, rating=None, ids=None, with_comments=False) -> list[Clip]:
+                period=None, described=None, rating=None, group_id=None, ids=None,
+                with_comments=False) -> list[Clip]:
     stmt = (select(Clip)
             .options(selectinload(Clip.video).selectinload(Video.marks),
                      selectinload(Clip.official).selectinload(MatchOfficial.user))
@@ -80,6 +84,8 @@ def query_clips(db: Session, *, match_id=None, video_id=None, person=None, categ
         stmt = stmt.where(Clip.video_id == video_id)
     if category_id:
         stmt = stmt.where(Clip.category_id == category_id)
+    if group_id:
+        stmt = stmt.where(Clip.match_id.in_(groups.match_ids(group_id)))
     if ids:
         stmt = stmt.where(Clip.id.in_(ids))
     if described == DESCRIBED_YES:
@@ -111,7 +117,7 @@ def select_clips(db: Session, filters: ClipFilters, *, match_id: int | None = No
     return query_clips(db, match_id=match_id or filters.match_id, video_id=filters.video_id,
                        person=filters.person or None, category_id=filters.category_id,
                        period=filters.period or None, described=filters.described or None,
-                       rating=filters.rating or None)
+                       rating=filters.rating or None, group_id=filters.group_id)
 
 
 @dataclass

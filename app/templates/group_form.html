@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block title %}{{ "Edycja grupy" if g else "Nowa grupa" }}{% endblock %}
+{% block content %}
+<h1>{{ "Edycja grupy" if g else "Nowa grupa" }}</h1>
+{% if error %}<div class="banner error" role="alert">{{ error }}</div>{% endif %}
+<form method="post" action="{{ '/groups/%d/edit' % g.id if g else '/groups' }}" class="card form">
+  {{ csrf_input() }}
+  <label>Nazwa <input name="name" required maxlength="100" value="{{ values.name }}"></label>
+  <label>Opis (opcjonalnie) <textarea name="description" rows="3" maxlength="1000">{{ values.description }}</textarea></label>
+  <div class="row">
+    <button class="btn primary">{{ "Zapisz" if g else "Utwórz grupę" }}</button>
+    <a class="btn" href="{{ '/groups/%d' % g.id if g else '/groups' }}">Anuluj</a>
+  </div>
+</form>
+{% endblock %}

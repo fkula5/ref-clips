@@ -6,7 +6,7 @@
 {% if created is not none %}
   <div class="banner ok">Dodano {{ created }} klipów do wycięcia{% if skipped %} (pominięto {{ skipped }} z niepoprawnym czasem){% endif %}.</div>
 {% endif %}
-{{ clip_filters(f, "/clips", people, categories, matches) }}
+{{ clip_filters(f, "/clips", people, categories, matches, groups) }}
 
 {{ share_bar(shareable) }}
 
