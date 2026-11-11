@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block title %}Usuń grupę{% endblock %}
+{% block content %}
+<h1>Usunąć grupę?</h1>
+<div class="card">
+  <p><strong>{{ g.name }}</strong></p>
+  <p>Zostanie usunięta sama grupa i jej skład (szkoleniowcy: {{ g.coaches|length }}, sędziowie: {{ g.referees|length }}).
+    Konta, mecze, klipy i oceny zostają bez zmian.</p>
+  <form method="post" action="/groups/{{ g.id }}/delete" class="row">
+    {{ csrf_input() }}
+    <button class="btn danger">Tak, usuń grupę</button>
+    <a class="btn" href="/groups/{{ g.id }}">Anuluj</a>
+  </form>
+</div>
+{% endblock %}

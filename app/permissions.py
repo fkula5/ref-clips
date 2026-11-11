@@ -153,3 +153,24 @@ def can_view_sheet(user, sheet) -> bool:
 def can_view_notification(user, notification) -> bool:
     """Somebody else's notification is answered with 404, so its existence is not revealed."""
     return can_view(user) and notification.recipient_id == user.id
+
+
+def is_group_coach(user, group) -> bool:
+    return user is not None and any(m.user_id == user.id and m.role == "coach" for m in group.members)
+
+
+def can_create_group(user) -> bool:
+    return can_view(user) and _has(user, ADMIN, COACH)
+
+
+def can_see_my_groups(user) -> bool:
+    return can_view(user)
+
+
+def can_view_group(user, group) -> bool:
+    """Everybody else gets 404, so a group's referee list is not revealed to a coach who does not lead it."""
+    return can_view(user) and (_has(user, ADMIN) or is_group_coach(user, group))
+
+
+def can_manage_group(user, group) -> bool:
+    return can_view_group(user, group)

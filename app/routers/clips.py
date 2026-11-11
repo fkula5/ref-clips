@@ -7,7 +7,7 @@ from fastapi.responses import RedirectResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app import clip_list, feedback, permissions, services, share
+from app import clip_list, feedback, groups, permissions, services, share
 from app.auth import require, via_match
 from app.clip_list import query_clips  # noqa: F401 - also used by app/routers/clips_v2.py
 from app.db import get_db
@@ -35,7 +35,7 @@ def clips_list(request: Request, db: Session = Depends(get_db),
         pending=any(c.status in ("new", "queued") for c in clips),
         stats=clip_list.clip_stats(db, clips),
         matches=db.scalars(select(Match).order_by(Match.date.desc(), Match.id.desc())).all(),
-        people=person_choices(db), categories=services.all_categories(db),
+        people=person_choices(db), categories=services.all_categories(db), groups=groups.all_groups(db),
         nav=f.query(scope=False), query=str(request.url.query))
 
 
@@ -78,7 +78,7 @@ def clip_update(request: Request, db: Session = Depends(get_db), clip: Clip = De
     values = {"official": official, "category_id": category_id,
               "custom_category": custom_category, "description": description}
     try:
-        services.describe_clip(db, clip, official=official, category_id=category_id,
+        services.describe_clip(db, clip, user, official=official, category_id=category_id,
                                custom_category=custom_category, description=description)
     except services.ClipDescribeError as exc:
         db.rollback()

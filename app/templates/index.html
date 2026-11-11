@@ -21,6 +21,10 @@
     <select name="person"><option value="">Wszyscy</option>
       {% for key, name in people %}<option value="{{ key }}" {{ 'selected' if f.person == key }}>{{ name }}</option>{% endfor %}
     </select></label>
+  <label>Grupa
+    <select name="group"><option value="">Wszystkie</option>
+      {% for g in groups %}<option value="{{ g.id }}" {{ 'selected' if f.group == g.id }}>{{ g.name }}</option>{% endfor %}
+    </select></label>
   <label class="inline"><input type="checkbox" name="mine" value="1" {{ 'checked' if f.mine }}> tylko moje</label>
   <button class="btn">Filtruj</button>
   <a class="btn" href="/">Wyczyść</a>

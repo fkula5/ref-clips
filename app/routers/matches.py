@@ -8,7 +8,7 @@ from fastapi.responses import RedirectResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
-from app import clip_list, feedback, match_list, permissions, services, share, sheets, uploads
+from app import clip_list, feedback, groups, match_list, permissions, services, share, sheets, uploads
 from app.auth import require
 from app.db import get_db
 from app.loaders import get_match
@@ -89,7 +89,7 @@ def index(request: Request, db: Session = Depends(get_db),
     filters = match_list.parse_filters(request.query_params)
     result = match_list.list_matches(db, filters, user.id)
     return render(request, "index.html", f=filters, result=result, levels=services.known_levels(db),
-                  people=services.people(db),
+                  people=services.people(db), groups=groups.all_groups(db),
                   prev_query=filters.query(result.page - 1), next_query=filters.query(result.page + 1))
 
 

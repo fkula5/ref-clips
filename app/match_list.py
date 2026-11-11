@@ -8,7 +8,7 @@ from urllib.parse import urlencode
 from sqlalchemy import case, func, or_, select
 from sqlalchemy.orm import Session, selectinload
 
-from app import retention, services
+from app import groups, retention, services
 from app.models import Clip, Match, MatchOfficial, Video
 
 PAGE_SIZE = 25
@@ -21,6 +21,7 @@ class MatchFilters:
     level: str = ""
     person: str = ""  # "u<id>" or "n<name>" key from services.people
     mine: bool = False
+    group: int | None = None
     page: int = 1
     errors: list[str] = field(default_factory=list)
 
@@ -28,6 +29,7 @@ class MatchFilters:
         pairs = [("date_from", self.date_from.isoformat() if self.date_from else ""),
                  ("date_to", self.date_to.isoformat() if self.date_to else ""),
                  ("level", self.level), ("person", self.person), ("mine", "1" if self.mine else ""),
+                 ("group", str(self.group) if self.group else ""),
                  ("page", str(page) if page and page > 1 else "")]
         return urlencode([(k, v) for k, v in pairs if v])
 
@@ -53,7 +55,9 @@ def parse_filters(params: Mapping[str, str]) -> MatchFilters:
         date_from=_parse_date(params.get("date_from", ""), "od", errors),
         date_to=_parse_date(params.get("date_to", ""), "do", errors),
         level=params.get("level", "").strip(), person=params.get("person", "").strip(),
-        mine=params.get("mine", "") in ("1", "on", "true"), page=page, errors=errors)
+        mine=params.get("mine", "") in ("1", "on", "true"),
+        group=int(group) if (group := params.get("group", "").strip()).isdigit() else None,
+        page=page, errors=errors)
 
 
 @dataclass
@@ -99,6 +103,8 @@ def list_matches(db: Session, filters: MatchFilters, user_id: int,
         stmt = stmt.where(Match.level == filters.level)
     if filters.person:
         stmt = stmt.where(Match.id.in_(_person_match_ids(db, filters.person)))
+    if filters.group:
+        stmt = stmt.where(Match.id.in_(groups.match_ids(filters.group)))
     if filters.mine:
         own_crew = select(MatchOfficial.match_id).where(MatchOfficial.user_id == user_id)
         stmt = stmt.where(or_(Match.created_by == user_id, Match.id.in_(own_crew)))

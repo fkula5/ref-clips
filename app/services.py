@@ -700,9 +700,9 @@ def describe_block(clip: Clip) -> DescribeBlock | None:
     return DescribeBlock(message, url, "Ustaw początki kwart w odtwarzaczu" if url else "")
 
 
-def describe_clip(db: Session, clip: Clip, *, official: str, category_id: str, custom_category: str,
+def describe_clip(db: Session, clip: Clip, user: User, *, official: str, category_id: str, custom_category: str,
                   description: str) -> None:
-    """`described_at` is set once (first approval) and does not change on edits. An error is a
+    """`described_at` and `described_by_id` are set once (first approval) and do not change on edits. An error is a
     ClipDescribeError and nothing is changed.
     """
     block = describe_block(clip)
@@ -733,6 +733,7 @@ def describe_clip(db: Session, clip: Clip, *, official: str, category_id: str, c
     clip.description = description
     if clip.described_at is None:
         clip.described_at = utcnow()
+        clip.described_by_id = user.id
 
 
 def clip_order_key(clip: Clip) -> tuple[int, float, int]:

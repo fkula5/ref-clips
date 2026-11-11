@@ -11,7 +11,7 @@ from sqlalchemy import delete, func, or_, select, update
 from sqlalchemy.orm import Session, selectinload
 
 from app import config, permissions
-from app.models import Clip, Comment, Match, Notification, Rating, Sheet, User, Video
+from app.models import Clip, Comment, Match, Notification, Rating, Sheet, TrainingGroup, User, Video
 from app.timeutil import utcnow
 
 
@@ -23,8 +23,9 @@ def _commenters(db: Session, scope) -> set[int]:
     return set(db.scalars(select(Comment.author_id).where(scope).distinct()))
 
 
-def _deliver(db: Session, recipients: Iterable[int | None], *, actor_id: int, kind: str, match: Match,
-             clip: Clip | None = None, sheet: Sheet | None = None, verdict: str | None = None,
+def _deliver(db: Session, recipients: Iterable[int | None], *, actor_id: int, kind: str, match: Match | None,
+             clip: Clip | None = None, sheet: Sheet | None = None, group: TrainingGroup | None = None,
+             verdict: str | None = None,
              may_see: Callable[[User], bool] = permissions.can_view) -> None:
     wanted = {r for r in recipients if r is not None} - {actor_id}
     if not wanted:
@@ -33,9 +34,9 @@ def _deliver(db: Session, recipients: Iterable[int | None], *, actor_id: int, ki
     for user in db.scalars(select(User).where(User.id.in_(wanted)).order_by(User.id)):
         if may_see(user):
             db.add(Notification(
-                recipient_id=user.id, kind=kind, actor_id=actor_id, match_id=match.id,
+                recipient_id=user.id, kind=kind, actor_id=actor_id, match_id=match.id if match else None,
                 clip_id=clip.id if clip else None, sheet_id=sheet.id if sheet else None,
-                verdict=verdict, created_at=now))
+                group_id=group.id if group else None, verdict=verdict, created_at=now))
     db.flush()
 
 
@@ -62,6 +63,10 @@ def sheet_published(db: Session, sheet: Sheet) -> None:
              sheet=sheet, may_see=lambda user: permissions.can_view_sheet(user, sheet))
 
 
+def group_added(db: Session, group: TrainingGroup, user_id: int, actor_id: int) -> None:
+    _deliver(db, [user_id], actor_id=actor_id, kind="group_added", match=None, group=group)
+
+
 def unread_count(db: Session, user_id: int) -> int:
     return db.scalar(select(func.count()).select_from(Notification).where(
         Notification.recipient_id == user_id, Notification.read_at.is_(None))) or 0
@@ -78,6 +83,7 @@ def recent(db: Session, user_id: int, limit: int) -> list[Notification]:
     return list(db.scalars(
         select(Notification).where(Notification.recipient_id == user_id)
         .options(selectinload(Notification.actor), selectinload(Notification.match),
+                 selectinload(Notification.group),
                  selectinload(Notification.clip).selectinload(Clip.video).selectinload(Video.marks))
         .order_by(Notification.id.desc()).limit(limit)))
 
@@ -100,6 +106,8 @@ def target_url(notification: Notification) -> str:
             return f"/clips/{notification.clip_id}#komentarze"
         case "match_comment":
             return f"/matches/{notification.match_id}#komentarze"
+        case "group_added":
+            return "/groups"
         case _:
             return f"/sheets/{notification.sheet_id}"
 

@@ -18,8 +18,8 @@ from app.privacy import SharePrivacyHeadersMiddleware
 from app.db import get_db
 from app.initdb import init_db
 from app.models import Job, User
-from app.routers import (admin, auth, clips, clips_v2, describe, feedback, matches, notifications, share,
-                         share_links, sheets, uploads, videos, watch as watch_routes)
+from app.routers import (admin, auth, clips, clips_v2, describe, feedback, groups, matches, notifications,
+                         share, share_links, sheets, uploads, videos, watch as watch_routes)
 from app.web import BASE, back_url, render
 
 
@@ -55,6 +55,7 @@ app.include_router(feedback.router, dependencies=PROTECTED)
 app.include_router(share_links.router, dependencies=PROTECTED)
 app.include_router(sheets.router, dependencies=PROTECTED)
 app.include_router(notifications.router, dependencies=PROTECTED)
+app.include_router(groups.router, dependencies=PROTECTED)
 app.include_router(watch_routes.router, dependencies=PROTECTED)
 app.include_router(watch_routes.ws_router)
 

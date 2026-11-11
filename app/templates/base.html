@@ -17,6 +17,7 @@
     <nav>
       <a href="/">Mecze</a>
       <a href="/clips">Klipy</a>
+      {% if perm.can_see_my_groups(user) %}<a href="/groups">Grupy</a>{% endif %}
       {% if perm.can_manage_users(user) %}<a href="/admin/users">Administracja</a>{% endif %}
     </nav>
     <div class="who">

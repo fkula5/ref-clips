@@ -8,7 +8,7 @@
   {% endfor %}
 {% endmacro %}
 
-{% macro clip_filters(f, action, people, categories, matches=none) %}
+{% macro clip_filters(f, action, people, categories, matches=none, groups=none) %}
 <form method="get" action="{{ action }}" class="card row filters clip-filters" id="clip-filters" data-clean-params
       hx-get="{{ action }}" hx-target="#clips-list" hx-select="#clips-list" hx-swap="outerHTML"
       hx-trigger="change, submit" hx-push-url="true">
@@ -20,6 +20,11 @@
   <label>Sędzia
     <select name="person"><option value="">Wszyscy</option>
       {% for key, name in people %}<option value="{{ key }}" {{ 'selected' if f.person == key }}>{{ name }}</option>{% endfor %}</select></label>
+  {% if groups is not none %}
+  <label>Grupa
+    <select name="group"><option value="">Wszystkie</option>
+      {% for g in groups %}<option value="{{ g.id }}" {{ 'selected' if f.group_id == g.id }}>{{ g.name }}</option>{% endfor %}</select></label>
+  {% endif %}
   <label>Kategoria
     <select name="category_id"><option value="">Wszystkie</option>{{ category_options(categories, f.category_id) }}</select></label>
   <label>Kwarta

@@ -138,7 +138,7 @@ def test_notes_preview_and_commit_creates_clips(client, db):
     c = db.scalar(select(Clip))
     assert c.time_sec == 174 and c.official_id == cc.id and c.category.name == "kroki"
     assert (c.margin_before, c.margin_after) == (15, 15) and c.status == "queued"
-    assert c.described_at is None and c.author_id is not None
+    assert c.described_at is None and c.described_by_id is None and c.author_id is not None
     job = db.scalar(select(Job).where(Job.type == "cut"))
     assert job.clip_id == c.id
 
@@ -221,7 +221,7 @@ def test_describe_clip(client, db):
     assert r.status_code == 303
     db.refresh(clip)
     assert clip.official_id == cc.id and clip.category.name == "kroki" and clip.description == "Za późno"
-    assert clip.is_described and not clip.whole_team
+    assert clip.is_described and not clip.whole_team and clip.described_by_id == clip.author_id
     own = str(category_id(db, "własna"))
     assert client.post(f"/clips/{clip_id}/update", data={"official": "team", "category_id": own}).status_code == 422
     assert "Dla kategorii „własna” wpisz jej nazwę." in client.post(

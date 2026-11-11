@@ -5,7 +5,8 @@ import pytest
 from sqlalchemy import select
 
 from app import permissions as p
-from app.models import Clip, Comment, Match, MatchOfficial, Notification, Rating, ShareLink, Sheet, User, Video
+from app.models import (Clip, Comment, GroupMember, Match, MatchOfficial, Notification, Rating, ShareLink, Sheet,
+                        TrainingGroup, User, Video)
 from tests.helpers import (TUS, category_named, make_match, make_ready_video, make_user, mark_periods, tus_create,
                            tus_metadata)
 
@@ -43,6 +44,15 @@ def clip(*, in_crew=False, author=OTHER) -> Clip:
 
 def sheet(*, author=OTHER, published=False, in_crew=False) -> Sheet:
     return Sheet(match=match(in_crew=in_crew), coach_id=author, status="published" if published else "draft")
+
+
+def group(role=None) -> TrainingGroup:
+    """`role`: my role in the group, or None when I am not in it."""
+    g = TrainingGroup(name="G")
+    g.members = [GroupMember(user_id=OTHER, role="coach")]
+    if role:
+        g.members.append(GroupMember(user_id=ME, role=role))
+    return g
 
 
 # (rule name, function(user, context), {role set: expected result})
@@ -175,6 +185,19 @@ ROWS = [
             "coach": (True, True, False, True, True), "referee": (True, True, False, True, False),
             "admin+coach": (True, True, False, True, True), "admin+referee": (True, True, False, True, True),
             "coach+referee": (True, True, False, True, True)}),
+    # groups; view and manage: I am its coach / I am only a referee in it / I am not in it
+    _row("tworzenie grupy", lambda u, _: p.can_create_group(u), [None],
+         **{"brak ról": (False,), "admin": (True,), "coach": (True,), "referee": (False,),
+            "admin+coach": (True,), "admin+referee": (True,), "coach+referee": (True,)}),
+    _row("moje grupy", lambda u, _: p.can_see_my_groups(u), [None], **{k: (True,) for k in ROLE_SETS}),
+    _row("podgląd grupy", lambda u, g: p.can_view_group(u, g), [group("coach"), group("referee"), group()],
+         **{"brak ról": (True, False, False), "admin": (True, True, True), "coach": (True, False, False),
+            "referee": (True, False, False), "admin+coach": (True, True, True), "admin+referee": (True, True, True),
+            "coach+referee": (True, False, False)}),
+    _row("zarządzanie grupą", lambda u, g: p.can_manage_group(u, g), [group("coach"), group("referee"), group()],
+         **{"brak ról": (True, False, False), "admin": (True, True, True), "coach": (True, False, False),
+            "referee": (True, False, False), "admin+coach": (True, True, True), "admin+referee": (True, True, True),
+            "coach+referee": (True, False, False)}),
     # notifications: only the recipient (own / foreign)
     _row("podgląd powiadomienia", lambda u, n: p.can_view_notification(u, n),
          [Notification(recipient_id=ME), Notification(recipient_id=OTHER)], **{k: (True, False) for k in ROLE_SETS}),
@@ -214,6 +237,8 @@ def test_inactive_user_and_anonymous_have_no_access():
     own = sheet(author=ME, published=True, in_crew=True)
     assert not any(f(inactive, own) for f in (p.can_view_sheet, p.can_edit_sheet, p.can_delete_sheet))
     assert not p.can_view_sheet(None, own) and not p.can_create_sheet(None) and not p.can_manage_sheet_elements(None)
+    assert not any(f(inactive, group("coach")) for f in (p.can_view_group, p.can_manage_group))
+    assert not p.can_create_group(inactive) and not p.can_see_my_groups(None) and not p.can_view_group(None, group())
 
 
 @pytest.fixture()

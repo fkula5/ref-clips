@@ -30,8 +30,9 @@ SHEET_STATUSES = {"draft": "szkic", "published": "opublikowany"}
 NOTIFICATION_KINDS = {
     "rating": "nowa ocena klipu", "rating_changed": "zmieniona ocena klipu",
     "clip_comment": "komentarz do klipu", "match_comment": "komentarz do meczu",
-    "sheet_published": "opublikowany arkusz oceny",
+    "sheet_published": "opublikowany arkusz oceny", "group_added": "dodano Cię do grupy",
 }
+GROUP_ROLES = {"coach": "szkoleniowiec", "referee": "sędzia"}
 
 
 def _in(column: str, values) -> str:
@@ -287,7 +288,7 @@ class Category(Base):
 
 
 class Clip(Base):
-    """`described_at = None` means undescribed."""
+    """`described_at = None` means undescribed; `described_by_id` is NULL for clips described before it was recorded."""
     __tablename__ = "clips"
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -303,6 +304,7 @@ class Clip(Base):
     margin_after: Mapped[float] = mapped_column(Float, default=15.0)
     description: Mapped[str] = mapped_column(Text, default="")
     described_at: Mapped[datetime | None] = mapped_column(DateTime)
+    described_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), index=True)
     status: Mapped[str] = mapped_column(String(20), default="new")
     clip_path: Mapped[str | None] = mapped_column(String(500))  # relative to DATA_DIR
     clip_version: Mapped[int] = mapped_column(Integer, default=0)
@@ -314,7 +316,8 @@ class Clip(Base):
     video: Mapped[Video] = relationship(back_populates="clips")
     official: Mapped[MatchOfficial | None] = relationship()
     category: Mapped[Category | None] = relationship()
-    author: Mapped[User | None] = relationship()
+    author: Mapped[User | None] = relationship(foreign_keys=[author_id])
+    described_by: Mapped[User | None] = relationship(foreign_keys=[described_by_id])
     comments: Mapped[list[Comment]] = relationship(
         back_populates="clip", cascade="all, delete-orphan", order_by="Comment.id")
     ratings: Mapped[list[Rating]] = relationship(
@@ -511,9 +514,10 @@ class ShareLinkClip(Base):
 
 
 class Notification(Base):
-    """Created in the transaction of the event. Deleting the target match, clip or sheet deletes its
+    """Created in the transaction of the event. Deleting the target match, clip, sheet or group deletes its
     notifications (a link to it would lead nowhere); deleting a comment or rating leaves them. `match_id`
-    is always set, `clip_id` for clip kinds, `sheet_id` for sheets, `verdict` for ratings.
+    is set for every kind except `group_added` (which sets `group_id`), `clip_id` for clip kinds,
+    `sheet_id` for sheets, `verdict` for ratings.
     """
     __tablename__ = "notifications"
     __table_args__ = (
@@ -526,15 +530,17 @@ class Notification(Base):
     recipient_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
     kind: Mapped[str] = mapped_column(String(20))
     actor_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
-    match_id: Mapped[int] = mapped_column(ForeignKey("matches.id", ondelete="CASCADE"), index=True)
+    match_id: Mapped[int | None] = mapped_column(ForeignKey("matches.id", ondelete="CASCADE"), index=True)
     clip_id: Mapped[int | None] = mapped_column(ForeignKey("clips.id", ondelete="CASCADE"), index=True)
     sheet_id: Mapped[int | None] = mapped_column(ForeignKey("sheets.id", ondelete="CASCADE"), index=True)
+    group_id: Mapped[int | None] = mapped_column(ForeignKey("training_groups.id", ondelete="CASCADE"), index=True)
     verdict: Mapped[str | None] = mapped_column(String(20))
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
     read_at: Mapped[datetime | None] = mapped_column(DateTime)
 
     actor: Mapped[User | None] = relationship(foreign_keys=[actor_id])
-    match: Mapped[Match] = relationship()
+    match: Mapped[Match | None] = relationship()
+    group: Mapped[TrainingGroup | None] = relationship()
     clip: Mapped[Clip | None] = relationship()
     sheet: Mapped[Sheet | None] = relationship()
 
@@ -565,3 +571,46 @@ class Setting(Base):
 
     key: Mapped[str] = mapped_column(String(100), primary_key=True)
     value: Mapped[str] = mapped_column(Text, default="")
+
+
+class TrainingGroup(Base):
+    """Groups only organise views: they never restrict what anybody can see."""
+    __tablename__ = "training_groups"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(100))
+    description: Mapped[str] = mapped_column(Text, default="", server_default="")
+    created_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+    members: Mapped[list[GroupMember]] = relationship(
+        back_populates="group", cascade="all, delete-orphan", lazy="selectin", order_by="GroupMember.id")
+
+    def with_role(self, role: str) -> list[GroupMember]:
+        return [m for m in self.members if m.role == role]
+
+    @property
+    def coaches(self) -> list[GroupMember]:
+        return self.with_role("coach")
+
+    @property
+    def referees(self) -> list[GroupMember]:
+        return self.with_role("referee")
+
+
+class GroupMember(Base):
+    """One row per account and group, so an account is either a coach or a referee of a given group."""
+    __tablename__ = "group_members"
+    __table_args__ = (
+        UniqueConstraint("group_id", "user_id"),
+        CheckConstraint(_in("role", GROUP_ROLES), name="role_valid"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    group_id: Mapped[int] = mapped_column(ForeignKey("training_groups.id", ondelete="CASCADE"))
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    role: Mapped[str] = mapped_column(String(10))
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+    group: Mapped[TrainingGroup] = relationship(back_populates="members")
+    user: Mapped[User] = relationship(lazy="joined")

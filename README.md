@@ -417,7 +417,7 @@ Publicly only the video, the league and the decision category are visible — no
    - **proposals from notes:** clips from notes (on upload, „Wklej notatki”, `M` in the player) already have the
      recognised referee and category — they are preselected, marked „propozycja” („proposal”), and are saved only after
      approval;
-   - **Zapisz i dalej** („Save and next”) sets `described_at` (the first approval; editing does not change it) and moves on to the
+   - **Zapisz i dalej** („Save and next”) sets `described_at` and `described_by_id` (the first approval; editing does not change them) and moves on to the
      next undescribed one (after the last it returns to the first skipped one; when nothing is left — the message
      „Wszystkie znaczniki są opisane” („All markers are described”)); **Pomiń** („Skip”) moves on without saving; **Usuń znacznik** („Delete marker”) asks for confirmation
      and also deletes the clip file;
