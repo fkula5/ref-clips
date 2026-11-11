@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.5.0](https://github.com/fkula5/ref-clips/compare/v1.4.0...v1.5.0) (2026-11-11)
+
+
+### Features
+
+* **clips:** record who described a clip ([b8ad2ea](https://github.com/fkula5/ref-clips/commit/b8ad2ea6f472fd9d1b4ec8ffa4d4666830eb592a))
+* **groups:** add the groups pages, activity table, review queue and list filters ([21cd6d3](https://github.com/fkula5/ref-clips/commit/21cd6d3919c5a8268f506a8d92993d2297245992))
+* **groups:** add training group tables and the group_added notification ([90ca319](https://github.com/fkula5/ref-clips/commit/90ca319ca40a1d7c0bc99a6b92328038936bf145))
+* **groups:** training groups ([2b58c99](https://github.com/fkula5/ref-clips/commit/2b58c99e44e7d0c1ee65db4b94069c4a11e91a6e))
+
 ## [1.4.0](https://github.com/fkula5/ref-clips/compare/v1.3.1...v1.4.0) (2026-11-10)
 
 
