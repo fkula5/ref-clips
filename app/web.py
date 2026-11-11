@@ -134,6 +134,22 @@ def is_htmx(request: Request) -> bool:
     return "hx-request" in request.headers and "hx-history-restore-request" not in request.headers
 
 
+def is_prefetch(request: Request) -> bool:
+    return any(v.lower().startswith("prefetch") for v in (
+        request.headers.get("purpose", ""), request.headers.get("sec-purpose", ""),
+        request.headers.get("x-moz", "")))
+
+
+def mark_seen(request: Request, db, **target) -> None:
+    """Looking at a page counts as reading the notifications about it. Fragment refreshes and prefetches
+    are not looking.
+    """
+    if is_htmx(request) or is_prefetch(request):
+        return
+    if notify.mark_target_read(db, request.state.user.id, **target):
+        db.commit()
+
+
 def back_url(request: Request) -> str | None:
     """Same site only (otherwise None)."""
     referer = urlsplit(request.headers.get("referer", ""))

@@ -14,7 +14,7 @@ from app.db import get_db
 from app.loaders import get_match
 from app.models import Match, Sheet, User
 from app.sheets import SheetError
-from app.web import render
+from app.web import mark_seen, render
 
 router = APIRouter()
 
@@ -70,7 +70,9 @@ def open_sheet(db: Session = Depends(get_db), match: Match = Depends(get_match),
 
 
 @router.get("/sheets/{sheet_id}")
-def show_sheet(request: Request, sheet: Sheet = view_sheet, user: User = Depends(current_user)):
+def show_sheet(request: Request, db: Session = Depends(get_db), sheet: Sheet = view_sheet,
+               user: User = Depends(current_user)):
+    mark_seen(request, db, sheet_id=sheet.id)
     return render(request, "sheet.html", sheet=sheet, match=sheet.match, grid=sheets.grid(sheet))
 
 

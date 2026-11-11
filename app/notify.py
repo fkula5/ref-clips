@@ -98,6 +98,39 @@ def mark_all_read(db: Session, user_id: int) -> None:
                .values(read_at=utcnow()))
 
 
+def target_of(notification: Notification) -> dict[str, int | None]:
+    """The keyword arguments of `mark_target_read` that select everything the notification points at."""
+    match notification.kind:
+        case "rating" | "rating_changed" | "clip_comment":
+            return {"clip_id": notification.clip_id}
+        case "match_comment":
+            return {"match_id": notification.match_id}
+        case "group_added":
+            return {"group_ids": [notification.group_id]}
+        case _:
+            return {"sheet_id": notification.sheet_id}
+
+
+def mark_target_read(db: Session, user_id: int, *, clip_id: int | None = None, match_id: int | None = None,
+                     sheet_id: int | None = None, group_ids: Iterable[int] = ()) -> int:
+    """One UPDATE; never commits. `match_id` means the match's own comments, not its clips' events. With no
+    target nothing is marked.
+    """
+    if clip_id is not None:
+        target = Notification.clip_id == clip_id
+    elif match_id is not None:
+        target = (Notification.kind == "match_comment") & (Notification.match_id == match_id)
+    elif sheet_id is not None:
+        target = Notification.sheet_id == sheet_id
+    elif ids := list(group_ids):
+        target = Notification.group_id.in_(ids)
+    else:
+        return 0
+    return db.execute(update(Notification).where(
+        Notification.recipient_id == user_id, Notification.read_at.is_(None), target)
+        .values(read_at=utcnow())).rowcount
+
+
 def target_url(notification: Notification) -> str:
     match notification.kind:
         case "rating" | "rating_changed":

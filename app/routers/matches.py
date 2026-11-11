@@ -15,7 +15,7 @@ from app.loaders import get_match
 from app.models import OFFICIAL_FUNCTIONS, Match, UploadSession, User
 from app.storage import storage
 from app.timeutil import local_tz
-from app.web import is_htmx, render
+from app.web import is_htmx, mark_seen, render
 
 router = APIRouter()
 
@@ -139,6 +139,7 @@ def render_match(request: Request, db: Session, match: Match, *, status_code: in
 @router.get("/matches/{match_id}")
 def match_detail(request: Request, match: Match = Depends(get_match),
                  db: Session = Depends(get_db), user: User = require(permissions.can_view)):
+    mark_seen(request, db, match_id=match.id)
     return render_match(request, db, match)
 
 

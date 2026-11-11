@@ -222,6 +222,12 @@ class Server:
             db.commit()
             return clip.id
 
+    def add_comment(self, clip_id: int, author: str, body: str = "Komentarz") -> None:
+        from app import feedback
+        with self.db() as db:
+            feedback.create_comment(db, self.users[author], body, clip_id=clip_id)
+            db.commit()
+
     def clip(self, clip_id: int):
         from app.models import Clip
         with self.db() as db:

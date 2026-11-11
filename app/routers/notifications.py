@@ -27,8 +27,10 @@ def own_notification(notification_id: int, db: Session = Depends(get_db),
 @router.get("/notifications")
 def notification_list(request: Request, db: Session = Depends(get_db), user: User = require(permissions.can_view)):
     items = notify.recent(db, user.id, config.NOTIFICATION_LIST_LIMIT)
-    return render(request, "notifications.html", items=items, unread=notify.unread_count(db, user.id),
-                  capped=len(items) == config.NOTIFICATION_LIST_LIMIT, limit=config.NOTIFICATION_LIST_LIMIT)
+    response = render(request, "notifications.html", items=items, unread=notify.unread_count(db, user.id),
+                      capped=len(items) == config.NOTIFICATION_LIST_LIMIT, limit=config.NOTIFICATION_LIST_LIMIT)
+    response.headers["Cache-Control"] = "no-store"  # Back must not show the list as it was before opening one
+    return response
 
 
 @router.get("/notifications/bell")
@@ -55,5 +57,6 @@ def read_one(db: Session = Depends(get_db), notification: Notification = Depends
 @router.post("/notifications/{notification_id}/open")
 def open_target(db: Session = Depends(get_db), notification: Notification = Depends(own_notification)):
     notify.mark_read(notification)
+    notify.mark_target_read(db, notification.recipient_id, **notify.target_of(notification))
     db.commit()
     return RedirectResponse(notify.target_url(notification), status_code=303)

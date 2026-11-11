@@ -13,7 +13,7 @@ from app.auth import current_user, require
 from app.db import get_db
 from app.groups import GroupError
 from app.models import TrainingGroup, User
-from app.web import render
+from app.web import mark_seen, render
 
 router = APIRouter(prefix="/groups")
 
@@ -52,6 +52,7 @@ def render_group(request: Request, db: Session, group: TrainingGroup, days: int,
 def group_list(request: Request, db: Session = Depends(get_db),
                user: User = require(permissions.can_see_my_groups)):
     items = groups.groups_of(db, user)
+    mark_seen(request, db, group_ids=[g.id for g in items])
     return render(request, "groups.html", items=items,
                   viewable={g.id for g in items if permissions.can_view_group(user, g)})
 

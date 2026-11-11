@@ -15,7 +15,7 @@ from app.loaders import get_clip
 from app.models import Clip, Match, User
 from app.routers import describe
 from app.storage import storage
-from app.web import file_response, is_htmx, render
+from app.web import file_response, is_htmx, mark_seen, render
 
 router = APIRouter()
 
@@ -65,6 +65,7 @@ def render_clip(request: Request, db: Session, clip: Clip, f: clip_list.ClipFilt
 @router.get("/clips/{clip_id}")
 def clip_detail(request: Request, db: Session = Depends(get_db), clip: Clip = Depends(get_clip),
                 user: User = require(permissions.can_view)):
+    mark_seen(request, db, clip_id=clip.id)
     return render_clip(request, db, clip, clip_list.parse_filters(request.query_params))
 
 
