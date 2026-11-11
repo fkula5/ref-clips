@@ -13,6 +13,7 @@ EXPECTED_TABLES = {
     "videos", "upload_sessions", "period_marks", "categories", "clips", "ratings", "comments",
     "jobs", "settings", "upload_rejections", "share_links", "share_link_clips",
     "sheet_elements", "sheets", "sheet_columns", "sheet_rows", "sheet_cells", "notifications",
+    "training_groups", "group_members",
 }
 
 
@@ -236,3 +237,47 @@ def test_notifications_migration_is_additive_and_cascades(tmp_path):
         assert conn.execute(text("SELECT count(*) FROM notifications")).scalar() == 0
     command.downgrade(cfg, "mvp0006")
     assert "notifications" not in inspect(create_engine(url)).get_table_names()
+
+
+def test_groups_migration_keeps_notifications_and_cascades_memberships(tmp_path):
+    from sqlalchemy import text
+
+    url = f"sqlite:///{tmp_path / 'm.db'}"
+    cfg = _config(url)
+    command.upgrade(cfg, "mvp0007")
+    engine = create_engine(url)
+    with engine.begin() as conn:
+        for i in (1, 2):
+            conn.execute(text(f"INSERT INTO users (id, email, name, is_active) VALUES ({i}, 'u{i}@b.pl', 'U', 1)"))
+        conn.execute(text("INSERT INTO matches (id, date, level, team_a_name, team_a_color, team_b_name, team_b_color) "
+                          "VALUES (1, '2026-10-28', '', '', '', '', '')"))
+        conn.execute(text("INSERT INTO notifications (recipient_id, kind, actor_id, match_id) VALUES (1, 'match_comment', 2, 1)"))
+    command.upgrade(cfg, "head")
+    assert {"training_groups", "group_members"} <= set(inspect(engine).get_table_names())
+    assert "ix_group_members_user_id" in {i["name"] for i in inspect(engine).get_indexes("group_members")}
+    with engine.begin() as conn:
+        conn.execute(text("PRAGMA foreign_keys=ON"))
+        assert conn.execute(text("SELECT kind, match_id, group_id FROM notifications")).one() == ("match_comment", 1, None)
+        conn.execute(text("INSERT INTO training_groups (id, name) VALUES (1, 'A')"))
+        conn.execute(text("INSERT INTO group_members (group_id, user_id, role) VALUES (1, 1, 'coach'), (1, 2, 'referee')"))
+        conn.execute(text("INSERT INTO notifications (recipient_id, kind, actor_id, group_id) VALUES (2, 'group_added', 1, 1)"))
+        assert compare_metadata(MigrationContext.configure(conn), Base.metadata) == []
+    for sql in ("INSERT INTO group_members (group_id, user_id, role) VALUES (1, 1, 'referee')",  # once per account
+                "INSERT INTO group_members (group_id, user_id, role) VALUES (1, 2, 'boss')",
+                "INSERT INTO notifications (recipient_id, kind) VALUES (1, 'bogus')"):
+        with engine.begin() as conn, pytest.raises(Exception):
+            conn.execute(text("PRAGMA foreign_keys=ON"))
+            conn.execute(text(sql))
+    with engine.begin() as conn:
+        conn.execute(text("PRAGMA foreign_keys=ON"))
+        conn.execute(text("DELETE FROM training_groups"))
+        assert conn.execute(text("SELECT count(*) FROM group_members")).scalar() == 0
+        assert conn.execute(text("SELECT kind FROM notifications")).scalars().all() == ["match_comment"]
+        conn.execute(text("INSERT INTO training_groups (id, name) VALUES (2, 'B')"))
+        conn.execute(text("INSERT INTO notifications (recipient_id, kind, group_id) VALUES (2, 'group_added', 2)"))
+    command.downgrade(cfg, "mvp0007")
+    tables = set(inspect(create_engine(url)).get_table_names())
+    assert not {"training_groups", "group_members"} & tables
+    with create_engine(url).connect() as conn:
+        assert conn.execute(text("SELECT kind FROM notifications")).scalars().all() == ["match_comment"]
+        assert "group_id" not in {c["name"] for c in inspect(conn).get_columns("notifications")}
