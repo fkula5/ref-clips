@@ -63,7 +63,7 @@ przeglądarka ──HTTPS──► Caddy ──► FastAPI (uvicorn, 2 procesy) 
 | `upload_sessions` | tus: id, user_id, size, offset, reserved bytes, metadata | cleaned after 24 h of inactivity |
 | `period_marks` | video_id, period (Q1–Q4, OT1–OT3), time in the recording | |
 | `categories` | group, name, aliases, active, order | edited by the admin |
-| `clips` | video_id, marker time, start/end, file, cutting status, official_id or "whole team", category_id or custom name, description, author, `described_at` | `described_at = null` means "undescribed" |
+| `clips` | video_id, marker time, start/end, file, cutting status, official_id or "whole team", category_id or custom name, description, author, `described_at`, `described_by_id` (who described it; null for older clips) | `described_at = null` means "undescribed" |
 | `ratings` | clip_id, coach_id, rating (`correct` / `incorrect` / `debatable`), comment | unique (clip_id, coach_id) |
 | `comments` | match_id **or** clip_id, author, text, `edited_at` | |
 | `jobs` | type, video_id / clip_id, status, progress, error | as in the prototype |

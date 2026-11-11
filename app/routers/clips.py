@@ -78,7 +78,7 @@ def clip_update(request: Request, db: Session = Depends(get_db), clip: Clip = De
     values = {"official": official, "category_id": category_id,
               "custom_category": custom_category, "description": description}
     try:
-        services.describe_clip(db, clip, official=official, category_id=category_id,
+        services.describe_clip(db, clip, user, official=official, category_id=category_id,
                                custom_category=custom_category, description=description)
     except services.ClipDescribeError as exc:
         db.rollback()

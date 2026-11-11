@@ -116,6 +116,29 @@ def test_approving_sets_described_at_and_goes_to_next_undescribed(setup, db):
     assert c["c"].whole_team and c["c"].official_id is None
 
 
+def test_first_describer_is_recorded_and_edits_by_others_keep_it(setup, db):
+    s, c = setup, setup["clips"]
+    cc = s["match"].official("CC")
+    approve(s["coach"], c["a"], db, cc.id)
+    form = {"official": str(cc.id), "category_id": str(category_named(db, "kroki"))}
+    assert s["member"].post(f"/clips/{c['b'].id}/update", data=form, follow_redirects=False).status_code == 303
+    db.refresh(c["a"]), db.refresh(c["b"])
+    assert (c["a"].described_by_id, c["b"].described_by_id) == (s["coach_user"].id, s["member_user"].id)
+    first = c["a"].described_at
+    assert s["member"].post(f"/clips/{c['a'].id}/update", data=form, follow_redirects=False).status_code == 303
+    db.refresh(c["a"])
+    assert c["a"].described_by_id == s["coach_user"].id and c["a"].described_at == first
+
+
+def test_clip_page_shows_who_described_it_or_only_the_date(setup, db):
+    s, c = setup, setup["clips"]
+    approve(s["coach"], c["a"], db, "team")
+    info = s["coach"].get(f"/clips/{c['a'].id}").text.split('id="clip-info"')[1]
+    assert re.search(r"<dt>Opisano</dt><dd>[\d.: ]+, Trener</dd>", info)
+    legacy = s["coach"].get(f"/clips/{c['d'].id}").text.split('id="clip-info"')[1]
+    assert re.search(r"<dt>Opisano</dt><dd>[\d.: ]+</dd>", legacy)
+
+
 def test_next_after_approving_keeps_video_scope(setup, db):
     s, c = setup, setup["clips"]
     r = approve(s["coach"], c["b"], db, "team", scope=s["v1"].id)

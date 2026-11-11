@@ -79,7 +79,7 @@ def test_notes_are_stored_with_the_session_and_become_clips_after_finish(client,
     video = latest_video(db)
     found = clips(db)
     assert [c.time_sec for c in found] == [174, 197, 250]
-    assert all(c.video_id == video.id and c.described_at is None and c.status == "queued" for c in found)
+    assert all(c.video_id == video.id and c.described_at is None and c.described_by_id is None and c.status == "queued" for c in found)
     assert all((c.margin_before, c.margin_after) == (15, 15) and c.author_id for c in found)
     cc, u1 = match.official("CC"), match.official("U1")
     assert found[0].official_id == cc.id and found[0].category_id is None

@@ -135,7 +135,7 @@ def parse_days(raw: str | None) -> int:
 
 
 def activity(db: Session, group: TrainingGroup, days: int, now: datetime | None = None) -> list[ActivityRow]:
-    """Two grouped queries for the whole group. "Last activity" ignores the period."""
+    """Three grouped queries for the whole group. "Last activity" ignores the period."""
     referees = group.referees
     ids = [m.user_id for m in referees]
     since = (now or utcnow()) - timedelta(days=days)
@@ -146,16 +146,19 @@ def activity(db: Session, group: TrainingGroup, days: int, now: datetime | None 
     videos = {uid: (n, last) for uid, n, last in db.execute(
         select(Video.created_by, in_period(Video.created_at), func.max(Video.created_at))
         .where(Video.created_by.in_(ids)).group_by(Video.created_by))}
-    clips = {uid: row for uid, *row in db.execute(
-        select(Clip.author_id, in_period(Clip.created_at), in_period(Clip.described_at),
-               func.max(Clip.created_at), func.max(Clip.described_at))
+    markers = {uid: (n, last) for uid, n, last in db.execute(
+        select(Clip.author_id, in_period(Clip.created_at), func.max(Clip.created_at))
         .where(Clip.author_id.in_(ids)).group_by(Clip.author_id))}
+    described = {uid: (n, last) for uid, n, last in db.execute(
+        select(Clip.described_by_id, in_period(Clip.described_at), func.max(Clip.described_at))
+        .where(Clip.described_by_id.in_(ids)).group_by(Clip.described_by_id))}
     rows = []
     for member in referees:
         recordings, last_video = videos.get(member.user_id, (0, None))
-        markers, described, last_marker, last_described = clips.get(member.user_id, (0, 0, None, None))
+        added, last_marker = markers.get(member.user_id, (0, None))
+        done, last_described = described.get(member.user_id, (0, None))
         last = max((d for d in (last_video, last_marker, last_described) if d is not None), default=None)
-        rows.append(ActivityRow(member.user, recordings, markers, described, last))
+        rows.append(ActivityRow(member.user, recordings, added, done, last))
     return sorted(rows, key=lambda r: r.user.name.lower())
 
 

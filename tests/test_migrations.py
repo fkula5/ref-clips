@@ -252,11 +252,19 @@ def test_groups_migration_keeps_notifications_and_cascades_memberships(tmp_path)
         conn.execute(text("INSERT INTO matches (id, date, level, team_a_name, team_a_color, team_b_name, team_b_color) "
                           "VALUES (1, '2026-10-28', '', '', '', '', '')"))
         conn.execute(text("INSERT INTO notifications (recipient_id, kind, actor_id, match_id) VALUES (1, 'match_comment', 2, 1)"))
+        conn.execute(text("INSERT INTO videos (id, match_id, label, original_filename, size_bytes, content, status) VALUES (1, 1, '', 'a.mp4', 0, 'full', 'ready')"))
+        conn.execute(text("INSERT INTO clips (id, match_id, video_id, author_id, whole_team, time_sec, margin_before, "
+                          "margin_after, description, described_at, status, clip_version) "
+                          "VALUES (1, 1, 1, 1, 0, 5, 15, 15, '', '2026-10-29 12:00:00', 'new', 0)"))
     command.upgrade(cfg, "head")
     assert {"training_groups", "group_members"} <= set(inspect(engine).get_table_names())
     assert "ix_group_members_user_id" in {i["name"] for i in inspect(engine).get_indexes("group_members")}
+    assert "ix_clips_described_by_id" in {i["name"] for i in inspect(engine).get_indexes("clips")}
     with engine.begin() as conn:
         conn.execute(text("PRAGMA foreign_keys=ON"))
+        assert conn.execute(text("SELECT described_by_id FROM clips")).scalar() is None
+        conn.execute(text("INSERT INTO users (id, email, name, is_active) VALUES (3, 'u3@b.pl', 'U', 1)"))
+        conn.execute(text("UPDATE clips SET described_by_id = 3"))
         assert conn.execute(text("SELECT kind, match_id, group_id FROM notifications")).one() == ("match_comment", 1, None)
         conn.execute(text("INSERT INTO training_groups (id, name) VALUES (1, 'A')"))
         conn.execute(text("INSERT INTO group_members (group_id, user_id, role) VALUES (1, 1, 'coach'), (1, 2, 'referee')"))
@@ -273,6 +281,8 @@ def test_groups_migration_keeps_notifications_and_cascades_memberships(tmp_path)
         conn.execute(text("DELETE FROM training_groups"))
         assert conn.execute(text("SELECT count(*) FROM group_members")).scalar() == 0
         assert conn.execute(text("SELECT kind FROM notifications")).scalars().all() == ["match_comment"]
+        conn.execute(text("DELETE FROM users WHERE id = 3"))
+        assert conn.execute(text("SELECT described_by_id FROM clips")).scalar() is None
         conn.execute(text("INSERT INTO training_groups (id, name) VALUES (2, 'B')"))
         conn.execute(text("INSERT INTO notifications (recipient_id, kind, group_id) VALUES (2, 'group_added', 2)"))
     command.downgrade(cfg, "mvp0007")
@@ -281,3 +291,4 @@ def test_groups_migration_keeps_notifications_and_cascades_memberships(tmp_path)
     with create_engine(url).connect() as conn:
         assert conn.execute(text("SELECT kind FROM notifications")).scalars().all() == ["match_comment"]
         assert "group_id" not in {c["name"] for c in inspect(conn).get_columns("notifications")}
+        assert "described_by_id" not in {c["name"] for c in inspect(conn).get_columns("clips")}

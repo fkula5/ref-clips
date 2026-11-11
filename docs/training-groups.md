@@ -112,6 +112,6 @@ As a referee, I get an in-app notification when I am added to a group.
 
 - A match belongs to a group when any account in its crew is a referee member of the group (typed names in the crew do not count). Clips follow their match; this rule is used by the „Grupa” filters (TG-08) and by „Do oceny” (TG-07), which therefore lists described clips from those matches, not only clips written by a member.
 - Only the group's coaches and admins open a group's page, activity table and „Do oceny”; everybody else gets 404. Referees see TG-09 only (`/groups`).
-- Activity (TG-06) counts recordings uploaded, markers added (new clips) and clips described, all attributed to the clip's author or the recording's uploader. The period is 7, 14, 30 or 90 days (`?days=`, default 14).
+- Activity (TG-06) counts recordings uploaded, recordings are credited to the uploader, markers to the clip's author and described clips to the person who first described them (`Clip.described_by_id`, set together with `described_at`; later edits keep it). Clips described before this was recorded have no describer and are not counted for anyone. The table is computed with three grouped queries. The period is 7, 14, 30 or 90 days (`?days=`, default 14).
 - Adding a referee or a coach sends a „group_added” notification to the added person; removing sends nothing. Deleting a group keeps the accounts and removes its notifications.
 - An account is in a group once, as a coach or as a referee. There is no way yet to remove a coach from a group.

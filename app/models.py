@@ -288,7 +288,7 @@ class Category(Base):
 
 
 class Clip(Base):
-    """`described_at = None` means undescribed."""
+    """`described_at = None` means undescribed; `described_by_id` is NULL for clips described before it was recorded."""
     __tablename__ = "clips"
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -304,6 +304,7 @@ class Clip(Base):
     margin_after: Mapped[float] = mapped_column(Float, default=15.0)
     description: Mapped[str] = mapped_column(Text, default="")
     described_at: Mapped[datetime | None] = mapped_column(DateTime)
+    described_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), index=True)
     status: Mapped[str] = mapped_column(String(20), default="new")
     clip_path: Mapped[str | None] = mapped_column(String(500))  # relative to DATA_DIR
     clip_version: Mapped[int] = mapped_column(Integer, default=0)
@@ -315,7 +316,8 @@ class Clip(Base):
     video: Mapped[Video] = relationship(back_populates="clips")
     official: Mapped[MatchOfficial | None] = relationship()
     category: Mapped[Category | None] = relationship()
-    author: Mapped[User | None] = relationship()
+    author: Mapped[User | None] = relationship(foreign_keys=[author_id])
+    described_by: Mapped[User | None] = relationship(foreign_keys=[described_by_id])
     comments: Mapped[list[Comment]] = relationship(
         back_populates="clip", cascade="all, delete-orphan", order_by="Comment.id")
     ratings: Mapped[list[Rating]] = relationship(

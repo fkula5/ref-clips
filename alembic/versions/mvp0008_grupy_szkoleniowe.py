@@ -1,4 +1,4 @@
-"""Training groups; notifications can point at a group instead of a match."""
+"""Training groups; notifications can point at a group instead of a match; clips record who described them."""
 from alembic import op
 import sqlalchemy as sa
 
@@ -50,8 +50,18 @@ def upgrade() -> None:
                                  ['group_id'], ['id'], ondelete='CASCADE')
         batch.create_index(op.f('ix_notifications_group_id'), ['group_id'], unique=False)
 
+    with op.batch_alter_table('clips') as batch:
+        batch.add_column(sa.Column('described_by_id', sa.Integer(), nullable=True))
+        batch.create_foreign_key(op.f('fk_clips_described_by_id_users'), 'users', ['described_by_id'], ['id'],
+                                 ondelete='SET NULL')
+        batch.create_index(op.f('ix_clips_described_by_id'), ['described_by_id'], unique=False)
+
 
 def downgrade() -> None:
+    with op.batch_alter_table('clips') as batch:
+        batch.drop_index(op.f('ix_clips_described_by_id'))
+        batch.drop_constraint(op.f('fk_clips_described_by_id_users'), type_='foreignkey')
+        batch.drop_column('described_by_id')
     op.execute("DELETE FROM notifications WHERE kind = 'group_added'")
     with op.batch_alter_table('notifications') as batch:
         batch.drop_index(op.f('ix_notifications_group_id'))

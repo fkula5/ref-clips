@@ -54,7 +54,7 @@
         <dt>Kategoria</dt><dd>{{ c.category_label or '—' }}</dd>
         <dt>Opis</dt><dd>{{ c.description or '—' }}</dd>
         <dt>Znacznik dodał(a)</dt><dd>{{ c.author.name if c.author else '—' }}, {{ c.created_at|local("%d.%m.%Y %H:%M") if c.created_at }}</dd>
-        <dt>Opisano</dt><dd>{{ c.described_at|local("%d.%m.%Y %H:%M") if c.described_at else '—' }}</dd>
+        <dt>Opisano</dt><dd>{{ c.described_at|local("%d.%m.%Y %H:%M") if c.described_at else '—' }}{% if c.described_at and c.described_by %}, {{ c.described_by.name }}{% endif %}</dd>
       </dl>
     </div>
 

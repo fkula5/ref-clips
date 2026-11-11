@@ -45,10 +45,11 @@ def names(w, role=None):
     return {m.user.name.split()[-1] for m in w.db.get(TrainingGroup, w.g.id).members if role in (None, m.role)}
 
 
-def add_clip(w, match, video, author="r1", *, described=True, at=None, **fields):
+def add_clip(w, match, video, author="r1", *, described=True, at=None, by=None, **fields):
     at = at or ago(1)
     clip = Clip(match_id=match.id, video_id=video.id, author_id=w.u[author].id, time_sec=10, created_at=at,
-                described_at=at if described else None, **fields)
+                described_at=at if described else None,
+                described_by_id=w.u[by or author].id if described else None, **fields)
     w.db.add(clip)
     w.db.commit()
     return clip
@@ -176,6 +177,17 @@ def test_activity_counts_only_the_period_but_last_activity_ignores_it(w, db, day
     rows = {r.user.name: r for r in groups.activity(db, w.g, days, now=NOW)}
     assert [(r.recordings, r.markers, r.described) for r in (rows["Osoba r1"], rows["Osoba r2"])] == expected
     assert (rows["Osoba r1"].last, rows["Osoba r2"].last) == (ago(1), ago(25))
+
+
+def test_described_clips_are_credited_to_the_describer_not_the_author(w, db):
+    match, video = crew_match(w, "r1", "Ktoś")
+    add_clip(w, match, video, "r1", by="r2", at=ago(1))
+    add_clip(w, match, video, "r1", by="coach", at=ago(2))
+    add_clip(w, match, video, "r1", at=ago(3)).described_by_id = None
+    db.commit()
+    rows = {r.user.name: r for r in groups.activity(db, w.g, 14, now=NOW)}
+    assert (rows["Osoba r1"].markers, rows["Osoba r1"].described) == (3, 0)
+    assert (rows["Osoba r2"].markers, rows["Osoba r2"].described, rows["Osoba r2"].last) == (0, 1, ago(1))
 
 
 def test_page_highlights_referees_without_activity_in_the_chosen_period(w, db, monkeypatch):
