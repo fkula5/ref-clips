@@ -32,11 +32,27 @@ def clean_verdict(raw: str) -> str:
     return verdict
 
 
-def comments_of(db: Session, *, clip_id: int | None = None, match_id: int | None = None) -> list[Comment]:
+def comments_of(db: Session, *, clip_id: int | None = None, match_id: int | None = None,
+                before: int | None = None, everything: bool = False) -> tuple[list[Comment], int | None]:
+    """The newest `COMMENT_PAGE_SIZE` comments older than `before`, oldest first, and the id to pass as
+    `before` for the next older batch (None when there is none).
+    """
     column = Comment.clip_id if clip_id is not None else Comment.match_id
-    return list(db.scalars(select(Comment).options(selectinload(Comment.author))
-                           .where(column == (clip_id if clip_id is not None else match_id))
-                           .order_by(Comment.id)))
+    stmt = (select(Comment).options(selectinload(Comment.author))
+            .where(column == (clip_id if clip_id is not None else match_id)).order_by(Comment.id.desc()))
+    if before is not None:
+        stmt = stmt.where(Comment.id < before)
+    if everything:
+        return list(reversed(db.scalars(stmt).all())), None
+    found = list(db.scalars(stmt.limit(config.COMMENT_PAGE_SIZE + 1)))
+    older = len(found) > config.COMMENT_PAGE_SIZE
+    shown = list(reversed(found[:config.COMMENT_PAGE_SIZE]))
+    return shown, shown[0].id if older else None
+
+
+def has_comments(db: Session, **scope: int) -> bool:
+    (name, value), = scope.items()
+    return db.scalar(select(Comment.id).where(getattr(Comment, name) == value).limit(1)) is not None
 
 
 def create_comment(db: Session, author_id: int, body: str, *, clip_id: int | None = None,

@@ -97,7 +97,12 @@ REJECTION_WARN_DAYS = 7
 REJECTION_KEEP_DAYS = 30
 NOTIFICATION_READ_KEEP_DAYS = 30
 NOTIFICATION_UNREAD_KEEP_DAYS = 90
-NOTIFICATION_LIST_LIMIT = 100
+MATCH_PAGE_SIZE = 25
+CLIP_PAGE_SIZE = 50  # /clips and the clip tab of a match
+NOTIFICATION_PAGE_SIZE = 50
+REVIEW_PAGE_SIZE = 50
+VIDEO_PAGE_SIZE = 25  # recordings table in the admin panel
+COMMENT_PAGE_SIZE = 50
 # Conversion check: the result's duration may differ from the original by max(2 s, 1% of its length).
 VERIFY_MIN_SECONDS = float(os.environ.get("REFCLIPS_VERIFY_MIN_SECONDS", "2"))
 VERIFY_RELATIVE = float(os.environ.get("REFCLIPS_VERIFY_RELATIVE", "0.01"))

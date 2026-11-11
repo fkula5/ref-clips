@@ -1,0 +1,2 @@
+{% if older_before %}{% include "_comments_more.html" %}{% endif %}
+{% for cm in comments %}{% set editing = false %}{% set edit_error = none %}{% set edit_draft = none %}{% include "_comment_item.html" %}{% endfor %}

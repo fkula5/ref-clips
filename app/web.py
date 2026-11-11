@@ -9,7 +9,7 @@ from fastapi.templating import Jinja2Templates
 from jinja2 import pass_context
 from markupsafe import Markup, escape
 
-from app import clip_list, config, feedback, flash, notify, retention, services, share
+from app import clip_list, config, feedback, flash, notify, pagination, retention, services, share
 from app.auth import set_anon_csrf_cookie
 from app.db import SessionLocal
 from app import models as m
@@ -70,6 +70,7 @@ def unread_count(user) -> int:
 
 
 env.globals.update(
+    page_query=pagination.page_query,
     unread_count=unread_count, bell_label=notify.bell_label, NOTIFICATION_KINDS=m.NOTIFICATION_KINDS,
     ffmpeg_ok=vid.ffmpeg_available,
     app_version=config.VERSION,
@@ -132,6 +133,31 @@ def is_htmx(request: Request) -> bool:
     the whole body, so it is treated as plain navigation.
     """
     return "hx-request" in request.headers and "hx-history-restore-request" not in request.headers
+
+
+def is_prefetch(request: Request) -> bool:
+    return any(v.lower().startswith("prefetch") for v in (
+        request.headers.get("purpose", ""), request.headers.get("sec-purpose", ""),
+        request.headers.get("x-moz", "")))
+
+
+def mark_seen(request: Request, db, **target) -> None:
+    """Looking at a page counts as reading the notifications about it. Fragment refreshes and prefetches
+    are not looking.
+    """
+    if is_htmx(request) or is_prefetch(request):
+        return
+    if notify.mark_target_read(db, request.state.user.id, **target):
+        db.commit()
+
+
+def comment_context(request: Request, db, **scope: int) -> dict:
+    """Comments for a full page; HTMX refreshes of the page do not render them."""
+    if is_htmx(request):
+        return {"comments": None, "older_before": None}
+    comments, older_before = feedback.comments_of(db, everything=request.query_params.get("comments") == "all",
+                                                  **scope)
+    return {"comments": comments, "older_before": older_before}
 
 
 def back_url(request: Request) -> str | None:

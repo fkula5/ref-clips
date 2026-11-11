@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% from "_content_picker.html" import content_picker %}
 {% from "_clips_macros.html" import clip_filters, clips_table, share_bar with context %}
+{% from "_pager.html" import pagination %}
 {% block title %}{{ match.title }}{% endblock %}
 {% block content %}
 {% macro team(name, color) %}
@@ -86,14 +87,15 @@
 </div>
 {{ clip_filters(f, "/matches/" ~ match.id ~ "#klipy", people, categories) }}
 {{ share_bar(shareable) }}
-<div id="clips-list" {% if pending %}hx-get="/matches/{{ match.id }}{{ '?' ~ nav if nav }}" hx-trigger="every 3s" hx-select="#clips-list" hx-select-oob="#clips-head" hx-swap="outerHTML"{% endif %}>
+<div id="clips-list" {% if pending %}hx-get="/matches/{{ match.id }}{{ '?' ~ list_query if list_query }}" hx-trigger="every 3s" hx-select="#clips-list" hx-select-oob="#clips-head" hx-swap="outerHTML"{% endif %}>
 {% if not total_clips %}
   <p class="muted">Ten mecz nie ma jeszcze klipów. Klipy powstają ze znaczników zaznaczonych w odtwarzaczu albo z wklejonych notatek.</p>
 {% elif not clips %}
   <p class="muted">Brak klipów dla wybranych filtrów. <a href="/matches/{{ match.id }}#klipy">Wyczyść filtry</a></p>
 {% else %}
   {{ clips_table(clips, nav, false, stats, shareable) }}
-  <p class="muted small-note">{% if f.active %}Pokazano {{ clips|length }} z {{ total_clips }}. {% endif %}Czas w kolumnie „Kwarta” liczony jest od początku kwarty w nagraniu — to nie jest zegar meczowy.</p>
+  {{ pagination(pager, "Klipy", page_href, "/matches/" ~ match.id, "#clips-list", "#klipy") }}
+  <p class="muted small-note">{% if f.active %}Pokazano {{ pager.total }} z {{ total_clips }}. {% endif %}Czas w kolumnie „Kwarta” liczony jest od początku kwarty w nagraniu — to nie jest zegar meczowy.</p>
 {% endif %}
 </div>
 </section>

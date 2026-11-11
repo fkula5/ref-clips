@@ -6,7 +6,7 @@ import pytest
 from sqlalchemy import select
 
 from app import config, notify, worker
-from app.models import Clip, Comment, Notification, Rating, Sheet
+from app.models import Clip, Comment, Notification, Rating, Sheet, TrainingGroup
 from app.timeutil import utcnow
 from tests.helpers import make_match, make_ready_video, make_user, mark_periods
 
@@ -177,11 +177,14 @@ def test_list_is_newest_first_and_marks_unread_ones(w, feed):
     assert unread(w) == 2 and "Oznacz wszystkie jako przeczytane" in page
 
 
-def test_list_empty_state_and_cap(w, feed, monkeypatch):
+def test_list_is_paginated_and_never_cached(w, feed, monkeypatch):
     assert "Brak powiadomień" in w.c["outsider"].get("/notifications").text
-    monkeypatch.setattr(config, "NOTIFICATION_LIST_LIMIT", 2)
-    page = w.c["crew"].get("/notifications").text
-    assert page.count('<li class="notif') == 2 and "Pokazano 2 najnowszych" in page
+    monkeypatch.setattr(config, "NOTIFICATION_PAGE_SIZE", 2)
+    first = w.c["crew"].get("/notifications")
+    assert first.headers["cache-control"] == "no-store"
+    assert len(list_items(first.text)) == 2 and "strona 1 z 2" in first.text
+    assert 'href="/notifications?page=2"' in first.text
+    assert len(list_items(w.c["crew"].get("/notifications?page=2").text)) == 1
 
 
 @pytest.mark.parametrize("count,label", [
@@ -282,3 +285,98 @@ def test_inactive_user_is_not_a_recipient_even_when_directly_addressed(w):
     notify._deliver(w.db, [w.u["crew_off"].id, w.u["crew"].id], actor_id=w.u["coach"].id, kind="match_comment",
                     match=w.match)
     assert [n.recipient_id for n in w.db.scalars(select(Notification))] == [w.u["crew"].id]
+
+
+@pytest.fixture()
+def targets(w):
+    """Two of everything a notification can point at, all in one match."""
+    now = utcnow()
+    other_clip = Clip(match_id=w.match.id, video_id=w.clip.video_id, author_id=w.u["author"].id, time_sec=200)
+    sheets = [Sheet(match_id=w.match.id, coach_id=w.u[who].id, status="published", difficulty="normalny",
+                    published_at=now) for who in ("coach", "coach2")]
+    groups = [TrainingGroup(name="Grupa A"), TrainingGroup(name="Grupa B")]
+    w.db.add_all([other_clip, *sheets, *groups])
+    w.db.commit()
+    return SimpleNamespace(clip=w.clip, other_clip=other_clip, sheets=sheets, groups=groups)
+
+
+def about(w, t, target):
+    """(notifications about `target`, notifications about other things) as keyword arguments."""
+    match_id = w.match.id
+    clip_event = lambda kind, clip: dict(kind=kind, clip_id=clip.id, match_id=match_id)  # noqa: E731
+    elsewhere = [clip_event("clip_comment", t.other_clip), dict(kind="match_comment", match_id=match_id)]
+    return {
+        "clip": ([clip_event("rating", t.clip), clip_event("clip_comment", t.clip),
+                  clip_event("rating_changed", t.clip)], elsewhere),
+        "match": ([dict(kind="match_comment", match_id=match_id)] * 2,
+                  [clip_event("clip_comment", t.clip), dict(kind="sheet_published", match_id=match_id,
+                                                            sheet_id=t.sheets[0].id)]),
+        "sheet": ([dict(kind="sheet_published", match_id=match_id, sheet_id=t.sheets[0].id)] * 2,
+                  [dict(kind="sheet_published", match_id=match_id, sheet_id=t.sheets[1].id), *elsewhere]),
+        "group": ([dict(kind="group_added", group_id=t.groups[0].id)] * 2,
+                  [dict(kind="group_added", group_id=t.groups[1].id), *elsewhere]),
+    }[target]
+
+
+def seed(w, specs, who="crew"):
+    rows = [Notification(recipient_id=w.u[who].id, **spec) for spec in specs]
+    w.db.add_all(rows)
+    w.db.commit()
+    return rows
+
+
+def unread_ids(w, who="crew"):
+    return set(w.db.scalars(select(Notification.id).where(Notification.recipient_id == w.u[who].id,
+                                                          Notification.read_at.is_(None))))
+
+
+@pytest.mark.parametrize("target", ["clip", "match", "sheet", "group"])
+def test_opening_one_notification_reads_every_unread_one_for_the_same_target(w, targets, target):
+    same, other = about(w, targets, target)
+    mine, rest = seed(w, same), seed(w, other)
+    theirs = seed(w, same, who="author")
+    already_read = Notification(recipient_id=w.u["crew"].id, read_at=utcnow(), **same[0])
+    w.db.add(already_read)
+    w.db.commit()
+    post(w, "crew", f"/notifications/{mine[0].id}/open")
+    assert unread_ids(w) == {n.id for n in rest}
+    assert unread_ids(w, "author") == {n.id for n in theirs}
+
+
+def test_marking_a_target_read_needs_a_target(w, targets):
+    seed(w, about(w, targets, "clip")[0])
+    assert notify.mark_target_read(w.db, w.u["crew"].id) == 0 and len(unread_ids(w)) == 3
+
+
+VIEWS = {  # url -> (what viewing reads, what it leaves)
+    "clip": "/clips/{clip}", "match": "/matches/{match}", "sheet": "/sheets/{sheet}",
+}
+
+
+@pytest.mark.parametrize("target", ["clip", "match", "sheet"])
+def test_viewing_a_target_page_reads_its_notifications_and_the_bell_shows_it(w, targets, target):
+    same, other = about(w, targets, target)
+    seed(w, same)
+    rest = seed(w, other)
+    theirs = seed(w, same, who="author")
+    url = VIEWS[target].format(clip=w.clip.id, match=w.match.id, sheet=targets.sheets[0].id)
+    page = w.c["crew"].get(url).text
+    assert unread_ids(w) == {n.id for n in rest}
+    assert f'aria-label="{notify.bell_label(len(rest))}"' in page
+    assert unread_ids(w, "author") == {n.id for n in theirs}
+
+
+def test_group_list_reads_group_notifications(w, targets):
+    seed(w, [dict(kind="group_added", group_id=g.id) for g in targets.groups], who="admin")
+    rest = seed(w, about(w, targets, "clip")[1], who="admin")
+    w.c["admin"].get("/groups")
+    assert unread_ids(w, "admin") == {n.id for n in rest}
+
+
+@pytest.mark.parametrize("headers", [{"HX-Request": "true"}, {"Purpose": "prefetch"},
+                                     {"Sec-Purpose": "prefetch;prerender"}],
+                         ids=["htmx fragment", "prefetch", "speculative prerender"])
+def test_fragment_refreshes_and_prefetches_do_not_read(w, targets, headers):
+    rows = seed(w, about(w, targets, "clip")[0])
+    assert w.c["crew"].get(f"/clips/{w.clip.id}", headers=headers).status_code == 200
+    assert unread_ids(w) == {n.id for n in rows}

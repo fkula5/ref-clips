@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session, selectinload
 
 from app import config, permissions
 from app.models import Clip, Comment, Match, Notification, Rating, Sheet, TrainingGroup, User, Video
+from app.pagination import Page, paginate
 from app.timeutil import utcnow
 
 
@@ -79,13 +80,17 @@ def bell_label(count: int) -> str:
     return f"Powiadomienia: {count} {'nowe' if few else 'nowych'}"
 
 
-def recent(db: Session, user_id: int, limit: int) -> list[Notification]:
-    return list(db.scalars(
-        select(Notification).where(Notification.recipient_id == user_id)
+def page_of(db: Session, user_id: int, requested: int) -> tuple[list[Notification], Page]:
+    size = config.NOTIFICATION_PAGE_SIZE
+    mine = Notification.recipient_id == user_id
+    pager = paginate(db.scalar(select(func.count()).select_from(Notification).where(mine)) or 0, requested, size)
+    items = list(db.scalars(
+        select(Notification).where(mine)
         .options(selectinload(Notification.actor), selectinload(Notification.match),
                  selectinload(Notification.group),
                  selectinload(Notification.clip).selectinload(Clip.video).selectinload(Video.marks))
-        .order_by(Notification.id.desc()).limit(limit)))
+        .order_by(Notification.id.desc()).limit(size).offset(pager.offset)))
+    return items, pager
 
 
 def mark_read(notification: Notification) -> None:
@@ -96,6 +101,39 @@ def mark_read(notification: Notification) -> None:
 def mark_all_read(db: Session, user_id: int) -> None:
     db.execute(update(Notification).where(Notification.recipient_id == user_id, Notification.read_at.is_(None))
                .values(read_at=utcnow()))
+
+
+def target_of(notification: Notification) -> dict[str, int | None]:
+    """The keyword arguments of `mark_target_read` that select everything the notification points at."""
+    match notification.kind:
+        case "rating" | "rating_changed" | "clip_comment":
+            return {"clip_id": notification.clip_id}
+        case "match_comment":
+            return {"match_id": notification.match_id}
+        case "group_added":
+            return {"group_ids": [notification.group_id]}
+        case _:
+            return {"sheet_id": notification.sheet_id}
+
+
+def mark_target_read(db: Session, user_id: int, *, clip_id: int | None = None, match_id: int | None = None,
+                     sheet_id: int | None = None, group_ids: Iterable[int] = ()) -> int:
+    """One UPDATE; never commits. `match_id` means the match's own comments, not its clips' events. With no
+    target nothing is marked.
+    """
+    if clip_id is not None:
+        target = Notification.clip_id == clip_id
+    elif match_id is not None:
+        target = (Notification.kind == "match_comment") & (Notification.match_id == match_id)
+    elif sheet_id is not None:
+        target = Notification.sheet_id == sheet_id
+    elif ids := list(group_ids):
+        target = Notification.group_id.in_(ids)
+    else:
+        return 0
+    return db.execute(update(Notification).where(
+        Notification.recipient_id == user_id, Notification.read_at.is_(None), target)
+        .values(read_at=utcnow())).rowcount
 
 
 def target_url(notification: Notification) -> str:

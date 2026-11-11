@@ -1,4 +1,7 @@
+import pytest
 from playwright.sync_api import expect
+
+from app import notify
 
 
 def no_horizontal_scroll(page) -> bool:
@@ -50,3 +53,53 @@ def test_rating_reaches_the_crew_referee_who_clicks_through(ui):
     expect(referee.locator("#bell")).to_have_attribute("aria-label", "Powiadomienia")
     referee.goto("/notifications")
     expect(referee.locator(".notif.unread")).to_have_count(0)
+
+
+def mark_everything_read(page):
+    page.goto("/notifications")  # the server is shared: start from a clean bell
+    button = page.get_by_role("button", name="Oznacz wszystkie jako przeczytane")
+    if button.count():
+        button.click()
+    expect(page.locator(".notif.unread")).to_have_count(0)
+
+
+def clip_with_comments(ui, comments):
+    match_id = ui.server.make_match()
+    video_id = ui.server.make_ready_video(match_id, content="full")
+    ui.server.set_mark(video_id, "Q1", 0.0)
+    clip_id = ui.server.insert_clip(video_id, 18.0, official="CC", category="kroki", described=True)
+    referee = ui.page("referee")
+    mark_everything_read(referee)
+    for _ in range(comments):
+        ui.server.add_comment(clip_id, "coach")
+    return referee, clip_id
+
+
+@pytest.mark.parametrize("comments, leave", [(1, "back"), (2, "back"), (2, "reload")],
+                         ids=["single-back", "two-on-one-clip-back", "two-on-one-clip-reload"])
+def test_opened_notification_is_read_when_the_list_is_seen_again(ui, comments, leave):
+    referee, clip_id = clip_with_comments(ui, comments)
+    referee.goto("/notifications")
+    expect(referee.locator(".notif.unread")).to_have_count(comments)
+    expect(referee.locator("#bell .bell-count")).to_have_text(str(comments))
+
+    referee.locator(".notif.unread").first.get_by_role("button").first.click()
+    referee.wait_for_url(f"**/clips/{clip_id}#komentarze")
+    if leave == "back":
+        referee.go_back()
+    else:
+        referee.goto("/notifications")
+    referee.wait_for_url("**/notifications")
+    expect(referee.locator(".notif.unread")).to_have_count(0)
+    expect(referee.locator("#bell .bell-count")).to_have_count(0)
+
+
+def test_bell_refreshes_when_restored_from_the_back_forward_cache(ui):
+    referee, clip_id = clip_with_comments(ui, 1)
+    referee.goto("/")
+    expect(referee.locator("#bell .bell-count")).to_have_text("1")
+    with ui.server.db() as db:
+        notify.mark_all_read(db, ui.server.users["referee"])
+        db.commit()
+    referee.evaluate("window.dispatchEvent(new PageTransitionEvent('pageshow', {persisted: true}))")
+    expect(referee.locator("#bell .bell-count")).to_have_count(0)

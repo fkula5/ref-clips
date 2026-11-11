@@ -61,10 +61,10 @@ def test_rows_sorted_by_deadline_without_deadline_last_and_without_purged(db):
     gone = ready(db, expires_in_days=1)
     gone.purged_at = utcnow()
     db.commit()
-    rows = disk.video_rows(db)
+    rows, _ = disk.video_rows(db)
     assert [r.video.id for r in rows] == [soon.id, late.id, none.id]
     clip_for(db, soon, status="queued")
-    row = disk.video_rows(db)[0]
+    row = disk.video_rows(db)[0][0]
     assert row.clips == 1 and row.pending == 1 and "czeka na wycięcie" in row.blocker
 
 
@@ -127,5 +127,5 @@ def test_human_bytes_filter():
 
 def test_video_row_size_counts_original_when_present(db):
     video = ready(db, expires_in_days=2, proxy_bytes=100, size_bytes=900, original_path="uploads/a.mp4")
-    assert disk.video_rows(db)[0].size == 1000
+    assert disk.video_rows(db)[0][0].size == 1000
     assert isinstance(video, Video)

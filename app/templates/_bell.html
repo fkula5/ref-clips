@@ -1,7 +1,8 @@
-{# Refreshed every minute and when the tab becomes visible again, never while it is hidden. #}
+{# Refreshed every minute, when the tab becomes visible again (never while hidden) and when the page comes back
+   from the back/forward cache, where it would otherwise keep the count it had when the user left. #}
 <a id="bell" class="bell" href="/notifications" aria-label="{{ bell_label(bell_count) }}"
    hx-get="/notifications/bell" hx-swap="outerHTML"
-   hx-trigger="every 60s [!document.hidden], visibilitychange[!document.hidden] from:document">
+   hx-trigger="every 60s [!document.hidden], visibilitychange[!document.hidden] from:document, pageshow[persisted] from:window">
   <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" focusable="false"><path fill="currentColor" d="M12 22a2.5 2.5 0 0 0 2.45-2h-4.9A2.5 2.5 0 0 0 12 22zm7-6v-5a7 7 0 0 0-5-6.7V3a2 2 0 0 0-4 0v1.3A7 7 0 0 0 5 11v5l-2 2v1h18v-1z"/></svg>
   {% if bell_count > 0 %}<span class="bell-count" aria-hidden="true">{{ '99+' if bell_count > 99 else bell_count }}</span>{% endif %}
 </a>

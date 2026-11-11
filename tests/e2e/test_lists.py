@@ -3,6 +3,9 @@ from datetime import date, timedelta
 
 import pytest
 from playwright.sync_api import expect
+from sqlalchemy import select
+
+from app.models import ShareLinkClip
 
 PAGINATION_LEVEL = "Liga Paginacyjna"
 FILTER_LEVEL = "Liga Filtrowa"
@@ -157,3 +160,38 @@ def test_logged_out_user_sees_a_login_link_on_the_error_page(ui):
     page = ui.page()
     page.goto("/nie-ma-takiej-strony")
     expect(page.get_by_role("heading", name="Nie znaleziono")).to_be_visible()
+
+
+def test_clip_list_pages_keep_the_selection_for_sharing_and_history(ui, server):
+    match_id = server.make_match(team_a="Paginacja", team_b="Klipów")
+    video_id = server.make_ready_video(match_id)
+    ids = [server.insert_clip(video_id, float(t), official="CC", category="aut", described=True, file=True)
+           for t in range(1, 56)]
+    page = ui.page("admin")
+    page.goto(f"/clips?match_id={match_id}&category_id={server.category_id('aut')}")
+    page.evaluate("window.__bez_przeladowania = true")
+    clips = page.locator("#clips-list tbody tr")
+    expect(clips).to_have_count(50)
+    expect(page.locator("#clips-list .pager")).to_contain_text("Klipy: 55 · strona 1 z 2")
+
+    page.locator(".share-check").first.check()
+    expect(page.locator("#share-count")).to_have_text("Zaznaczono: 1")
+    page.get_by_role("link", name="Starsze ›").click()
+    expect(page).to_have_url(re.compile(rf"match_id={match_id}.*page=2"))
+    expect(clips).to_have_count(5)
+    expect(page.locator("#share-count")).to_have_text("Zaznaczono: 1")
+    page.locator(".share-check").last.check()
+    expect(page.locator("#share-count")).to_have_text("Zaznaczono: 2")
+    assert page.evaluate("window.__bez_przeladowania === true")
+
+    page.get_by_role("button", name="Udostępnij zaznaczone").click()
+    expect(page).to_have_url(re.compile(r"/share-links/created$"))
+    with server.db() as db:
+        shared = {row for row in db.scalars(select(ShareLinkClip.clip_id).where(ShareLinkClip.clip_id.in_(ids)))}
+    assert shared == {ids[0], ids[-1]}  # one clip from each page, in the order of the list
+
+    page.go_back()
+    expect(page).to_have_url(re.compile(r"page=2"))
+    expect(clips).to_have_count(5)
+    clips.first.get_by_role("link", name="Otwórz klip").click()
+    expect(page.locator("#prev-clip")).to_have_attribute("href", re.compile(rf"/clips/{ids[49]}"))

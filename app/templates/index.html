@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_pager.html" import pagination %}
 {% block title %}Mecze{% endblock %}
 {% block content %}
 <div class="row between">
@@ -58,13 +59,7 @@
   {% endfor %}
   </tbody>
 </table>
-<div class="row between pager">
-  <span class="muted">Mecze: {{ result.total }} · strona {{ result.page }} z {{ result.pages }}</span>
-  <span class="row">
-    {% if result.has_prev %}<a class="btn small" href="/?{{ prev_query }}" hx-get="/?{{ prev_query }}" hx-target="#matches-list" hx-select="#matches-list" hx-swap="outerHTML" hx-push-url="true">‹ Nowsze</a>{% endif %}
-    {% if result.has_next %}<a class="btn small" href="/?{{ next_query }}" hx-get="/?{{ next_query }}" hx-target="#matches-list" hx-select="#matches-list" hx-swap="outerHTML" hx-push-url="true">Starsze ›</a>{% endif %}
-  </span>
-</div>
+{{ pagination(result, "Mecze", f.query, "/", "#matches-list") }}
 {% endif %}
 </div>
 {% endblock %}

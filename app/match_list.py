@@ -8,10 +8,9 @@ from urllib.parse import urlencode
 from sqlalchemy import case, func, or_, select
 from sqlalchemy.orm import Session, selectinload
 
-from app import groups, retention, services
+from app import config, groups, retention, services
 from app.models import Clip, Match, MatchOfficial, Video
-
-PAGE_SIZE = 25
+from app.pagination import paginate, parse_page
 
 
 @dataclass
@@ -47,17 +46,13 @@ def _parse_date(raw: str, label: str, errors: list[str]) -> date | None:
 
 def parse_filters(params: Mapping[str, str]) -> MatchFilters:
     errors: list[str] = []
-    try:
-        page = max(1, int(params.get("page") or 1))
-    except ValueError:
-        page = 1
     return MatchFilters(
         date_from=_parse_date(params.get("date_from", ""), "od", errors),
         date_to=_parse_date(params.get("date_to", ""), "do", errors),
         level=params.get("level", "").strip(), person=params.get("person", "").strip(),
         mine=params.get("mine", "") in ("1", "on", "true"),
         group=int(group) if (group := params.get("group", "").strip()).isdigit() else None,
-        page=page, errors=errors)
+        page=parse_page(params.get("page")), errors=errors)
 
 
 @dataclass
@@ -93,7 +88,8 @@ def _person_match_ids(db: Session, person: str) -> list[int]:
 
 
 def list_matches(db: Session, filters: MatchFilters, user_id: int,
-                 page_size: int = PAGE_SIZE) -> MatchPage:
+                 page_size: int | None = None) -> MatchPage:
+    page_size = page_size or config.MATCH_PAGE_SIZE
     stmt = select(Match)
     if filters.date_from:
         stmt = stmt.where(Match.date >= filters.date_from)
@@ -110,13 +106,12 @@ def list_matches(db: Session, filters: MatchFilters, user_id: int,
         stmt = stmt.where(or_(Match.created_by == user_id, Match.id.in_(own_crew)))
 
     total = db.scalar(select(func.count()).select_from(stmt.subquery())) or 0
-    pages = max(1, -(-total // page_size))
-    page = min(filters.page, pages)
+    pager = paginate(total, filters.page, page_size)
     matches = db.scalars(
         stmt.options(selectinload(Match.officials).selectinload(MatchOfficial.user),
                      selectinload(Match.videos).selectinload(Video.marks))
         .order_by(Match.date.desc(), Match.id.desc())
-        .limit(page_size).offset((page - 1) * page_size)).all()
+        .limit(page_size).offset(pager.offset)).all()
 
     ids = [m.id for m in matches]
     counts = {match_id: (n, undescribed or 0) for match_id, n, undescribed in db.execute(
@@ -127,4 +122,4 @@ def list_matches(db: Session, filters: MatchFilters, user_id: int,
     rows = [MatchRow(m, services.match_state(m.videos, queue), *counts.get(m.id, (0, 0)),
                      expiry=retention.expiry_note(m.videos))
             for m in matches]
-    return MatchPage(rows, total, page, pages)
+    return MatchPage(rows, total, pager.page, pager.pages)

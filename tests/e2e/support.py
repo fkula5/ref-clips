@@ -206,7 +206,7 @@ class Server:
     def insert_clip(self, video_id: int, time_sec: float, *, author: str = "admin", official: str | None = None,
                     category: str | None = None, custom: str | None = None, whole_team: bool = False,
                     description: str = "", described: bool = False, status: str = "cut",
-                    error: str | None = None, margin: float = 15.0) -> int:
+                    error: str | None = None, margin: float = 15.0, file: bool = False) -> int:
         from datetime import datetime
         from app.models import Category, Clip
         with self.db() as db:
@@ -220,7 +220,23 @@ class Server:
                         error=error, margin_before=margin, margin_after=margin)
             db.add(clip)
             db.commit()
+            if file:  # a placeholder is enough for lists and sharing, which only check that the file exists
+                clip.clip_path, clip.clip_version = f"clips/{clip.id}_v1.mp4", 1
+                (self.data_dir / clip.clip_path).parent.mkdir(parents=True, exist_ok=True)
+                (self.data_dir / clip.clip_path).write_bytes(b"x" * 64)
+                db.commit()
             return clip.id
+
+    def category_id(self, name: str) -> int:
+        from app.models import Category
+        with self.db() as db:
+            return db.scalar(select(Category.id).where(Category.name == name))
+
+    def add_comment(self, clip_id: int, author: str, body: str = "Komentarz") -> None:
+        from app import feedback
+        with self.db() as db:
+            feedback.create_comment(db, self.users[author], body, clip_id=clip_id)
+            db.commit()
 
     def clip(self, clip_id: int):
         from app.models import Clip

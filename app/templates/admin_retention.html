@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_pager.html" import pagination %}
 {% block title %}Retencja i dysk{% endblock %}
 {% block content %}
 {% set tab = "retention" %}{% include "_admin_tabs.html" %}
@@ -51,7 +52,7 @@
   </tbody>
 </table>
 
-<h2>Nagrania ({{ rows|length }})</h2>
+<h2>Nagrania ({{ pager.total }})</h2>
 <p class="muted small-note">Od najbliższego terminu usunięcia. „Usuń teraz” kasuje wersję roboczą (i oryginał, jeśli został po błędzie), klipy zostają.</p>
 {% if not rows %}
   <p class="muted">Brak nagrań z plikami na dysku.</p>
@@ -82,5 +83,6 @@
   {% endfor %}
   </tbody>
 </table>
+{{ pagination(pager, "Nagrania", page_query, "/admin/retention", prev="‹ Poprzednie", next="Następne ›") }}
 {% endif %}
 {% endblock %}
