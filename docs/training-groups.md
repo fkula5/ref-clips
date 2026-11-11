@@ -1,5 +1,7 @@
 # Training groups: user stories
 
+Status: implemented in the next release (branch `feat/training-groups`, migration `mvp0008`). Where the build differs from the stories below, the notes under „Implementation notes” apply.
+
 ## Purpose
 
 A coach works with a specific set of referees and needs one place to see them, their activity and their clips. A training group gathers those referees under a coach, so the coach can see their activity over a chosen period, find clips that are waiting for a rating, and filter the match and clip lists by group. Referees see which groups they belong to and who leads them.
@@ -105,3 +107,11 @@ As a referee, I get an in-app notification when I am added to a group.
 - A per-referee summary (most frequent categories, distribution of ratings).
 - Referees leaving a group by themselves (only coaches remove members).
 - A referee profile page (see TODO).
+
+## Implementation notes
+
+- A match belongs to a group when any account in its crew is a referee member of the group (typed names in the crew do not count). Clips follow their match; this rule is used by the „Grupa” filters (TG-08) and by „Do oceny” (TG-07), which therefore lists described clips from those matches, not only clips written by a member.
+- Only the group's coaches and admins open a group's page, activity table and „Do oceny”; everybody else gets 404. Referees see TG-09 only (`/groups`).
+- Activity (TG-06) counts recordings uploaded, markers added (new clips) and clips described, all attributed to the clip's author or the recording's uploader. The period is 7, 14, 30 or 90 days (`?days=`, default 14).
+- Adding a referee or a coach sends a „group_added” notification to the added person; removing sends nothing. Deleting a group keeps the accounts and removes its notifications.
+- An account is in a group once, as a coach or as a referee. There is no way yet to remove a coach from a group.
