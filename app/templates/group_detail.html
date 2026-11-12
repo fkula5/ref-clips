@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}{{ g.name }}{% endblock %}
-{% macro member_picker(role, label, options) %}
-  <form method="post" action="/groups/{{ g.id }}/{{ role }}s" class="card form row member-add">
+{% macro member_picker(role, path, label, options) %}
+  <form method="post" action="/groups/{{ g.id }}/{{ path }}" class="card form row member-add">
     {{ csrf_input() }}
     <label class="grow">{{ label }}
       <select name="user_id" required>
@@ -72,11 +72,11 @@
 </div>
 
 <h2>Dodaj sędziego</h2>
-{% if referee_options or add_values.referee %}{{ member_picker('referee', 'Sędzia', referee_options) }}
+{% if referee_options or add_values.referee %}{{ member_picker('referee', 'referees', 'Sędzia', referee_options) }}
 {% else %}<p class="muted">Nie ma więcej aktywnych kont z rolą sędziego do dodania.</p>{% endif %}
 
 <h2>Szkoleniowcy</h2>
 <p>{% for m in g.coaches %}<span class="chip">{{ m.user.name }}</span>{% endfor %}</p>
-{% if coach_options or add_values.coach %}{{ member_picker('coach', 'Dodaj szkoleniowca', coach_options) }}
+{% if coach_options or add_values.coach %}{{ member_picker('coach', 'coaches', 'Dodaj szkoleniowca', coach_options) }}
 {% else %}<p class="muted">Nie ma więcej aktywnych kont z rolą szkoleniowca do dodania.</p>{% endif %}
 {% endblock %}

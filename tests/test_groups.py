@@ -314,3 +314,14 @@ def test_adding_notifies_once_removing_does_not_and_rejections_do_not(w, db):
     assert "Osoba coach" in page and "dodano Cię do grupy „Grupa A”" in page
     assert w.c["r3"].post(f"/notifications/{rows[0].id}/open", follow_redirects=False).headers["location"] == "/groups"
     assert (notify.unread_count(db, w.u["r3"].id), notify.unread_count(db, w.u["lead2"].id)) == (0, 1)
+
+
+@pytest.mark.parametrize("role, option, who", [("referee", "r3", "coach"), ("coach", "lead2", "coach"),
+                                               ("coach", "lead2", "admin")])
+def test_the_picker_form_posts_to_a_real_route(w, role, option, who):
+    page = w.c[who].get(f"/groups/{w.g.id}").text
+    forms = re.findall(r'<form method="post" action="([^"]+)" class="card form row member-add">', page)
+    action = next(a for a in forms if a.endswith("/referees" if role == "referee" else "/coaches"))
+    r = w.c[who].post(action, data={"user_id": str(w.u[option].id)}, follow_redirects=False)
+    assert r.status_code == 303, r.text[:300]
+    assert option in names(w, role)

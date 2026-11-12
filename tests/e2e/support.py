@@ -32,6 +32,7 @@ CHUNK_KB = 256
 USERS = {
     "admin": ("admin@example.com", "Adam Admin", ["admin"]),
     "coach": ("trener@example.com", "Cezary Trener", ["coach"]),
+    "coach2": ("daria@example.com", "Daria Trenerka", ["coach"]),
     "referee": ("roman@example.com", "Roman Sędzia", ["referee"]),
     "outsider": ("olek@example.com", "Olek Obcy", ["referee"]),
     "second": ("ula@example.com", "Ula Druga", ["referee"]),

@@ -71,3 +71,20 @@ def test_coach_builds_a_group_and_the_referee_sees_it_and_the_notification(ui):
     phone_coach.goto(f"/groups/{group_id}")
     expect(phone_coach.locator("#activity tbody tr", has_text="Roman Sędzia")).to_be_visible()
     assert no_horizontal_scroll(phone_coach)
+
+
+def test_coach_adds_another_coach_through_the_real_form(ui):
+    coach = ui.page("coach")
+    coach.goto("/groups/new")
+    coach.get_by_label("Nazwa").fill("Grupa dwóch trenerów")
+    coach.get_by_role("button", name="Utwórz grupę").click()
+    expect(coach.get_by_role("heading", name="Grupa dwóch trenerów")).to_be_visible()
+
+    coach.get_by_label("Dodaj szkoleniowca").select_option(label="Daria Trenerka")
+    coach.get_by_role("button", name="Dodaj").last.click()
+    expect(coach.locator("#page-notice")).to_contain_text("Dodano szkoleniowca: Daria Trenerka")
+    expect(coach.locator("p", has_text="Cezary Trener").locator(".chip", has_text="Daria Trenerka")).to_have_count(1)
+
+    second = ui.page("coach2")
+    second.goto(coach.url)
+    expect(second.get_by_role("heading", name="Grupa dwóch trenerów")).to_be_visible()
