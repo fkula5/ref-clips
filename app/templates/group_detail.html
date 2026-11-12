@@ -67,7 +67,7 @@
       <td data-label="Opisane klipy">{{ r.described }}</td>
       <td data-label="Ostatnia aktywność">{{ r.last|local if r.last else 'brak' }}</td>
       <td class="actions-cell">
-        <form method="post" action="/groups/{{ g.id }}/referees/{{ r.user.id }}/remove" class="inline" onsubmit="return confirm('Usunąć {{ r.user.name|e }} z grupy? Jej mecze i klipy zostają bez zmian.')">
+        <form method="post" action="/groups/{{ g.id }}/referees/{{ r.user.id }}/remove" class="inline" onsubmit='return confirm({{ ("Usunąć " ~ r.user.name ~ " z grupy? Jej mecze i klipy zostają bez zmian.")|tojson }})'>
           {{ csrf_input() }}<input type="hidden" name="days" value="{{ days }}"><button class="btn small danger" aria-label="Usuń z grupy: {{ r.user.name }}">Usuń z grupy</button></form>
       </td>
     </tr>
