@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.8.0](https://github.com/fkula5/ref-clips/compare/v1.7.0...v1.8.0) (2026-11-12)
+
+
+### Features
+
+* **db:** add match scoresheets table ([97182e1](https://github.com/fkula5/ref-clips/commit/97182e1648712f6f9b45aab91fd021a4f7ca6d40))
+* match scoresheet files on the match page ([cd51630](https://github.com/fkula5/ref-clips/commit/cd516300c24dadfc664da50a5b6f6a4f38d3135b))
+
+
+### Bug Fixes
+
+* **deploy:** back up match scoresheet files ([2e64abc](https://github.com/fkula5/ref-clips/commit/2e64abc6d1387ced0947bddadeab014a2aef23c1))
+* **ui:** collapse the header into a menu on phones and fix mobile overflow ([598f7c9](https://github.com/fkula5/ref-clips/commit/598f7c9a940cc12da5ca84dc56b4ca560ee0dd5c))
+
 ## [1.7.0](https://github.com/fkula5/ref-clips/compare/v1.6.0...v1.7.0) (2026-11-12)
 
 
