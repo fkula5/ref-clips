@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.7.0](https://github.com/fkula5/ref-clips/compare/v1.6.0...v1.7.0) (2026-11-12)
+
+
+### Features
+
+* **db:** add training sets tables ([b011e20](https://github.com/fkula5/ref-clips/commit/b011e2052225ad2deac2e817d78b7065afec430b))
+* training sets with notes, ordering and group pins ([9f893c7](https://github.com/fkula5/ref-clips/commit/9f893c709fbfc41a1f2890bac6743eb376d78402))
+
 ## [1.6.0](https://github.com/fkula5/ref-clips/compare/v1.5.0...v1.6.0) (2026-11-11)
 
 
