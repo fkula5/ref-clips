@@ -1,6 +1,6 @@
 # Restoring ref-clips from a backup
 
-Backups are in `/var/backups/ref-clips/RRRR-MM-DD` (the database `ref-clips.db` and the `clips/` directory; see `docs/wdrozenie.md`).
+Backups are in `/var/backups/ref-clips/RRRR-MM-DD` (the database `ref-clips.db`, the `clips/` directory and, if the matches have scoresheets, `scoresheets/`; see `docs/wdrozenie.md`).
 Restore on the server, in `/opt/ref-clips`. **Full recordings are not in the backup** — after restoring on a new server
 the clips and descriptions are there, but recordings for re-watching must be uploaded again (retention deletes them anyway).
 
@@ -27,7 +27,11 @@ docker compose run --rm --no-deps --user root -v "$SNAP:/backup:ro" app sh -c '
   rm -rf /data/clips.przed-odtworzeniem
   [ -d /data/clips ] && mv /data/clips /data/clips.przed-odtworzeniem
   cp -a /backup/clips /data/clips
+  rm -rf /data/scoresheets.przed-odtworzeniem
+  if [ -d /data/scoresheets ]; then mv /data/scoresheets /data/scoresheets.przed-odtworzeniem; fi
+  if [ -d /backup/scoresheets ]; then cp -a /backup/scoresheets /data/scoresheets; fi
   chown -R app:app /data/ref-clips.db /data/clips
+  if [ -d /data/scoresheets ]; then chown -R app:app /data/scoresheets; fi
 '
 docker compose up -d --wait                         # init zastosuje migracje, jeśli kopia jest starsza od kodu
 ```
@@ -35,10 +39,10 @@ docker compose up -d --wait                         # init zastosuje migracje, j
 Log in and check the match list and clip playback. When everything works, free the space:
 
 ```bash
-docker compose run --rm --no-deps --user root app sh -c 'rm -rf /data/przed-odtworzeniem.db /data/clips.przed-odtworzeniem'
+docker compose run --rm --no-deps --user root app sh -c 'rm -rf /data/przed-odtworzeniem.db /data/clips.przed-odtworzeniem /data/scoresheets.przed-odtworzeniem'
 ```
 
-If the restore failed, go back to the state before (`przed-odtworzeniem.db`, `clips.przed-odtworzeniem`) with the analogous `mv`.
+If the restore failed, go back to the state before (`przed-odtworzeniem.db`, `clips.przed-odtworzeniem`, `scoresheets.przed-odtworzeniem`) with the analogous `mv`.
 
 ## 3. Restoring on a new server
 
