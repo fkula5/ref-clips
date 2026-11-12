@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block title %}Usuń zestaw{% endblock %}
+{% block content %}
+<h1>Usunąć zestaw?</h1>
+<div class="card">
+  <p><strong>{{ s.name }}</strong></p>
+  <p>Zostanie usunięty sam zestaw: jego kolejność, notatki szkoleniowe i przypięcia do grup (klipów w zestawie: {{ clip_count }}).
+    Klipy, mecze i oceny zostają bez zmian.</p>
+  <form method="post" action="/sets/{{ s.id }}/delete" class="row">
+    {{ csrf_input() }}
+    <button class="btn danger">Tak, usuń zestaw</button>
+    <a class="btn" href="/sets/{{ s.id }}">Anuluj</a>
+  </form>
+</div>
+{% endblock %}

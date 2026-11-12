@@ -101,6 +101,7 @@ MATCH_PAGE_SIZE = 25
 CLIP_PAGE_SIZE = 50  # /clips and the clip tab of a match
 NOTIFICATION_PAGE_SIZE = 50
 REVIEW_PAGE_SIZE = 50
+SET_PAGE_SIZE = 25  # /sets
 VIDEO_PAGE_SIZE = 25  # recordings table in the admin panel
 COMMENT_PAGE_SIZE = 50
 # Conversion check: the result's duration may differ from the original by max(2 s, 1% of its length).

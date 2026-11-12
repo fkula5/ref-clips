@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% block title %}{{ s.name }}{% endblock %}
+{% block content %}
+{% set editing = perm.can_edit_set(user) %}
+<p><a href="/sets">← Zestawy</a></p>
+<div class="row between">
+  <h1>{{ s.name }}</h1>
+  {% if editing %}
+  <span class="row">
+    <a class="btn" href="/sets/{{ s.id }}/edit">Edytuj</a>
+    <a class="btn danger" href="/sets/{{ s.id }}/delete">Usuń zestaw</a>
+  </span>
+  {% endif %}
+</div>
+{% if s.description %}<p class="note-text">{{ s.description }}</p>{% endif %}
+{% if error %}<div class="banner error" role="alert" id="set-error">{{ error }}</div>{% endif %}
+<p class="muted" id="names-state">Nazwiska sędziów: {{ 'widoczne' if s.show_names else 'ukryte (widać tylko funkcję w obsadzie)' }}.</p>
+
+<section id="set-groups">
+  <h2>Grupy</h2>
+  <p>
+  {% for p in s.pins %}
+    <span class="chip pinned">{{ p.group.name }}
+    {% if editing %}
+      <form method="post" action="/sets/{{ s.id }}/groups/{{ p.group_id }}/unpin" class="inline">{{ csrf_input() }}<button class="linklike" aria-label="Odepnij od grupy: {{ p.group.name }}">odepnij</button></form>
+    {% endif %}</span>
+  {% else %}<span class="muted">Zestaw nie jest przypięty do żadnej grupy.</span>{% endfor %}
+  </p>
+  {% if editing and groups_to_pin %}
+  <form method="post" action="/sets/{{ s.id }}/groups" class="card form row">
+    {{ csrf_input() }}
+    <label class="grow">Przypnij do grupy
+      <select name="group_id" required>
+        <option value="">Wybierz grupę…</option>
+        {% for g in groups_to_pin %}<option value="{{ g.id }}">{{ g.name }}</option>{% endfor %}
+      </select></label>
+    <button class="btn">Przypnij</button>
+  </form>
+  {% endif %}
+</section>
+
+<h2>Klipy ({{ items|length }})</h2>
+{% if not items %}
+  <p class="card muted">W zestawie nie ma jeszcze klipów. {% if editing %}Otwórz wycięty klip i użyj „Dodaj do zestawu”.{% endif %}</p>
+{% else %}
+<p><a class="btn primary" href="/sets/{{ s.id }}/clips/{{ items[0].clip_id }}">Obejrzyj od pierwszego klipu</a></p>
+<table class="responsive set-table">
+  <thead><tr><th>#</th><th>Mecz</th><th>{{ 'Sędzia' if s.show_names else 'Funkcja' }}</th><th>Kategoria</th><th>Notatka</th><th></th></tr></thead>
+  <tbody>
+  {% for item in items %}
+    {% set c = item.clip %}
+    <tr id="clip-{{ c.id }}">
+      <td data-label="#">{{ loop.index }}</td>
+      <td data-label="Mecz" class="main-cell"><a href="/sets/{{ s.id }}/clips/{{ c.id }}">{{ c.match.title }}</a>{% if c.match.level %} <span class="muted">· {{ c.match.level }}</span>{% endif %}</td>
+      <td data-label="{{ 'Sędzia' if s.show_names else 'Funkcja' }}">{{ set_official(c, s.show_names) or '—' }}</td>
+      <td data-label="Kategoria">{% if c.category_label %}<span class="chip">{{ c.category_label }}</span>{% else %}—{% endif %}</td>
+      <td data-label="Notatka" class="desc-cell">{{ (item.note|truncate(80, true, '…')) if item.note else '—' }}</td>
+      <td class="actions-cell">
+        <a class="btn small" href="/sets/{{ s.id }}/clips/{{ c.id }}">Oglądaj</a>
+        {% if editing %}
+        <form method="post" action="/sets/{{ s.id }}/clips/{{ c.id }}/move" class="inline">{{ csrf_input() }}<input type="hidden" name="direction" value="up"><button class="btn small" {{ 'disabled' if loop.first }} aria-label="Przesuń w górę: klip {{ loop.index }}">▲</button></form>
+        <form method="post" action="/sets/{{ s.id }}/clips/{{ c.id }}/move" class="inline">{{ csrf_input() }}<input type="hidden" name="direction" value="down"><button class="btn small" {{ 'disabled' if loop.last }} aria-label="Przesuń w dół: klip {{ loop.index }}">▼</button></form>
+        <form method="post" action="/sets/{{ s.id }}/clips/{{ c.id }}/remove" class="inline" onsubmit="return confirm('Usunąć klip z zestawu? Sam klip zostaje bez zmian.')">{{ csrf_input() }}<button class="btn small danger" aria-label="Usuń z zestawu: klip {{ loop.index }}">Usuń z zestawu</button></form>
+        {% endif %}
+      </td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block title %}{{ "Edycja zestawu" if s else "Nowy zestaw" }}{% endblock %}
+{% block content %}
+<h1>{{ "Edycja zestawu" if s else "Nowy zestaw" }}</h1>
+{% if error %}<div class="banner error" role="alert">{{ error }}</div>{% endif %}
+<form method="post" action="{{ '/sets/%d/edit' % s.id if s else '/sets' }}" class="card form">
+  {{ csrf_input() }}
+  <label>Nazwa <input name="name" required maxlength="100" value="{{ values.name }}"></label>
+  <label>Opis (opcjonalnie) <textarea name="description" rows="3" maxlength="1000">{{ values.description }}</textarea></label>
+  {% if s %}
+  <label class="choice"><input type="checkbox" name="show_names" value="1" {{ 'checked' if values.show_names }}> Pokaż nazwiska sędziów</label>
+  <p class="muted small-note">Domyślnie w zestawie widać tylko funkcję w obsadzie (CC, U1, U2), a nazwiska są ukryte. To ustawienie dotyczy wszystkich oglądających zestaw oraz nazwy pobieranych plików.</p>
+  {% endif %}
+  <div class="row">
+    <button class="btn primary">{{ "Zapisz" if s else "Utwórz zestaw" }}</button>
+    <a class="btn" href="{{ '/sets/%d' % s.id if s else '/sets' }}">Anuluj</a>
+  </div>
+</form>
+{% endblock %}

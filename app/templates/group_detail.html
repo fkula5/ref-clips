@@ -22,6 +22,16 @@
   </span>
 </div>
 {% if g.description %}<p>{{ g.description }}</p>{% endif %}
+{% if pinned %}
+<section class="card pinned-sets" id="pinned-sets" aria-labelledby="pinned-sets-title">
+  <h2 id="pinned-sets-title">Zestawy szkoleniowe tej grupy</h2>
+  <ul class="plain">
+  {% for r in pinned %}
+    <li><a href="/sets/{{ r.training_set.id }}">{{ r.training_set.name }}</a> <span class="muted">· klipów: {{ r.clips }}</span></li>
+  {% endfor %}
+  </ul>
+</section>
+{% endif %}
 {% if error %}<div class="banner error" role="alert" id="group-error">{{ error }}</div>{% endif %}
 
 <h2>Aktywność sędziów</h2>

@@ -13,7 +13,7 @@ EXPECTED_TABLES = {
     "videos", "upload_sessions", "period_marks", "categories", "clips", "ratings", "comments",
     "jobs", "settings", "upload_rejections", "share_links", "share_link_clips",
     "sheet_elements", "sheets", "sheet_columns", "sheet_rows", "sheet_cells", "notifications",
-    "training_groups", "group_members",
+    "training_groups", "group_members", "training_sets", "training_set_clips", "training_set_groups",
 }
 
 
@@ -292,3 +292,51 @@ def test_groups_migration_keeps_notifications_and_cascades_memberships(tmp_path)
         assert conn.execute(text("SELECT kind FROM notifications")).scalars().all() == ["match_comment"]
         assert "group_id" not in {c["name"] for c in inspect(conn).get_columns("notifications")}
         assert "described_by_id" not in {c["name"] for c in inspect(conn).get_columns("clips")}
+
+
+def test_training_sets_migration_is_additive_and_cascades(tmp_path):
+    from sqlalchemy import text
+
+    url = f"sqlite:///{tmp_path / 'm.db'}"
+    cfg = _config(url)
+    command.upgrade(cfg, "mvp0008")
+    engine = create_engine(url)
+    with engine.begin() as conn:
+        conn.execute(text("INSERT INTO users (id, email, name, is_active) VALUES (1, 'a@b.pl', 'A', 1)"))
+        conn.execute(text("INSERT INTO matches (id, date, level, team_a_name, team_a_color, team_b_name, team_b_color) "
+                          "VALUES (1, '2026-10-28', '', '', '', '', '')"))
+        conn.execute(text("INSERT INTO videos (id, match_id, size_bytes, content, status, label, original_filename) "
+                          "VALUES (1, 1, 1, 'full', 'ready', '', '')"))
+        for i in (1, 2):
+            conn.execute(text("INSERT INTO clips (id, match_id, video_id, whole_team, time_sec, margin_before, margin_after, "
+                              "description, status, clip_version) VALUES (:i, 1, 1, 0, 10, 15, 15, 'Opis', 'cut', 1)"), {"i": i})
+        conn.execute(text("INSERT INTO training_groups (id, name) VALUES (1, 'G')"))
+    assert not {"training_sets", "training_set_clips", "training_set_groups"} & set(inspect(engine).get_table_names())
+    command.upgrade(cfg, "head")
+    assert "ix_training_set_clips_clip_id" in {i["name"] for i in inspect(create_engine(url)).get_indexes("training_set_clips")}
+    with engine.begin() as conn:
+        conn.execute(text("PRAGMA foreign_keys=ON"))
+        assert conn.execute(text("SELECT description FROM clips WHERE id = 1")).scalar() == "Opis"  # old tables untouched
+        conn.execute(text("INSERT INTO training_sets (id, name, created_by) VALUES (1, 'Zestaw', 1)"))
+        assert tuple(conn.execute(text("SELECT description, show_names FROM training_sets")).one()) == ("", 0)
+        conn.execute(text("INSERT INTO training_set_clips (set_id, clip_id, position) VALUES (1, 1, 1), (1, 2, 2)"))
+        conn.execute(text("INSERT INTO training_set_groups (set_id, group_id) VALUES (1, 1)"))
+        assert conn.execute(text("SELECT note FROM training_set_clips WHERE clip_id = 1")).scalar() == ""
+        assert compare_metadata(MigrationContext.configure(conn), Base.metadata) == []
+    with engine.begin() as conn, pytest.raises(Exception):  # a clip is in a set at most once
+        conn.execute(text("PRAGMA foreign_keys=ON"))
+        conn.execute(text("INSERT INTO training_set_clips (set_id, clip_id, position) VALUES (1, 1, 3)"))
+    with engine.begin() as conn:
+        conn.execute(text("PRAGMA foreign_keys=ON"))
+        conn.execute(text("DELETE FROM clips WHERE id = 2"))
+        assert conn.execute(text("SELECT clip_id FROM training_set_clips")).scalars().all() == [1]
+        conn.execute(text("DELETE FROM matches"))  # takes its clips along
+        assert conn.execute(text("SELECT count(*) FROM training_set_clips")).scalar() == 0
+        assert conn.execute(text("SELECT count(*) FROM training_sets")).scalar() == 1
+        conn.execute(text("DELETE FROM training_groups"))
+        assert conn.execute(text("SELECT count(*) FROM training_set_groups")).scalar() == 0
+        conn.execute(text("DELETE FROM users"))
+        assert conn.execute(text("SELECT created_by FROM training_sets")).scalar() is None
+    command.downgrade(cfg, "mvp0008")
+    assert not {"training_sets", "training_set_clips", "training_set_groups"} & set(inspect(create_engine(url)).get_table_names())
+    assert {"training_groups", "clips"} <= set(inspect(create_engine(url)).get_table_names())

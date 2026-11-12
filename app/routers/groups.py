@@ -8,7 +8,7 @@ from collections.abc import Callable
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from sqlalchemy.orm import Session
 
-from app import flash, groups, permissions
+from app import flash, groups, permissions, training_sets
 from app.auth import current_user, require
 from app.db import get_db
 from app.groups import GroupError
@@ -46,6 +46,7 @@ def render_group(request: Request, db: Session, group: TrainingGroup, days: int,
         request, "group_detail.html", status_code=status_code, g=group, days=days, periods=groups.PERIOD_CHOICES,
         rows=groups.activity(db, group, days), review_count=groups.review_count(db, group, request.state.user.id),
         error=error, add_values=add_values or {},
+        pinned=training_sets.pinned_sets(db, [group.id]).get(group.id, []),
         referee_options=groups.candidates(db, group, "referee"), coach_options=groups.candidates(db, group, "coach"))
 
 
@@ -55,6 +56,7 @@ def group_list(request: Request, db: Session = Depends(get_db),
     items = groups.groups_of(db, user)
     mark_seen(request, db, group_ids=[g.id for g in items])
     return render(request, "groups.html", items=items,
+                  pinned=training_sets.pinned_sets(db, [g.id for g in items]),
                   viewable={g.id for g in items if permissions.can_view_group(user, g)})
 
 

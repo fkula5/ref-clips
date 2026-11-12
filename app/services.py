@@ -472,18 +472,21 @@ def _filename_part(text: str) -> str:
     return slugify(text)[:FILENAME_PART_MAX].strip("-")
 
 
-def clip_filename(clip: Clip, *, with_referee: bool = True) -> str:
+def clip_filename(clip: Clip, *, with_referee: bool = True, function_only: bool = False) -> str:
     """category-of-competition_surname_decision.mp4, e.g. III-liga_Kowalski_blok-szarza.mp4 (surname =
     last word of the referee's name, "zespol" for whole-team clips; empty parts are skipped; ASCII
     only; computed on the fly, so after a description change the downloaded file already has the new
     name). `with_referee=False` (links without account) omits the referee and does not even read the
-    crew: III-liga_blok-szarza.mp4. Names may repeat; ZIPs are numbered by `unique_filenames`.
+    crew: III-liga_blok-szarza.mp4. `function_only=True` (training sets with names hidden) puts the
+    crew function instead of the surname: III-liga_CC_blok-szarza.mp4. Names may repeat; ZIPs are
+    numbered by `unique_filenames`.
     """
     referee = ""
     if with_referee:
         referee = "zespol" if clip.whole_team else ""
         if clip.official and not clip.whole_team:
-            referee = " ".join(clip.official.display_name.split()[-1:])
+            referee = (clip.official.function if function_only
+                       else " ".join(clip.official.display_name.split()[-1:]))
     parts = (_filename_part(value) for value in (clip.match.level, referee, clip.category_label))
     return ("_".join(part for part in parts if part) or "klip") + ".mp4"
 

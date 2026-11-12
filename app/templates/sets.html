@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% from "_pager.html" import pagination %}
+{% block title %}Zestawy{% endblock %}
+{% block content %}
+<div class="row between">
+  <h1>Zestawy szkoleniowe</h1>
+  {% if perm.can_edit_set(user) %}<a class="btn primary" href="/sets/new">+ Nowy zestaw</a>{% endif %}
+</div>
+<p class="muted">Tematyczne zbiory wybranych klipów z notatkami szkoleniowca. Nazwiska sędziów są w nich domyślnie ukryte.</p>
+{% if not rows %}
+  {% if perm.can_edit_set(user) %}
+  <p class="card muted">Nie ma jeszcze żadnego zestawu. Utwórz zestaw tutaj albo dodaj klip do zestawu na stronie klipu.</p>
+  {% else %}
+  <p class="card muted">Nie ma jeszcze żadnego zestawu.</p>
+  {% endif %}
+{% else %}
+<table class="responsive">
+  <thead><tr><th>Zestaw</th><th>Opis</th><th>Klipy</th><th>Grupy</th></tr></thead>
+  <tbody>
+  {% for r in rows %}
+    <tr>
+      <td data-label="Zestaw" class="main-cell"><a href="/sets/{{ r.training_set.id }}">{{ r.training_set.name }}</a></td>
+      <td data-label="Opis">{{ (r.training_set.description|truncate(80, true, '…')) if r.training_set.description else '—' }}</td>
+      <td data-label="Klipy">{{ r.clips }}</td>
+      <td data-label="Grupy">{% for p in r.training_set.pins %}<span class="chip">{{ p.group.name }}</span>{% else %}—{% endfor %}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{{ pagination(pager, "Zestawy", page_query, "/sets") }}
+{% endif %}
+{% endblock %}

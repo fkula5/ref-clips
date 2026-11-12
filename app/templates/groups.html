@@ -13,13 +13,14 @@
   {% endif %}
 {% else %}
 <table class="responsive">
-  <thead><tr><th>Grupa</th><th>Opis</th><th>Szkoleniowcy</th>{% if viewable %}<th>Sędziowie</th>{% endif %}</tr></thead>
+  <thead><tr><th>Grupa</th><th>Opis</th><th>Szkoleniowcy</th><th>Zestawy</th>{% if viewable %}<th>Sędziowie</th>{% endif %}</tr></thead>
   <tbody>
   {% for g in items %}
     <tr>
       <td data-label="Grupa" class="main-cell">{% if g.id in viewable %}<a href="/groups/{{ g.id }}">{{ g.name }}</a>{% else %}{{ g.name }}{% endif %}</td>
       <td data-label="Opis">{{ (g.description|truncate(80, true, '…')) if g.description else '—' }}</td>
       <td data-label="Szkoleniowcy">{% for m in g.coaches %}<span class="chip">{{ m.user.name }}</span>{% else %}—{% endfor %}</td>
+      <td data-label="Zestawy">{% for r in pinned.get(g.id, []) %}<a class="chip pinned" href="/sets/{{ r.training_set.id }}">{{ r.training_set.name }}</a>{% else %}—{% endfor %}</td>
       {% if viewable %}<td data-label="Sędziowie">{{ g.referees|length if g.id in viewable else '—' }}</td>{% endif %}
     </tr>
   {% endfor %}

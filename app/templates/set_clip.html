@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% block title %}{{ s.name }} · {{ index + 1 }}/{{ items|length }}{% endblock %}
+{% block content %}
+{% set c = item.clip %}
+{% set base = "/sets/" ~ s.id ~ "/clips/" %}
+<p><a href="/sets/{{ s.id }}">← {{ s.name }}</a></p>
+<div class="row between">
+  <div>
+    <h1>{{ c.match.title }}</h1>
+    <ul class="meta-list">
+      {% if c.match.level %}<li>{{ c.match.level }}</li>{% endif %}
+      <li><a id="open-clip" href="/clips/{{ c.id }}">przejdź do klipu</a></li>
+    </ul>
+  </div>
+  <span class="chip" id="set-position" aria-label="Klip {{ index + 1 }} z {{ items|length }}">{{ index + 1 }} / {{ items|length }}</span>
+</div>
+
+<nav class="clip-nav row between" aria-label="Poprzedni i następny klip w zestawie">
+  {% if previous %}<a class="btn" id="prev-clip" rel="prev" href="{{ base }}{{ previous.clip_id }}">‹ poprzedni</a>
+  {% else %}<span class="btn" aria-disabled="true">‹ poprzedni</span>{% endif %}
+  {% if following %}<a class="btn" id="next-clip" rel="next" href="{{ base }}{{ following.clip_id }}">następny ›</a>
+  {% else %}<span class="btn" aria-disabled="true">następny ›</span>{% endif %}
+</nav>
+
+<div class="player-layout">
+  <section id="clip-area">
+    {% if c.status == 'cut' and c.clip_path %}
+      <video id="clip-video" src="/clips/{{ c.id }}/file?v={{ c.clip_version }}" controls preload="auto" playsinline></video>
+      <div class="clip-actions">
+        <a class="btn primary" href="{{ base }}{{ c.id }}/download">Pobierz MP4</a>
+        <span class="muted clip-filename" title="{{ set_filename(c, s) }}">{{ set_filename(c, s) }}</span>
+      </div>
+    {% else %}
+      <div class="banner">Ten klip jest teraz wycinany ponownie albo cięcie się nie udało — wideo będzie dostępne po wycięciu.</div>
+    {% endif %}
+  </section>
+
+  <aside>
+    <div class="card" id="clip-info">
+      <h3>Klip</h3>
+      <dl class="facts">
+        <dt>{{ 'Sędzia' if s.show_names else 'Funkcja' }}</dt><dd>{{ set_official(c, s.show_names) or '—' }}</dd>
+        <dt>Kategoria</dt><dd>{{ c.category_label or '—' }}</dd>
+        <dt>Opis klipu</dt><dd class="note-text">{{ c.description or '—' }}</dd>
+      </dl>
+    </div>
+
+    <div class="card" id="coach-note">
+      <h3>Notatka szkoleniowca</h3>
+      {% if item.note %}<p class="note-text" id="note-text">{{ item.note }}</p>{% else %}<p class="muted" id="note-text">Brak notatki.</p>{% endif %}
+      {% if perm.can_edit_set(user) %}
+      {% if note_error %}<div class="banner error" role="alert" id="note-error">{{ note_error }}</div>{% endif %}
+      <form method="post" action="{{ base }}{{ c.id }}/note" class="form">
+        {{ csrf_input() }}
+        <label>Twoja notatka do tego klipu
+          <textarea name="note" rows="5">{{ note_value }}</textarea></label>
+        <span class="muted small-note">najwyżej {{ TEXT_MAX_CHARS }} znaków; opis klipu pozostaje bez zmian</span>
+        <button class="btn primary">Zapisz notatkę</button>
+      </form>
+      {% endif %}
+    </div>
+  </aside>
+</div>
+{% endblock %}

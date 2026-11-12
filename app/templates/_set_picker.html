@@ -1,0 +1,22 @@
+{% set sv = set_values or {} %}
+<div class="card" id="clip-sets">
+  <h3>Dodaj do zestawu</h3>
+  {% set holding = set_choices|selectattr('has_clip')|list %}
+  {% if holding %}<p>W zestawach: {% for ch in holding %}<a class="chip" href="/sets/{{ ch.id }}">{{ ch.name }}</a>{% endfor %}</p>{% endif %}
+  {% if set_error %}<div class="banner error" role="alert" id="set-error">{{ set_error }}</div>{% endif %}
+  {% if c.status == 'cut' and c.clip_path %}
+  <form method="post" action="/clips/{{ c.id }}/sets{{ nav_q }}" class="form">
+    {{ csrf_input() }}
+    <label>Istniejący zestaw
+      <select name="set_id">
+        <option value="">Wybierz zestaw…</option>
+        {% for ch in set_choices %}<option value="{{ ch.id }}" {{ 'disabled' if ch.has_clip }} {{ 'selected' if sv.set_id == ch.id|string }}>{{ ch.name }}{{ ' (klip już jest w zestawie)' if ch.has_clip }}</option>{% endfor %}
+      </select></label>
+    <label>albo nowy zestaw
+      <input name="new_name" maxlength="100" placeholder="Nazwa nowego zestawu" value="{{ sv.new_name or '' }}"></label>
+    <button class="btn primary">Dodaj klip</button>
+  </form>
+  {% else %}
+  <p class="muted small-note">Do zestawu można dodać tylko wycięty klip.</p>
+  {% endif %}
+</div>

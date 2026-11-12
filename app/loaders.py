@@ -2,7 +2,7 @@ from fastapi import Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.db import get_db
-from app.models import Clip, Comment, Match, PeriodMark, ShareLink, Video
+from app.models import Clip, Comment, Match, PeriodMark, ShareLink, TrainingSet, Video
 
 
 def get_match(match_id: int, db: Session = Depends(get_db)) -> Match:
@@ -45,3 +45,10 @@ def get_share_link(link_id: int, db: Session = Depends(get_db)) -> ShareLink:
     if link is None:
         raise HTTPException(404, "Nie ma takiego linku")
     return link
+
+
+def get_training_set(set_id: int, db: Session = Depends(get_db)) -> TrainingSet:
+    training_set = db.get(TrainingSet, set_id)
+    if training_set is None:
+        raise HTTPException(404, "Nie ma takiego zestawu")
+    return training_set
