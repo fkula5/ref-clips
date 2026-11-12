@@ -84,6 +84,11 @@ except ValueError:
 # upload is rejected anyway.
 HEALTH_DISK_MIN_BYTES = _gb("REFCLIPS_HEALTH_DISK_MIN_GB", DISK_SAFETY_BYTES / GB)
 
+# Match scoresheet ("Protokół") files: photos or PDFs, so small. The Caddy body limit for the upload
+# route (deploy/Caddyfile) must stay above SCORESHEET_MAX_FILES * SCORESHEET_MAX_BYTES.
+SCORESHEET_MAX_BYTES = 20 * 1024 * 1024
+SCORESHEET_MAX_FILES = 10
+
 SHARE_DAYS = (1, 7, 30)  # allowed validity in days; permanent links do not exist
 SHARE_DEFAULT_DAYS = 7
 SHARE_MAX_CLIPS = 30

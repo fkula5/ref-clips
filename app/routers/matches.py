@@ -170,6 +170,7 @@ def confirm_delete_match(request: Request, match: Match = Depends(get_match),
                          user: User = require(permissions.can_delete_match, get_match)):
     clips = len(match.clips)
     return render(request, "match_delete.html", match=match, videos=len(match.videos), clips=clips,
+                  scoresheet_files=len(match.scoresheets),
                   # others' drafts must stay hidden, so a non-admin only counts the sheets they can see
                   sheets=len(match.sheets if permissions.can_manage_users(user) else sheets.visible_to(user, match)),
                   undescribed=sum(1 for c in match.clips if not c.is_described))
@@ -180,8 +181,11 @@ def delete_match(db: Session = Depends(get_db), match: Match = Depends(get_match
                  user: User = require(permissions.can_delete_match, get_match)):
     for video in match.videos:
         services.remove_video_files(video)
+    scoresheet_files = [s.path for s in match.scoresheets]
     for up in db.scalars(select(UploadSession).where(UploadSession.match_id == match.id)):
         storage.delete(uploads.part_key(up.id))
     db.delete(match)
     db.commit()
+    for key in scoresheet_files:
+        storage.delete(key)
     return RedirectResponse("/", status_code=303)

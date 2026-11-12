@@ -9,7 +9,7 @@ from sqlalchemy import case, func, or_, select
 from sqlalchemy.orm import Session, selectinload
 
 from app import config, groups, retention, services
-from app.models import Clip, Match, MatchOfficial, Video
+from app.models import Clip, Match, MatchOfficial, MatchScoresheet, Video
 from app.pagination import paginate, parse_page
 
 
@@ -62,6 +62,7 @@ class MatchRow:
     clips: int
     undescribed: int
     expiry: str | None = None
+    has_scoresheet: bool = False
 
 
 @dataclass
@@ -119,7 +120,8 @@ def list_matches(db: Session, filters: MatchFilters, user_id: int,
                func.sum(case((Clip.described_at.is_(None), 1), else_=0)))
         .where(Clip.match_id.in_(ids)).group_by(Clip.match_id))}
     queue = services.transcode_queue(db)
+    with_scoresheet = set(db.scalars(select(MatchScoresheet.match_id).where(MatchScoresheet.match_id.in_(ids))))
     rows = [MatchRow(m, services.match_state(m.videos, queue), *counts.get(m.id, (0, 0)),
-                     expiry=retention.expiry_note(m.videos))
+                     expiry=retention.expiry_note(m.videos), has_scoresheet=m.id in with_scoresheet)
             for m in matches]
     return MatchPage(rows, total, pager.page, pager.pages)

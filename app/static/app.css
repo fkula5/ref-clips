@@ -311,6 +311,17 @@ tr.no-activity td { background: var(--warn-wash); }
 
 .sheet-item { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 6px 12px; padding: 6px 0; border-top: 1px solid var(--line); }
 .sheet-item:first-child { border-top: 0; }
+.scoresheet-list { list-style: none; margin: 0; padding: 0; }
+.scoresheet-item { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 8px 0; border-top: 1px solid var(--line); }
+.scoresheet-item:first-child { border-top: 0; }
+.scoresheet-thumb, .scoresheet-tile { flex: 0 0 auto; width: 72px; height: 72px; border-radius: 6px; border: 1px solid var(--line); background: var(--chip-bg); overflow: hidden; display: flex; align-items: center; justify-content: center; }
+.scoresheet-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.scoresheet-tile { font-size: 13px; font-weight: 700; color: var(--muted-strong); }
+.scoresheet-info { flex: 1 1 180px; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.scoresheet-name { overflow-wrap: anywhere; }
+.scoresheet-mark { display: inline-block; vertical-align: -3px; margin-left: 6px; color: var(--muted-strong); line-height: 0; }
+#scoresheet-form { margin-top: 10px; padding-top: 6px; border-top: 1px solid var(--line); }
+#scoresheet-form input[type=file] { width: 100%; }
 .sheet-head { margin: 8px 0 4px; }
 .sheet-head th { width: 1%; white-space: nowrap; background: var(--head-bg); font-size: 13px; }
 .sheet-head td { min-width: 120px; }

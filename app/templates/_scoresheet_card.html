@@ -1,0 +1,53 @@
+{# Files are served only to logged-in users; HEIC gets a tile with a download link because only Safari shows it. #}
+{% set can_manage = perm.can_manage_scoresheet(user, match) %}
+{% set base = "/matches/" ~ match.id ~ "/scoresheets" %}
+<h2 id="protokol">Protokół</h2>
+<div class="card" id="scoresheet-card">
+  {% if scoresheet_error %}<div class="banner error" role="alert" id="scoresheet-error">{{ scoresheet_error }}</div>{% endif %}
+  {% if match.scoresheets %}
+  <ul class="scoresheet-list">
+    {% for s in match.scoresheets %}
+    {% set kind = SCORESHEET_KINDS[s.content_type] %}
+    <li class="scoresheet-item" data-scoresheet="{{ s.id }}">
+      {% if kind.inline and s.content_type != "application/pdf" %}
+      <a class="scoresheet-thumb" href="{{ base }}/{{ s.id }}/file" target="_blank" rel="noopener"><img src="{{ base }}/{{ s.id }}/file" alt="Protokół: {{ s.original_filename }}" loading="lazy"></a>
+      {% else %}
+      <span class="scoresheet-tile" aria-hidden="true">{{ "PDF" if s.content_type == "application/pdf" else "HEIC" }}</span>
+      {% endif %}
+      <div class="scoresheet-info">
+        <strong class="scoresheet-name">{{ s.original_filename }}</strong>
+        <span class="muted small-note">{{ s.size_bytes|filesize }} · {{ s.created_at|local("%d.%m.%Y %H:%M") }}{% if s.uploader %} · {{ s.uploader.name }}{% endif %}</span>
+        {% if not kind.inline %}<span class="muted small-note">Ta przeglądarka może nie wyświetlić tego formatu — pobierz plik.</span>{% endif %}
+      </div>
+      <div class="table-actions">
+        {% if kind.inline %}<a class="btn small" href="{{ base }}/{{ s.id }}/file" target="_blank" rel="noopener">Otwórz</a>{% endif %}
+        <a class="btn small" href="{{ base }}/{{ s.id }}/download">Pobierz</a>
+        {% if can_manage %}
+        <form method="post" action="{{ base }}/{{ s.id }}/delete" onsubmit="return confirm('Usunąć ten plik protokołu?')">{{ csrf_input() }}<button class="btn danger small">Usuń</button></form>
+        {% endif %}
+      </div>
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="muted">Brak plików protokołu.</p>
+  {% endif %}
+  {% if can_manage %}
+    {% if match.scoresheets|length < scoresheet_max_files() %}
+    <form method="post" action="{{ base }}" enctype="multipart/form-data" class="form" id="scoresheet-form"
+          data-max-bytes="{{ scoresheet_max_bytes() }}" data-max-files="{{ scoresheet_max_files() }}" data-existing="{{ match.scoresheets|length }}">
+      {{ csrf_input() }}
+      <label>Dodaj pliki protokołu (PDF lub zdjęcia, można kilka)
+        <input type="file" name="files" id="scoresheet-files" accept="{{ SCORESHEET_ACCEPT }}" multiple required>
+      </label>
+      <p class="muted small-note">PDF, JPEG, PNG, WebP lub HEIC; maks. {{ scoresheet_max_bytes() // 1048576 }} MB każdy, łącznie do {{ scoresheet_max_files() }} plików przy meczu.</p>
+      <p class="error-text small-note" id="scoresheet-client-error" role="alert" hidden></p>
+      <button class="btn primary" type="submit">Dodaj do protokołu</button>
+    </form>
+    {% else %}
+    <p class="muted small-note">Osiągnięto limit {{ scoresheet_max_files() }} plików protokołu — usuń któryś, aby dodać kolejny.</p>
+    {% endif %}
+  {% else %}
+  <p class="muted small-note">Pliki protokołu dodają administratorzy, szkoleniowcy i sędziowie z obsady meczu.</p>
+  {% endif %}
+</div>

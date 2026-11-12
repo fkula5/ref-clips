@@ -2,7 +2,7 @@ from fastapi import Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.db import get_db
-from app.models import Clip, Comment, Match, PeriodMark, ShareLink, TrainingSet, Video
+from app.models import Clip, Comment, Match, MatchScoresheet, PeriodMark, ShareLink, TrainingSet, Video
 
 
 def get_match(match_id: int, db: Session = Depends(get_db)) -> Match:
@@ -52,3 +52,11 @@ def get_training_set(set_id: int, db: Session = Depends(get_db)) -> TrainingSet:
     if training_set is None:
         raise HTTPException(404, "Nie ma takiego zestawu")
     return training_set
+
+
+def get_scoresheet(match_id: int, scoresheet_id: int, db: Session = Depends(get_db)) -> MatchScoresheet:
+    """A file addressed under another match's URL does not exist."""
+    scoresheet = db.get(MatchScoresheet, scoresheet_id)
+    if scoresheet is None or scoresheet.match_id != match_id:
+        raise HTTPException(404, "Nie ma takiego pliku protokołu")
+    return scoresheet
