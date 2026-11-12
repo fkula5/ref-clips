@@ -13,9 +13,9 @@ from starlette.exceptions import HTTPException
 
 from app import config, health, logfilter, permissions, watch
 from app import video as vid
-from app.auth import PROTECTED, PUBLIC, SessionRefreshMiddleware, require
+from app.auth import PROTECTED, PUBLIC, SessionRefreshMiddleware, attach_user_if_missing, require
 from app.privacy import SharePrivacyHeadersMiddleware
-from app.db import get_db
+from app.db import SessionLocal, get_db
 from app.initdb import init_db
 from app.models import Job, User
 from app.routers import (admin, auth, clips, clips_v2, describe, feedback, groups, matches, notifications,
@@ -82,9 +82,11 @@ ERROR_MESSAGES = {404: "Nie ma takiej strony lub została usunięta.",
 def error_page(request: Request, status_code: int, detail: str | None = None):
     generic = not detail or detail in ("Not Found", "Method Not Allowed")
     message = ERROR_MESSAGES.get(status_code, "Nie można wykonać operacji.") if generic else detail
-    return render(request, "error.html", status_code=status_code, message=message,
-                  heading=ERROR_HEADINGS.get(status_code, "Nie można wykonać operacji"),
-                  back_url=back_url(request))
+    with SessionLocal() as db:  # open while rendering: the header reads the user's lazy attributes
+        attach_user_if_missing(request, db)
+        return render(request, "error.html", status_code=status_code, message=message,
+                      heading=ERROR_HEADINGS.get(status_code, "Nie można wykonać operacji"),
+                      back_url=back_url(request))
 
 
 @app.exception_handler(RequestValidationError)
