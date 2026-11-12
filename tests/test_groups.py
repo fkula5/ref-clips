@@ -358,3 +358,68 @@ def test_a_hint_replaces_only_the_picker_that_has_no_candidates(w, db):
     db.commit()
     page = w.c["coach"].get(f"/groups/{w.g.id}").text
     assert page.count("member-add") == 1 and "Brak kont szkoleniowców" in page and "Brak kont sędziów" not in page
+
+
+def test_a_coach_removes_another_coach_and_the_removed_one_loses_access(w):
+    post(w, "admin", f"/groups/{w.g.id}/coaches", user_id=str(w.u["lead2"].id))
+    r = post(w, "coach", f"/groups/{w.g.id}/coaches/{w.u['lead2'].id}/remove")
+    assert r.headers["location"] == f"/groups/{w.g.id}"
+    assert names(w, "coach") == {"coach"} and w.c["lead2"].get(f"/groups/{w.g.id}").status_code == 404
+    assert w.c["coach"].get(r.headers["location"]).status_code == 200
+
+
+def test_an_admin_who_is_not_a_member_removes_a_coach_and_stays_on_the_group(w):
+    post(w, "admin", f"/groups/{w.g.id}/coaches", user_id=str(w.u["lead2"].id))
+    r = post(w, "admin", f"/groups/{w.g.id}/coaches/{w.u['coach'].id}/remove")
+    assert r.headers["location"] == f"/groups/{w.g.id}" and names(w, "coach") == {"lead2"}
+
+
+@pytest.mark.parametrize("who", ["coach", "admin"])
+def test_the_last_coach_cannot_be_removed(w, who):
+    r = w.c[who].post(f"/groups/{w.g.id}/coaches/{w.u['coach'].id}/remove")
+    assert r.status_code == 422 and "musi zostać co najmniej jeden szkoleniowiec" in r.text
+    assert names(w, "coach") == {"coach"}
+
+
+def test_a_coach_who_removes_themself_is_sent_to_the_group_list(w):
+    post(w, "coach", f"/groups/{w.g.id}/coaches", user_id=str(w.u["lead2"].id))
+    r = post(w, "coach", f"/groups/{w.g.id}/coaches/{w.u['coach'].id}/remove")
+    assert r.headers["location"] == "/groups"
+    assert names(w, "coach") == {"lead2"} and w.c["coach"].get(f"/groups/{w.g.id}").status_code == 404
+    assert "Opuszczono grupę" in w.c["coach"].get("/groups").text
+
+
+def test_an_admin_who_is_also_a_coach_stays_on_the_group_after_removing_themself(w, db):
+    user = w.u["admin"]
+    user.set_roles(["admin", "coach"])
+    db.commit()
+    post(w, "admin", f"/groups/{w.g.id}/coaches", user_id=str(user.id))
+    r = post(w, "admin", f"/groups/{w.g.id}/coaches/{user.id}/remove")
+    assert r.headers["location"] == f"/groups/{w.g.id}"
+
+
+@pytest.mark.parametrize("who, status", [("r1", 404), ("other", 404), ("r3", 404)])
+def test_only_managers_remove_coaches(w, who, status):
+    post(w, "admin", f"/groups/{w.g.id}/coaches", user_id=str(w.u["lead2"].id))
+    r = w.c[who].post(f"/groups/{w.g.id}/coaches/{w.u['lead2'].id}/remove")
+    assert r.status_code == status and names(w, "coach") == {"coach", "lead2"}
+
+
+def test_removing_someone_who_is_not_a_coach_of_the_group_is_a_404(w):
+    for who in ("r1", "other"):  # a referee member / an account outside the group
+        assert w.c["coach"].post(f"/groups/{w.g.id}/coaches/{w.u[who].id}/remove").status_code == 404
+    assert names(w) == {"coach", "r1", "r2"}
+
+
+def test_removing_a_coach_needs_the_csrf_token(w):
+    post(w, "admin", f"/groups/{w.g.id}/coaches", user_id=str(w.u["lead2"].id))
+    client = w.c["coach"]
+    client.headers.pop("X-CSRF-Token")
+    assert client.post(f"/groups/{w.g.id}/coaches/{w.u['lead2'].id}/remove").status_code == 403
+    assert names(w, "coach") == {"coach", "lead2"}
+
+
+def test_the_group_page_offers_removal_of_every_coach_with_a_confirmation(w):
+    page = w.c["coach"].get(f"/groups/{w.g.id}").text
+    assert f'action="/groups/{w.g.id}/coaches/{w.u["coach"].id}/remove"' in page
+    assert "siebie z grupy? Stracisz" in page  # the question is JSON-escaped in the attribute

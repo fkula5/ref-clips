@@ -117,6 +117,20 @@ def remove_referee(db: Session, group: TrainingGroup, user_id: int) -> User:
     return member.user
 
 
+def remove_coach(db: Session, group: TrainingGroup, user_id: int) -> User:
+    """A group always keeps a coach (admins included), otherwise nobody but an admin could open it."""
+    coaches = group.coaches
+    member = next((m for m in coaches if m.user_id == user_id), None)
+    if member is None:
+        raise GroupError("Tego szkoleniowca nie ma w grupie.", 404)
+    if len(coaches) == 1:
+        raise GroupError(f"W grupie musi zostać co najmniej jeden szkoleniowiec. "
+                         f"Dodaj innego, zanim usuniesz: {member.user.name}.")
+    group.members.remove(member)
+    db.commit()
+    return member.user
+
+
 @dataclass
 class ActivityRow:
     user: User

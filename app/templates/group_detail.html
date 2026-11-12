@@ -83,7 +83,17 @@
 {% else %}<p class="muted" id="no-referee-options">Brak kont sędziów spoza grupy. {{ role_hint('sędziego') }}</p>{% endif %}
 
 <h2>Szkoleniowcy</h2>
-<p>{% for m in g.coaches %}<span class="chip">{{ m.user.name }}</span>{% endfor %}</p>
+<ul class="plain coach-list">
+{% for m in g.coaches %}
+  {% set question = 'Usunąć siebie z grupy? Stracisz do niej dostęp.' if m.user_id == user.id and not perm.can_manage_users(user)
+                    else 'Usunąć ' ~ m.user.name ~ ' z grupy?' %}
+  <li class="row">
+    <span class="chip">{{ m.user.name }}</span>
+    <form method="post" action="/groups/{{ g.id }}/coaches/{{ m.user_id }}/remove" class="inline" onsubmit='return confirm({{ question|tojson }})'>
+      {{ csrf_input() }}<button class="btn small danger" aria-label="Usuń z grupy: {{ m.user.name }}">Usuń z grupy</button></form>
+  </li>
+{% endfor %}
+</ul>
 {% if coach_options or add_values.coach %}{{ member_picker('coach', 'coaches', 'Dodaj szkoleniowca', coach_options) }}
 {% else %}<p class="muted" id="no-coach-options">Brak kont szkoleniowców spoza grupy. {{ role_hint('szkoleniowca') }}</p>{% endif %}
 {% endblock %}

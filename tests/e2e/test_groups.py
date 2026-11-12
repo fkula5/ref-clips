@@ -83,8 +83,18 @@ def test_coach_adds_another_coach_through_the_real_form(ui):
     coach.get_by_label("Dodaj szkoleniowca").select_option(label="Daria Trenerka")
     coach.get_by_role("button", name="Dodaj").last.click()
     expect(coach.locator("#page-notice")).to_contain_text("Dodano szkoleniowca: Daria Trenerka")
-    expect(coach.locator("p", has_text="Cezary Trener").locator(".chip", has_text="Daria Trenerka")).to_have_count(1)
+    expect(coach.locator(".coach-list .chip", has_text="Daria Trenerka")).to_have_count(1)
 
     second = ui.page("coach2")
     second.goto(coach.url)
     expect(second.get_by_role("heading", name="Grupa dwóch trenerów")).to_be_visible()
+
+    coach.on("dialog", lambda dialog: dialog.accept())
+    coach.get_by_role("button", name="Usuń z grupy: Daria Trenerka").click()
+    expect(coach.locator("#page-notice")).to_contain_text("Usunięto z grupy: Daria Trenerka")
+    expect(coach.locator(".coach-list")).not_to_contain_text("Daria Trenerka")
+
+    ui.allow(r"status of 422")
+    coach.get_by_role("button", name="Usuń z grupy: Cezary Trener").click()
+    expect(coach.locator("#group-error")).to_contain_text("musi zostać co najmniej jeden szkoleniowiec")
+    expect(coach.locator(".coach-list")).to_contain_text("Cezary Trener")

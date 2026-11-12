@@ -42,6 +42,8 @@ As a coach of the group, I add another coach to the group.
 - The coach picks from existing accounts with the coach role; the new person joins as a coach, not as a member.
 - The added coach has the same rights to manage the group as the coach who added them.
 - An account that is already a coach of the group cannot be added again.
+- Any manager of the group (its coaches and admins) can remove a coach with „Usuń z grupy”, after a confirmation. A group must keep at least one coach: removing the last one is refused with a message, admins included. A coach who removes themself loses access and lands on „Grupy”.
+- When no account is left to add, the page shows a hint instead of the picker; admins get a link to the user administration, where the role is granted.
 
 ### TG-04 See the referees in my groups
 
@@ -114,4 +116,4 @@ As a referee, I get an in-app notification when I am added to a group.
 - Only the group's coaches and admins open a group's page, activity table and „Do oceny”; everybody else gets 404. Referees see TG-09 only (`/groups`).
 - Activity (TG-06) counts recordings uploaded, recordings are credited to the uploader, markers to the clip's author and described clips to the person who first described them (`Clip.described_by_id`, set together with `described_at`; later edits keep it). Clips described before this was recorded have no describer and are not counted for anyone. The table is computed with three grouped queries. The period is 7, 14, 30 or 90 days (`?days=`, default 14).
 - Adding a referee or a coach sends a „group_added” notification to the added person; removing sends nothing. Deleting a group keeps the accounts and removes its notifications.
-- An account is in a group once, as a coach or as a referee. There is no way yet to remove a coach from a group.
+- An account is in a group once, as a coach or as a referee.
