@@ -325,3 +325,36 @@ def test_the_picker_form_posts_to_a_real_route(w, role, option, who):
     r = w.c[who].post(action, data={"user_id": str(w.u[option].id)}, follow_redirects=False)
     assert r.status_code == 303, r.text[:300]
     assert option in names(w, role)
+
+
+def test_without_candidates_the_sections_stay_with_a_hint_instead_of_the_picker(w, db):
+    for name in ("r3", "lead2", "other"):
+        w.u[name].is_active = False
+    db.commit()
+    page = w.c["coach"].get(f"/groups/{w.g.id}").text
+    assert "<h2>Dodaj sędziego</h2>" in page and "<h2>Szkoleniowcy</h2>" in page
+    assert "member-add" not in page
+    assert "Brak kont sędziów spoza grupy. Rolę sędziego nadaje admin w Administracji → Użytkownicy." in page
+    assert "Brak kont szkoleniowców spoza grupy. Rolę szkoleniowca nadaje admin w Administracji → Użytkownicy." in page
+    assert 'href="/admin/users"' not in page.split("<h2>Dodaj sędziego</h2>")[1]  # only admins get the link
+
+
+def test_the_hint_links_to_the_user_admin_page_for_admins(w, db):
+    for name in ("r3", "lead2", "other"):
+        w.u[name].is_active = False
+    db.commit()
+    tail = w.c["admin"].get(f"/groups/{w.g.id}").text.split("<h2>Dodaj sędziego</h2>")[1]
+    assert tail.count('<a href="/admin/users">Administracji → Użytkownicy</a>') == 2
+
+
+def test_with_candidates_there_are_pickers_and_no_hint(w):
+    page = w.c["coach"].get(f"/groups/{w.g.id}").text
+    assert page.count("member-add") == 2 and "Brak kont" not in page
+
+
+def test_a_hint_replaces_only_the_picker_that_has_no_candidates(w, db):
+    for name in ("lead2", "other"):
+        w.u[name].is_active = False
+    db.commit()
+    page = w.c["coach"].get(f"/groups/{w.g.id}").text
+    assert page.count("member-add") == 1 and "Brak kont szkoleniowców" in page and "Brak kont sędziów" not in page

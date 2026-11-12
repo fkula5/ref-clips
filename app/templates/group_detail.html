@@ -11,6 +11,13 @@
     <button class="btn primary">Dodaj</button>
   </form>
 {% endmacro %}
+{% macro role_hint(role_genitive) %}
+  {%- if perm.can_manage_users(user) -%}
+    Rolę {{ role_genitive }} nadasz w <a href="/admin/users">Administracji → Użytkownicy</a>.
+  {%- else -%}
+    Rolę {{ role_genitive }} nadaje admin w Administracji → Użytkownicy.
+  {%- endif -%}
+{% endmacro %}
 {% block content %}
 <p><a href="/groups">← Grupy</a></p>
 <div class="row between">
@@ -73,10 +80,10 @@
 
 <h2>Dodaj sędziego</h2>
 {% if referee_options or add_values.referee %}{{ member_picker('referee', 'referees', 'Sędzia', referee_options) }}
-{% else %}<p class="muted">Nie ma więcej aktywnych kont z rolą sędziego do dodania.</p>{% endif %}
+{% else %}<p class="muted" id="no-referee-options">Brak kont sędziów spoza grupy. {{ role_hint('sędziego') }}</p>{% endif %}
 
 <h2>Szkoleniowcy</h2>
 <p>{% for m in g.coaches %}<span class="chip">{{ m.user.name }}</span>{% endfor %}</p>
 {% if coach_options or add_values.coach %}{{ member_picker('coach', 'coaches', 'Dodaj szkoleniowca', coach_options) }}
-{% else %}<p class="muted">Nie ma więcej aktywnych kont z rolą szkoleniowca do dodania.</p>{% endif %}
+{% else %}<p class="muted" id="no-coach-options">Brak kont szkoleniowców spoza grupy. {{ role_hint('szkoleniowca') }}</p>{% endif %}
 {% endblock %}
