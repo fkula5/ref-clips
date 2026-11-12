@@ -614,3 +614,53 @@ class GroupMember(Base):
 
     group: Mapped[TrainingGroup] = relationship(back_populates="members")
     user: Mapped[User] = relationship(lazy="joined")
+
+
+class TrainingSet(Base):
+    """A thematic library of curated clips. Any coach or admin may edit any set; referees only view.
+    Referee names are hidden in the set's views unless `show_names` is on.
+    """
+    __tablename__ = "training_sets"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(100))
+    description: Mapped[str] = mapped_column(Text, default="", server_default="")
+    show_names: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
+    created_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+    items: Mapped[list[TrainingSetClip]] = relationship(
+        back_populates="training_set", cascade="all, delete-orphan", order_by="TrainingSetClip.position")
+    pins: Mapped[list[TrainingSetGroup]] = relationship(
+        back_populates="training_set", cascade="all, delete-orphan", order_by="TrainingSetGroup.group_id")
+
+
+class TrainingSetClip(Base):
+    """The primary key keeps a clip in a set at most once. Deleting the clip (e.g. with its match) removes
+    the row through ON DELETE CASCADE; `position` is renumbered from 1 on every change by the app.
+    `note` is the coach's own text; the clip's description is never touched.
+    """
+    __tablename__ = "training_set_clips"
+
+    set_id: Mapped[int] = mapped_column(ForeignKey("training_sets.id", ondelete="CASCADE"), primary_key=True)
+    clip_id: Mapped[int] = mapped_column(
+        ForeignKey("clips.id", ondelete="CASCADE"), primary_key=True, index=True)
+    position: Mapped[int] = mapped_column(Integer)
+    note: Mapped[str] = mapped_column(Text, default="", server_default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+    training_set: Mapped[TrainingSet] = relationship(back_populates="items")
+    clip: Mapped[Clip] = relationship()
+
+
+class TrainingSetGroup(Base):
+    """Pins a set to a training group, which only highlights it in the group's view."""
+    __tablename__ = "training_set_groups"
+
+    set_id: Mapped[int] = mapped_column(ForeignKey("training_sets.id", ondelete="CASCADE"), primary_key=True)
+    group_id: Mapped[int] = mapped_column(
+        ForeignKey("training_groups.id", ondelete="CASCADE"), primary_key=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+    training_set: Mapped[TrainingSet] = relationship(back_populates="pins")
+    group: Mapped[TrainingGroup] = relationship()
