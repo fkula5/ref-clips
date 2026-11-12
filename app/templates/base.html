@@ -7,6 +7,7 @@
   <title>{% block title %}ref-clips{% endblock %} · ref-clips</title>
   <link rel="stylesheet" href="/static/app.css">
   <script src="/static/vendor/htmx-2.0.4.min.js"></script>
+  <script src="/static/nav.js"></script>
   <script src="/static/filters.js"></script>
   <script src="/static/video_keys.js"></script>
 </head>
@@ -14,17 +15,23 @@
   <header class="top">
     <a class="brand" href="/">ref-clips</a>
     {% if user %}
-    <nav>
-      <a href="/">Mecze</a>
-      <a href="/clips">Klipy</a>
-      <a href="/sets">Zestawy</a>
-      {% if perm.can_see_my_groups(user) %}<a href="/groups">Grupy</a>{% endif %}
-      {% if perm.can_manage_users(user) %}<a href="/admin/users">Administracja</a>{% endif %}
-    </nav>
     <div class="who">
       {% with bell_count = unread_count(user) %}{% include "_bell.html" %}{% endwith %}
-      <span>{{ user.name }}</span>
-      <form method="post" action="/logout" class="inline">{{ csrf_input() }}<button class="linklike">Wyloguj</button></form>
+      <button type="button" class="nav-toggle" aria-expanded="false" aria-controls="site-nav site-account">
+        <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" focusable="false"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" d="M4 7h16M4 12h16M4 17h16"/></svg>
+        Menu
+      </button>
+      <nav id="site-nav" aria-label="Główna nawigacja">
+        <a href="/">Mecze</a>
+        <a href="/clips">Klipy</a>
+        <a href="/sets">Zestawy</a>
+        {% if perm.can_see_my_groups(user) %}<a href="/groups">Grupy</a>{% endif %}
+        {% if perm.can_manage_users(user) %}<a href="/admin/users">Administracja</a>{% endif %}
+      </nav>
+      <div id="site-account" class="account">
+        <span>{{ user.name }}</span>
+        <form method="post" action="/logout" class="inline">{{ csrf_input() }}<button class="linklike">Wyloguj</button></form>
+      </div>
     </div>
     {% endif %}
   </header>

@@ -12,7 +12,7 @@
   --accent: #1f6feb; --danger: #b32323; --ok: #276b2b; --warn: #8a5200;
   --accent-hover: #1a5fd0; --accent-active: #164fb0; --on-accent: #fff;
   --focus: #1f6feb; --focus-on-dark: #9db8ee;
-  --chrome-bg: #17202e; --on-chrome: #fff; --chrome-link: #c9d3e6; --chrome-action: #9db8ee;
+  --chrome-bg: #17202e; --on-chrome: #fff; --chrome-link: #c9d3e6; --chrome-action: #9db8ee; --chrome-rule: #2d3a4f;
   --video-bg: #0b0f17; --scrim: rgba(11, 15, 23, .65);
   --control-bg: #fff; --control-line: #c3c9d6; --control-hover: #eef1f6; --control-active: #dfe4ee;
   --head-bg: #eef1f6; --head-soft: #f7f8fb; --track: #dfe4ee;
@@ -38,8 +38,8 @@ a:active { color: var(--accent-active); }
 main { max-width: 1280px; margin: 0 auto; padding: 16px 20px 60px; }
 h1, h2, h3 { text-wrap: balance; }
 h1 { font-size: 24px; margin: 8px 0; } h2 { font-size: 19px; margin: 24px 0 8px; } h3 { font-size: 16px; margin: 8px 0; }
-.top { display: flex; align-items: center; gap: 24px; background: var(--chrome-bg); padding: 10px 20px; }
-.top .brand { color: var(--on-chrome); font-weight: 700; font-size: 18px; }
+.top { display: flex; align-items: center; background: var(--chrome-bg); padding: 10px 20px; }
+.top .brand { color: var(--on-chrome); font-weight: 700; font-size: 18px; margin-right: 24px; }
 .top nav a { color: var(--chrome-link); margin-right: 16px; }
 .banner { margin: 12px 20px; padding: 10px 14px; border-radius: 6px; background: var(--info-bg); border: 1px solid var(--info-line); }
 .banner.error { background: var(--error-bg); border-color: var(--error-line); color: var(--error-ink); }
@@ -114,7 +114,16 @@ kbd { background: var(--chip-bg); border: 1px solid var(--control-line); border-
 .comment .meta { display: flex; gap: 10px; align-items: center; } .comment .actions { font-size: 13px; display: flex; gap: 12px; }
 .danger-link { color: var(--danger); }
 
-.top .who { margin-left: auto; display: flex; align-items: center; gap: 12px; color: var(--chrome-link); }
+/* The wrapper adds no box: bell, menu button, nav and account are laid out as direct children of the header, in the DOM order a phone needs. */
+.top .who { display: contents; }
+.top .account { display: flex; align-items: center; gap: 12px; color: var(--chrome-link); }
+.nav-toggle { display: none; align-items: center; gap: 6px; min-height: 36px; padding: 0 10px; font: inherit; color: var(--on-chrome); background: none; border: 1px solid var(--chrome-link); border-radius: 6px; cursor: pointer; }
+.nav-toggle:active { opacity: .7; }
+@media (min-width: 721px) {
+  .top nav { margin-right: auto; }
+  .top .bell { order: 1; margin-right: 12px; }
+  .top .account { order: 2; }
+}
 form.inline { display: inline; margin: 0; }
 .linklike { background: none; border: 0; padding: 0; font: inherit; color: var(--chrome-action); cursor: pointer; }
 .linklike:hover { text-decoration: underline; } .linklike:active { opacity: .7; }
@@ -150,7 +159,14 @@ tr.no-activity td { background: var(--warn-wash); }
 
 @media (max-width: 720px) {
   main { padding: 12px 12px 48px; }
-  .top { gap: 12px; padding: 10px 12px; flex-wrap: wrap; }
+  .top { gap: 0 12px; padding: 10px 12px; flex-wrap: wrap; }
+  .top .brand { margin-right: 0; }
+  .top .bell { margin-left: auto; }
+  html.js .nav-toggle { display: inline-flex; }
+  .top nav { flex: 1 1 100%; display: flex; flex-direction: column; margin-top: 6px; }
+  .top nav a { margin: 0; padding: 11px 0; border-top: 1px solid var(--chrome-rule); }
+  .top .account { flex: 1 1 100%; justify-content: space-between; padding: 11px 0 4px; border-top: 1px solid var(--chrome-rule); }
+  html.js .top:not(.menu-open) nav, html.js .top:not(.menu-open) .account { display: none; }
   .match-head .facts { grid-template-columns: 1fr; gap: 0; } .match-head .facts dd { margin-bottom: 8px; }
   table.responsive, table.responsive tbody { display: block; background: none; border: 0; }
   table.responsive thead { position: absolute; left: -9999px; }
@@ -165,7 +181,11 @@ tr.no-activity td { background: var(--warn-wash); }
   table.users-table td.roles-cell form.row { gap: 4px 14px; }
   table.users-table td.roles-cell label.inline { margin: 0; padding: 6px 0; }
   table.users-table td.roles-cell .btn { align-self: flex-start; }
-  .match-filters label { flex: 1 1 140px; } .match-filters input, .match-filters select { width: 100%; }
+  .match-filters label { flex: 1 1 140px; min-width: 0; } .match-filters input:not([type=checkbox]), .match-filters select { width: 100%; min-width: 0; }
+  .match-filters label.inline { flex-basis: 100%; } .match-filters input[type=checkbox] { flex: none; }
+  /* iOS gives date inputs an intrinsic minimum width and drops their height once the native look is off. */
+  input[type=date] { min-width: 0; min-height: 34px; -webkit-appearance: none; appearance: none; }
+  main { overflow-wrap: anywhere; }
 }
 
 .file-row { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; margin: 6px 0; }
