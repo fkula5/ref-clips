@@ -49,6 +49,7 @@ Priority: **M** = must be in the MVP · **S** = worth having · **P** = later (o
 | M-04 | Match list on the home page | ✅ | |
 | M-05 | Dictionary of referees (people repeatedly chosen for crews) | ✅ (created automatically) | |
 | M-06 | Dictionary of league levels (a list instead of free text) | ⬜ | |
+| M-07 | Match scoresheet („Protokół”): on the match page, up to 10 files per match (PDF, JPEG, PNG, WebP, HEIC/HEIF; 20 MB each; type checked by the file's magic bytes). Uploaded from a phone too (camera or photos); the crew's referees, coaches and admins upload and delete (with confirmation), every logged-in user views and downloads. Images show as thumbnails, PDF opens in a new tab, HEIC is a download tile. The match list marks matches that have one; deleting the match deletes the files. Not in public share links or training sets. Details: `docs/match-scoresheet.md` | ✅ | |
 
 ### 4.2 Recordings
 

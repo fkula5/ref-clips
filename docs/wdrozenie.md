@@ -164,6 +164,7 @@ The first feature available without logging in: a person with the link can view 
 
 - `ref-clips.db` — the database via the SQLite backup API (consistent while the application is running), checked with `integrity_check`,
 - `clips/` — the clips; unchanged files are hard links to the previous snapshot, so a day costs only the new clips,
+- `scoresheets/` — match scoresheet files (`docs/match-scoresheet.md`), copied the same way (the directory exists only once there is one),
 - `INFO.txt` — a summary.
 
 Full recordings (proxies), originals and unfinished uploads are **not** copied — they are temporary (retention).
