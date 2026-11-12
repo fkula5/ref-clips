@@ -37,6 +37,8 @@
 
 {% include "_sheet_card.html" %}
 
+{% include "_scoresheet_card.html" %}
+
 <h2 id="nagrania">Nagrania</h2>
 {% include "_videos_panel.html" %}
 
@@ -102,4 +104,4 @@
 
 {% if comments is not none %}{% set cbase = "/matches/" ~ match.id %}{% include "_comments.html" %}{% endif %}
 {% endblock %}
-{% block scripts %}<script src="/static/vendor/tus-js-client-4.3.1.min.js"></script><script src="/static/upload.js"></script><script src="/static/feedback.js"></script><script src="/static/share.js"></script>{% endblock %}
+{% block scripts %}<script src="/static/vendor/tus-js-client-4.3.1.min.js"></script><script src="/static/upload.js"></script><script src="/static/feedback.js"></script><script src="/static/share.js"></script><script src="/static/scoresheet.js"></script>{% endblock %}

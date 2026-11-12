@@ -9,7 +9,7 @@ import time
 from sqlalchemy import and_, case, exists, or_, select, update
 from sqlalchemy.orm import Session
 
-from app import config, health, notify, retention, services, uploads, video as vid
+from app import config, health, notify, retention, scoresheets, services, uploads, video as vid
 from app.db import SessionLocal
 from app.models import Clip, Job, Video
 from app.storage import storage
@@ -149,7 +149,8 @@ def run_maintenance() -> None:
     guards against a restart or second worker running it twice). A failing step does not stop the others.
     """
     steps = (uploads.cleanup_stale, uploads.prune_rejections, notify.prune_notifications, retention.run_if_due,
-             retention.cleanup_orphan_clips, retention.cleanup_orphan_videos, retention.cleanup_tmp)
+             retention.cleanup_orphan_clips, retention.cleanup_orphan_videos, retention.cleanup_tmp,
+             scoresheets.cleanup_orphans)
     for step in steps:
         try:
             with SessionLocal() as db:

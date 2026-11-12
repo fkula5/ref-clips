@@ -4,6 +4,7 @@ through the app's models.
 """
 from __future__ import annotations
 
+import base64
 import json
 import os
 import shutil
@@ -35,6 +36,12 @@ USERS = {
     "outsider": ("olek@example.com", "Olek Obcy", ["referee"]),
     "second": ("ula@example.com", "Ula Druga", ["referee"]),
 }
+
+
+PNG_1X1 = base64.b64decode(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==")
+PDF_TINY = b"%PDF-1.4\n1 0 obj<</Type/Catalog>>endobj\ntrailer<</Root 1 0 R>>\n%%EOF\n"
+HEIC_TINY = b"\x00\x00\x00\x18ftypheic\x00\x00\x00\x00mif1heic"
 
 
 def free_port() -> int:
@@ -188,6 +195,25 @@ class Server:
             video.proxy_path = key
             db.commit()
             return video.id
+
+    def add_scoresheet(self, match_id: int, name: str, content: bytes, content_type: str, uploader: str = "admin") -> int:
+        from app.models import MatchScoresheet
+        with self.db() as db:
+            row = MatchScoresheet(match_id=match_id, path="", original_filename=name, content_type=content_type,
+                                  size_bytes=len(content), uploaded_by=self.users[uploader])
+            db.add(row)
+            db.commit()
+            row.path = f"scoresheets/{row.id:032x}.bin"
+            (self.data_dir / row.path).parent.mkdir(parents=True, exist_ok=True)
+            (self.data_dir / row.path).write_bytes(content)
+            db.commit()
+            return row.id
+
+    def scoresheets_of(self, match_id: int):
+        from app.models import MatchScoresheet
+        with self.db() as db:
+            return list(db.scalars(select(MatchScoresheet).where(MatchScoresheet.match_id == match_id)
+                                   .order_by(MatchScoresheet.id)))
 
     def set_mark(self, video_id: int, period: str, time_sec: float) -> None:
         from app.models import PeriodMark

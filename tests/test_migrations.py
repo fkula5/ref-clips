@@ -14,6 +14,7 @@ EXPECTED_TABLES = {
     "jobs", "settings", "upload_rejections", "share_links", "share_link_clips",
     "sheet_elements", "sheets", "sheet_columns", "sheet_rows", "sheet_cells", "notifications",
     "training_groups", "group_members", "training_sets", "training_set_clips", "training_set_groups",
+    "match_scoresheets",
 }
 
 
@@ -340,3 +341,35 @@ def test_training_sets_migration_is_additive_and_cascades(tmp_path):
     command.downgrade(cfg, "mvp0008")
     assert not {"training_sets", "training_set_clips", "training_set_groups"} & set(inspect(create_engine(url)).get_table_names())
     assert {"training_groups", "clips"} <= set(inspect(create_engine(url)).get_table_names())
+
+
+def test_scoresheets_migration_is_additive_and_cascades(tmp_path):
+    from sqlalchemy import text
+
+    url = f"sqlite:///{tmp_path / 'm.db'}"
+    cfg = _config(url)
+    command.upgrade(cfg, "mvp0009")
+    engine = create_engine(url)
+    with engine.begin() as conn:
+        conn.execute(text("INSERT INTO users (id, email, name, is_active) VALUES (1, 'a@b.pl', 'A', 1)"))
+        conn.execute(text("INSERT INTO matches (id, date, level, team_a_name, team_a_color, team_b_name, team_b_color) "
+                          "VALUES (1, '2026-10-28', '', '', '', '', '')"))
+    assert "match_scoresheets" not in inspect(engine).get_table_names()
+    command.upgrade(cfg, "head")
+    assert "ix_match_scoresheets_match_id" in {i["name"] for i in inspect(create_engine(url)).get_indexes("match_scoresheets")}
+    with engine.begin() as conn:
+        conn.execute(text("PRAGMA foreign_keys=ON"))
+        assert conn.execute(text("SELECT count(*) FROM matches")).scalar() == 1  # old tables untouched
+        conn.execute(text("INSERT INTO match_scoresheets (match_id, path, original_filename, content_type, size_bytes, uploaded_by) "
+                          "VALUES (1, 'scoresheets/x.pdf', 'p.pdf', 'application/pdf', 10, 1)"))
+        assert conn.execute(text("SELECT created_at FROM match_scoresheets")).scalar() is not None
+        assert compare_metadata(MigrationContext.configure(conn), Base.metadata) == []
+    with engine.begin() as conn:
+        conn.execute(text("PRAGMA foreign_keys=ON"))
+        conn.execute(text("DELETE FROM users"))
+        assert conn.execute(text("SELECT uploaded_by FROM match_scoresheets")).scalar() is None
+        conn.execute(text("DELETE FROM matches"))
+        assert conn.execute(text("SELECT count(*) FROM match_scoresheets")).scalar() == 0
+    command.downgrade(cfg, "mvp0009")
+    assert "match_scoresheets" not in set(inspect(create_engine(url)).get_table_names())
+    assert {"training_sets", "matches"} <= set(inspect(create_engine(url)).get_table_names())

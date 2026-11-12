@@ -69,6 +69,11 @@ def can_upload_to_match(user, match) -> bool:
     return _staff_or_official(user, match)
 
 
+def can_manage_scoresheet(user, match) -> bool:
+    """Upload and delete scoresheet files: the crew's referees, coaches and admins. Viewing needs only a login."""
+    return can_view(user) and _staff_or_official(user, match)
+
+
 def can_edit_match(user, match) -> bool:
     return _has(user, ADMIN) or (_has(user, COACH, REFEREE) and match.created_by == user.id)
 

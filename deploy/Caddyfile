@@ -41,7 +41,15 @@
 	request_body @tus {
 		max_size 64MB
 	}
-	@formularze not path /uploads /uploads/*
+	# Scoresheet photos/PDFs: up to 10 files of 20 MB in one form post (app/config.py SCORESHEET_*).
+	@protokol path_regexp ^/matches/[0-9]+/scoresheets$
+	request_body @protokol {
+		max_size 220MB
+	}
+	@formularze {
+		not path /uploads /uploads/*
+		not path_regexp ^/matches/[0-9]+/scoresheets$
+	}
 	request_body @formularze {
 		max_size 10MB
 	}

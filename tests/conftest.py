@@ -27,7 +27,7 @@ def pytest_sessionfinish(session, exitstatus):
 def db():
     Base.metadata.drop_all(engine)
     Base.metadata.create_all(engine)
-    for sub in ("uploads", "proxies", "clips"):
+    for sub in ("uploads", "proxies", "clips", "scoresheets"):
         for path in (config.DATA_DIR / sub).glob("*"):
             path.unlink(missing_ok=True)
     with SessionLocal() as session:

@@ -122,3 +122,16 @@ def test_failed_snapshot_leaves_previous_intact_and_no_temp(data, tmp_path):
 def test_missing_database_is_error(tmp_path):
     with pytest.raises(FileNotFoundError):
         snap.snapshot(tmp_path, tmp_path / "bk")
+
+
+def test_scoresheet_files_are_copied_and_hardlinked(data, tmp_path):
+    root = tmp_path / "bk"
+    (data / "scoresheets").mkdir()
+    (data / "scoresheets" / "a.pdf").write_bytes(b"%PDF-1.4")
+    first = snap.snapshot(data, root, today=date(2026, 11, 5))
+    (data / "scoresheets" / "b.png").write_bytes(b"png")
+    second = snap.snapshot(data, root, today=date(2026, 11, 6))
+    assert (first / "scoresheets" / "a.pdf").read_bytes() == b"%PDF-1.4"
+    assert os.path.samefile(first / "scoresheets" / "a.pdf", second / "scoresheets" / "a.pdf")
+    assert sorted(p.name for p in (second / "scoresheets").iterdir()) == ["a.pdf", "b.png"]
+    assert "protokoły: 2" in (second / "INFO.txt").read_text(encoding="utf-8")

@@ -1,9 +1,9 @@
-"""Consistent copy of the SQLite DB plus the clips (hard links to files unchanged since the previous
-snapshot, so extra days take almost no space).
+"""Consistent copy of the SQLite DB plus the clips and match scoresheet files (hard links to files unchanged
+since the previous snapshot, so extra days take almost no space).
 Run in the app container by deploy/backup.sh (standard library only):
     python - /data /backup 14 < deploy/backup_snapshot.py
 Full recordings (`proxies/`), originals and unfinished uploads (`uploads/`, `tmp/`) are NOT copied:
-they are temporary. Order: DB first, then clips; a clip added meanwhile is in the copy without a DB
+they are temporary. Order: DB first, then files; a file added meanwhile is in the copy without a DB
 row (the cleanup task removes it), while the reverse (row without file) cannot happen.
 """
 from __future__ import annotations
@@ -34,9 +34,9 @@ def backup_database(source: Path, target: Path) -> None:
         src.close()
 
 
-def copy_clips(source: Path, target: Path, previous: Path | None) -> tuple[int, int, int]:
+def copy_clips(source: Path, target: Path, previous: Path | None, folder: str = "clips") -> tuple[int, int, int]:
     """A file identical to the previous snapshot (size and mtime) is only hard-linked. Skips unfinished
-    `*.part.mp4`.
+    `*.part.mp4`. `folder` is the directory's name inside a snapshot.
     """
     target.mkdir(parents=True, exist_ok=True)
     total = copied = linked = 0
@@ -53,7 +53,7 @@ def copy_clips(source: Path, target: Path, previous: Path | None) -> tuple[int, 
         dest.parent.mkdir(parents=True, exist_ok=True)
         stat = path.stat()
         total += 1
-        old = previous / "clips" / rel if previous else None
+        old = previous / folder / rel if previous else None
         if old is not None and old.is_file():
             old_stat = old.stat()
             if old_stat.st_size == stat.st_size and old_stat.st_mtime_ns == stat.st_mtime_ns:
@@ -86,9 +86,13 @@ def snapshot(data_dir: Path, backup_root: Path, keep: int = 14, today: date | No
     try:
         backup_database(db_path, work / DB_NAME)
         total, copied, linked = copy_clips(data_dir / "clips", work / "clips", previous)
+        sheets = 0
+        if (data_dir / "scoresheets").is_dir():
+            sheets = copy_clips(data_dir / "scoresheets", work / "scoresheets", previous, "scoresheets")[0]
         (work / "INFO.txt").write_text(
             f"data: {day}\nbaza: {(work / DB_NAME).stat().st_size} B\n"
             f"klipy: {total} (skopiowane {copied}, dowiązane {linked})\n"
+            f"protokoły: {sheets}\n"
             f"poprzednia migawka: {previous.name if previous else '-'}\n", encoding="utf-8")
     except BaseException:
         shutil.rmtree(work, ignore_errors=True)

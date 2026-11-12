@@ -134,6 +134,8 @@ class Match(Base):
         back_populates="match", cascade="all, delete-orphan", order_by="Comment.id")
     sheets: Mapped[list[Sheet]] = relationship(
         back_populates="match", cascade="all, delete-orphan", order_by="Sheet.id")
+    scoresheets: Mapped[list[MatchScoresheet]] = relationship(
+        back_populates="match", cascade="all, delete-orphan", order_by="MatchScoresheet.id")
 
     @property
     def teams(self) -> str:
@@ -155,6 +157,26 @@ class Match(Base):
 
     def official(self, function: str) -> MatchOfficial | None:
         return next((o for o in self.officials if o.function == function), None)
+
+
+class MatchScoresheet(Base):
+    """One file of the match scoresheet ("Protokół"). `path` is a generated storage key; the user's
+    file name is kept only as the display and download name. `content_type` is detected from the file's
+    magic bytes, never taken from the client.
+    """
+    __tablename__ = "match_scoresheets"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    match_id: Mapped[int] = mapped_column(ForeignKey("matches.id", ondelete="CASCADE"), index=True)
+    path: Mapped[str] = mapped_column(String(500))  # relative to DATA_DIR
+    original_filename: Mapped[str] = mapped_column(String(255))
+    content_type: Mapped[str] = mapped_column(String(50))
+    size_bytes: Mapped[int] = mapped_column(BigInteger)
+    uploaded_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+    match: Mapped[Match] = relationship(back_populates="scoresheets")
+    uploader: Mapped[User | None] = relationship(foreign_keys=[uploaded_by])
 
 
 class MatchOfficial(Base):
