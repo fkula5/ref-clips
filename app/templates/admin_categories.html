@@ -57,7 +57,7 @@
           <form method="post" action="/admin/categories/{{ c.id }}/active" class="inline">{{ csrf_input() }}<input type="hidden" name="active" value="1"><button class="btn small">Aktywuj</button></form>
         {% endif %}
         {% if not c.is_custom and not used.get(c.id, 0) %}
-          <form method="post" action="/admin/categories/{{ c.id }}/delete" class="inline" onsubmit="return confirm('Usunąć kategorię „{{ c.name }}”?')">
+          <form method="post" action="/admin/categories/{{ c.id }}/delete" class="inline" onsubmit='return confirm({{ ("Usunąć kategorię „" ~ c.name ~ "”?")|tojson }})'>
             {{ csrf_input() }}<button class="btn small danger">Usuń</button></form>
         {% endif %}
       </div></td>

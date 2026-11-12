@@ -41,7 +41,7 @@
           <form method="post" action="/admin/sheet-elements/{{ e.id }}/active" class="inline">{{ csrf_input() }}<input type="hidden" name="active" value="1"><button class="btn small">Aktywuj</button></form>
         {% endif %}
         {% if not used.get(e.id, 0) %}
-          <form method="post" action="/admin/sheet-elements/{{ e.id }}/delete" class="inline" onsubmit="return confirm('Usunąć element „{{ e.name }}”?')">
+          <form method="post" action="/admin/sheet-elements/{{ e.id }}/delete" class="inline" onsubmit='return confirm({{ ("Usunąć element „" ~ e.name ~ "”?")|tojson }})'>
             {{ csrf_input() }}<button class="btn small danger">Usuń</button></form>
         {% endif %}
       </div></td>

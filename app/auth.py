@@ -81,6 +81,18 @@ def current_user(request: Request, db: Session = Depends(get_db)) -> User:
     return session.user
 
 
+def attach_user_if_missing(request: Request, db: Session) -> None:
+    """For error pages raised before `current_user` ran (unknown route, bad path parameter). Read-only:
+    unlike `current_user` it never extends the session.
+    """
+    if getattr(request.state, "user", None) is not None:
+        return
+    session = accounts.get_session(db, request.cookies.get(config.SESSION_COOKIE))
+    if session is not None:
+        request.state.user = session.user
+        request.state.session = session
+
+
 async def _supplied_csrf(request: Request) -> str | None:
     """The body is read only for forms, so raw file uploads must send the header."""
     supplied = request.headers.get("x-csrf-token")

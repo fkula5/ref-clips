@@ -150,6 +150,21 @@ def remove_referee(request: Request, user_id: int, db: Session = Depends(get_db)
                                            f"Usunięto z grupy: {removed.name}.")
 
 
+@router.post("/{group_id}/coaches/{user_id}/remove")
+def remove_coach(request: Request, user_id: int, db: Session = Depends(get_db),
+                 group: TrainingGroup = group_for(permissions.can_manage_group)):
+    try:
+        removed = groups.remove_coach(db, group, user_id)
+    except GroupError as exc:
+        db.rollback()
+        return render_group(request, db, group, groups.DEFAULT_DAYS, status_code=exc.status_code,
+                            error=str(exc))
+    notice = f"Usunięto z grupy: {removed.name}."
+    if not permissions.can_manage_group(request.state.user, group):  # a coach who removed themself
+        return flash.redirect_with_page_notice("/groups", f"Opuszczono grupę „{group.name}”.")
+    return flash.redirect_with_page_notice(group_url(group), notice)
+
+
 @router.get("/{group_id}/delete")
 def confirm_delete(request: Request, group: TrainingGroup = group_for(permissions.can_manage_group)):
     return render(request, "group_delete.html", g=group)

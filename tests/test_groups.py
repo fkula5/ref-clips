@@ -314,3 +314,112 @@ def test_adding_notifies_once_removing_does_not_and_rejections_do_not(w, db):
     assert "Osoba coach" in page and "dodano Cię do grupy „Grupa A”" in page
     assert w.c["r3"].post(f"/notifications/{rows[0].id}/open", follow_redirects=False).headers["location"] == "/groups"
     assert (notify.unread_count(db, w.u["r3"].id), notify.unread_count(db, w.u["lead2"].id)) == (0, 1)
+
+
+@pytest.mark.parametrize("role, option, who", [("referee", "r3", "coach"), ("coach", "lead2", "coach"),
+                                               ("coach", "lead2", "admin")])
+def test_the_picker_form_posts_to_a_real_route(w, role, option, who):
+    page = w.c[who].get(f"/groups/{w.g.id}").text
+    forms = re.findall(r'<form method="post" action="([^"]+)" class="card form row member-add">', page)
+    action = next(a for a in forms if a.endswith("/referees" if role == "referee" else "/coaches"))
+    r = w.c[who].post(action, data={"user_id": str(w.u[option].id)}, follow_redirects=False)
+    assert r.status_code == 303, r.text[:300]
+    assert option in names(w, role)
+
+
+def test_without_candidates_the_sections_stay_with_a_hint_instead_of_the_picker(w, db):
+    for name in ("r3", "lead2", "other"):
+        w.u[name].is_active = False
+    db.commit()
+    page = w.c["coach"].get(f"/groups/{w.g.id}").text
+    assert "<h2>Dodaj sędziego</h2>" in page and "<h2>Szkoleniowcy</h2>" in page
+    assert "member-add" not in page
+    assert "Brak kont sędziów spoza grupy. Rolę sędziego nadaje admin w Administracji → Użytkownicy." in page
+    assert "Brak kont szkoleniowców spoza grupy. Rolę szkoleniowca nadaje admin w Administracji → Użytkownicy." in page
+    assert 'href="/admin/users"' not in page.split("<h2>Dodaj sędziego</h2>")[1]  # only admins get the link
+
+
+def test_the_hint_links_to_the_user_admin_page_for_admins(w, db):
+    for name in ("r3", "lead2", "other"):
+        w.u[name].is_active = False
+    db.commit()
+    tail = w.c["admin"].get(f"/groups/{w.g.id}").text.split("<h2>Dodaj sędziego</h2>")[1]
+    assert tail.count('<a href="/admin/users">Administracji → Użytkownicy</a>') == 2
+
+
+def test_with_candidates_there_are_pickers_and_no_hint(w):
+    page = w.c["coach"].get(f"/groups/{w.g.id}").text
+    assert page.count("member-add") == 2 and "Brak kont" not in page
+
+
+def test_a_hint_replaces_only_the_picker_that_has_no_candidates(w, db):
+    for name in ("lead2", "other"):
+        w.u[name].is_active = False
+    db.commit()
+    page = w.c["coach"].get(f"/groups/{w.g.id}").text
+    assert page.count("member-add") == 1 and "Brak kont szkoleniowców" in page and "Brak kont sędziów" not in page
+
+
+def test_a_coach_removes_another_coach_and_the_removed_one_loses_access(w):
+    post(w, "admin", f"/groups/{w.g.id}/coaches", user_id=str(w.u["lead2"].id))
+    r = post(w, "coach", f"/groups/{w.g.id}/coaches/{w.u['lead2'].id}/remove")
+    assert r.headers["location"] == f"/groups/{w.g.id}"
+    assert names(w, "coach") == {"coach"} and w.c["lead2"].get(f"/groups/{w.g.id}").status_code == 404
+    assert w.c["coach"].get(r.headers["location"]).status_code == 200
+
+
+def test_an_admin_who_is_not_a_member_removes_a_coach_and_stays_on_the_group(w):
+    post(w, "admin", f"/groups/{w.g.id}/coaches", user_id=str(w.u["lead2"].id))
+    r = post(w, "admin", f"/groups/{w.g.id}/coaches/{w.u['coach'].id}/remove")
+    assert r.headers["location"] == f"/groups/{w.g.id}" and names(w, "coach") == {"lead2"}
+
+
+@pytest.mark.parametrize("who", ["coach", "admin"])
+def test_the_last_coach_cannot_be_removed(w, who):
+    r = w.c[who].post(f"/groups/{w.g.id}/coaches/{w.u['coach'].id}/remove")
+    assert r.status_code == 422 and "musi zostać co najmniej jeden szkoleniowiec" in r.text
+    assert names(w, "coach") == {"coach"}
+
+
+def test_a_coach_who_removes_themself_is_sent_to_the_group_list(w):
+    post(w, "coach", f"/groups/{w.g.id}/coaches", user_id=str(w.u["lead2"].id))
+    r = post(w, "coach", f"/groups/{w.g.id}/coaches/{w.u['coach'].id}/remove")
+    assert r.headers["location"] == "/groups"
+    assert names(w, "coach") == {"lead2"} and w.c["coach"].get(f"/groups/{w.g.id}").status_code == 404
+    assert "Opuszczono grupę" in w.c["coach"].get("/groups").text
+
+
+def test_an_admin_who_is_also_a_coach_stays_on_the_group_after_removing_themself(w, db):
+    user = w.u["admin"]
+    user.set_roles(["admin", "coach"])
+    db.commit()
+    post(w, "admin", f"/groups/{w.g.id}/coaches", user_id=str(user.id))
+    r = post(w, "admin", f"/groups/{w.g.id}/coaches/{user.id}/remove")
+    assert r.headers["location"] == f"/groups/{w.g.id}"
+
+
+@pytest.mark.parametrize("who, status", [("r1", 404), ("other", 404), ("r3", 404)])
+def test_only_managers_remove_coaches(w, who, status):
+    post(w, "admin", f"/groups/{w.g.id}/coaches", user_id=str(w.u["lead2"].id))
+    r = w.c[who].post(f"/groups/{w.g.id}/coaches/{w.u['lead2'].id}/remove")
+    assert r.status_code == status and names(w, "coach") == {"coach", "lead2"}
+
+
+def test_removing_someone_who_is_not_a_coach_of_the_group_is_a_404(w):
+    for who in ("r1", "other"):  # a referee member / an account outside the group
+        assert w.c["coach"].post(f"/groups/{w.g.id}/coaches/{w.u[who].id}/remove").status_code == 404
+    assert names(w) == {"coach", "r1", "r2"}
+
+
+def test_removing_a_coach_needs_the_csrf_token(w):
+    post(w, "admin", f"/groups/{w.g.id}/coaches", user_id=str(w.u["lead2"].id))
+    client = w.c["coach"]
+    client.headers.pop("X-CSRF-Token")
+    assert client.post(f"/groups/{w.g.id}/coaches/{w.u['lead2'].id}/remove").status_code == 403
+    assert names(w, "coach") == {"coach", "lead2"}
+
+
+def test_the_group_page_offers_removal_of_every_coach_with_a_confirmation(w):
+    page = w.c["coach"].get(f"/groups/{w.g.id}").text
+    assert f'action="/groups/{w.g.id}/coaches/{w.u["coach"].id}/remove"' in page
+    assert "siebie z grupy? Stracisz" in page  # the question is JSON-escaped in the attribute

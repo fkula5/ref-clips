@@ -42,3 +42,13 @@ def test_next_does_not_redirect_to_a_foreign_domain(ui):
     page = ui.page()
     login(page, USERS["referee"][0], next_path="//evil.example.com/")
     expect(page).to_have_url(ui.server.base_url + "/")
+
+
+def test_a_mistyped_address_keeps_the_logged_in_header_and_the_way_back(ui):
+    ui.allow(r"status of 404")
+    page = ui.page("coach")
+    page.goto("/groups/1/coachs")
+    expect(page.get_by_role("heading", name="Nie znaleziono")).to_be_visible()
+    expect(page.locator(".who")).to_contain_text("Cezary Trener")
+    page.get_by_role("link", name="Lista meczów").click()
+    expect(page).to_have_url(ui.server.base_url + "/")
