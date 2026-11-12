@@ -90,6 +90,11 @@ ROWS = [
          **{"brak ról": (False, False), "admin": (True, True), "coach": (True, True),
             "referee": (True, False), "admin+coach": (True, True), "admin+referee": (True, True),
             "coach+referee": (True, True)}),
+    _row("protokół meczu (dodawanie i usuwanie)", lambda u, m: p.can_manage_scoresheet(u, m),
+         [match(in_crew=True), match(in_crew=False)],
+         **{"brak ról": (False, False), "admin": (True, True), "coach": (True, True),
+            "referee": (True, False), "admin+coach": (True, True), "admin+referee": (True, True),
+            "coach+referee": (True, True)}),
     _row("tworzenie klipów", lambda u, m: p.can_manage_clips(u, m),
          [match(in_crew=True), match(in_crew=False)],
          **{"brak ról": (False, False), "admin": (True, True), "coach": (True, True),
@@ -236,6 +241,8 @@ def test_inactive_user_and_anonymous_have_no_access():
     assert not p.can_view_notification(None, Notification(recipient_id=ME))
     assert not p.can_view(None) and not p.can_manage_users(None) and not p.can_create_match(None)
     assert not p.can_upload_to_match(None, match(in_crew=True))
+    assert not p.can_manage_scoresheet(None, match(in_crew=True))
+    assert not p.can_manage_scoresheet(inactive, match(in_crew=True))
     assert not p.can_share_clip(inactive, clip(author=ME)) and not p.can_share_clip(None, clip())
     assert not p.can_revoke_share(inactive, ShareLink(created_by=ME)) and not p.can_revoke_share(None, ShareLink())
     own = sheet(author=ME, published=True, in_crew=True)

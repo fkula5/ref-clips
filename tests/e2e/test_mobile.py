@@ -7,7 +7,7 @@ from playwright.sync_api import expect
 from app import groups, notify, training_sets
 from app.models import TrainingGroup, TrainingSet, TrainingSetClip, User
 from tests.e2e.conftest import login
-from tests.e2e.support import USERS
+from tests.e2e.support import HEIC_TINY, PDF_TINY, PNG_1X1, USERS
 
 WIDTHS = [375, 390]
 LONG_WORD = "Superdlugie" + "slowo" * 8
@@ -44,6 +44,10 @@ def data(server):
         level="Ekstraklasa Seniorów Mężczyzn Grupa Południowa",
         officials=(("CC", "referee"), ("U1", "Katarzyna Żółć-Wiśniewska-Kowalczyk"), ("U2", "second")))
     video_id = server.make_ready_video(match_id, content="Q1,Q2", label="Kamera główna, całość meczu, wersja długa")
+    for name, content, content_type in ((f"Protokół-{LONG_WORD}.pdf", PDF_TINY, "application/pdf"),
+                                        (f"IMG_{LONG_WORD}.png", PNG_1X1, "image/png"),
+                                        ("IMG_0042.HEIC", HEIC_TINY, "image/heic")):
+        server.add_scoresheet(match_id, name, content, content_type)
     server.set_mark(video_id, "Q1", 5.0)
     server.set_mark(video_id, "Q2", 35.0)
     clips = [
