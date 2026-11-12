@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.9.0](https://github.com/fkula5/ref-clips/compare/v1.8.0...v1.9.0) (2026-11-12)
+
+
+### Features
+
+* **groups:** explain an empty coach or referee picker ([b2fe6bd](https://github.com/fkula5/ref-clips/commit/b2fe6bdea3348a6288f9fbea486fc30346ff11f3))
+* **groups:** let group managers remove a coach ([1bed9f5](https://github.com/fkula5/ref-clips/commit/1bed9f5de959854dc0d874afc64acf00cad5d03e))
+
+
+### Bug Fixes
+
+* **errors:** show the logged-in user on error pages ([e219061](https://github.com/fkula5/ref-clips/commit/e219061d31ce5ac494077ca5de7124891ea7917f))
+* **groups:** coach picker 404, coach removal, user on error pages ([fc402cd](https://github.com/fkula5/ref-clips/commit/fc402cd535af6afcd9510e7cb9c1a51a086243f7))
+* **groups:** post the coach picker to /groups/{id}/coaches ([4c76b85](https://github.com/fkula5/ref-clips/commit/4c76b8573e0a6b729143fb25ea2fc903a629f238))
+* **security:** pass names to inline confirm() as JSON strings ([2917ef5](https://github.com/fkula5/ref-clips/commit/2917ef57c38ab9e9ec09d70268f2bd2fae477bbb))
+
 ## [1.8.0](https://github.com/fkula5/ref-clips/compare/v1.7.0...v1.8.0) (2026-11-12)
 
 
