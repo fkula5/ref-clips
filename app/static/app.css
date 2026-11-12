@@ -341,3 +341,12 @@ tr.no-activity td { background: var(--warn-wash); }
 .notif-text:hover .notif-what { text-decoration: underline; }
 .notif-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 12px; margin-top: 4px; font-size: 13px; }
 .notif-meta .inline-btn { color: var(--accent); }
+
+/* Training sets */
+.note-text { white-space: pre-wrap; overflow-wrap: anywhere; }
+.pinned-sets { background: var(--info-wash); border-color: var(--info-line); }
+.pinned-sets h2 { margin-top: 0; }
+.chip.pinned { background: var(--info-bg); }
+.chip.pinned form { display: inline; margin-left: 4px; }
+ul.plain { list-style: none; margin: 0; padding: 0; }
+.chip.pinned .linklike { color: var(--accent); }

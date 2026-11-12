@@ -198,6 +198,10 @@ ROWS = [
          **{"brak ról": (True, False, False), "admin": (True, True, True), "coach": (True, False, False),
             "referee": (True, False, False), "admin+coach": (True, True, True), "admin+referee": (True, True, True),
             "coach+referee": (True, False, False)}),
+    # training sets: any coach or admin edits any set
+    _row("edycja zestawu", lambda u, _: p.can_edit_set(u), [None],
+         **{"brak ról": (False,), "admin": (True,), "coach": (True,), "referee": (False,),
+            "admin+coach": (True,), "admin+referee": (True,), "coach+referee": (True,)}),
     # notifications: only the recipient (own / foreign)
     _row("podgląd powiadomienia", lambda u, n: p.can_view_notification(u, n),
          [Notification(recipient_id=ME), Notification(recipient_id=OTHER)], **{k: (True, False) for k in ROLE_SETS}),

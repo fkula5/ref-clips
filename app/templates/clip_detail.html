@@ -60,6 +60,8 @@
 
     {% if ratings is not none %}{% include "_ratings.html" %}{% endif %}
 
+    {% if set_choices is not none %}{% include "_set_picker.html" %}{% endif %}
+
     {% if perm.can_describe_clip(user, c) %}
     <div class="card" id="clip-edit">
       <h3>{{ 'Edytuj opis' if c.is_described else 'Opisz klip' }}</h3>

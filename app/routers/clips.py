@@ -7,7 +7,7 @@ from fastapi.responses import RedirectResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app import clip_list, feedback, groups, permissions, services, share
+from app import clip_list, feedback, groups, permissions, services, share, training_sets
 from app.auth import require, via_match
 from app.clip_list import query_clips  # noqa: F401 - also used by app/routers/clips_v2.py
 from app.db import get_db
@@ -57,6 +57,7 @@ def render_clip(request: Request, db: Session, clip: Clip, f: clip_list.ClipFilt
         full_video=full_video, problem=describe.cut_problem(clip),
         share_links=share.active_links(db, clip.id) if permissions.can_share_clip(user, clip) else None,
         blocker=services.describe_block(clip), error=error,
+        set_choices=training_sets.choices_for(db, clip) if permissions.can_edit_set(user) and not partial else None,
         values=values if values is not None else describe.form_values(clip),
         ratings=None if partial else feedback.ratings_of(db, clip),
         **comment_context(request, db, clip_id=clip.id), **extra)

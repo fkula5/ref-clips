@@ -174,3 +174,8 @@ def can_view_group(user, group) -> bool:
 
 def can_manage_group(user, group) -> bool:
     return can_view_group(user, group)
+
+
+def can_edit_set(user) -> bool:
+    """Every coach and admin may edit every set, so the check does not look at the set."""
+    return can_view(user) and _has(user, ADMIN, COACH)

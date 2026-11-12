@@ -27,6 +27,7 @@ def test_redact_hides_the_share_link_code_and_keeps_the_rest_of_the_path():
     assert logfilter.redact(f"/s/{code}/clips/2/file?x=1") == "/s/[ukryty]/clips/2/file?x=1"
     assert logfilter.redact(f'Referer: "https://klipy.example.pl/s/{code}/zip"') == 'Referer: "https://klipy.example.pl/s/[ukryty]/zip"'
     assert logfilter.redact("/static/app.css /clips/5/file /admin/users") == "/static/app.css /clips/5/file /admin/users"
+    assert logfilter.redact("GET /sets/3/clips/5 /sets /s") == "GET /sets/3/clips/5 /sets /s"  # training sets carry no secret
 
 
 def test_uvicorn_access_log_hides_the_token(caplog):

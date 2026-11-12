@@ -9,7 +9,7 @@ from fastapi.templating import Jinja2Templates
 from jinja2 import pass_context
 from markupsafe import Markup, escape
 
-from app import clip_list, config, feedback, flash, notify, pagination, retention, services, share
+from app import clip_list, config, feedback, flash, notify, pagination, retention, services, share, training_sets
 from app.auth import set_anon_csrf_cookie
 from app.db import SessionLocal
 from app import models as m
@@ -101,6 +101,7 @@ env.globals.update(
     SHARE_DAYS=config.SHARE_DAYS, SHARE_DEFAULT_DAYS=config.SHARE_DEFAULT_DAYS,
     SHARE_MAX_CLIPS=config.SHARE_MAX_CLIPS, public_title=share.public_title,
     public_filename=lambda c: services.clip_filename(c, with_referee=False),
+    set_official=training_sets.official_text, set_filename=training_sets.filename,
 )
 
 
