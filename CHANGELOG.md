@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.6.0](https://github.com/fkula5/ref-clips/compare/v1.5.0...v1.6.0) (2026-11-11)
+
+
+### Features
+
+* paginate the lists that grow without bound ([2bb245f](https://github.com/fkula5/ref-clips/commit/2bb245f66d7791b94fd3f4efad4d91792ab96024))
+
+
+### Bug Fixes
+
+* keep opened notifications read, and paginate long lists ([813a197](https://github.com/fkula5/ref-clips/commit/813a197ab57adf1993c66daffcdcb42e3b1a1848))
+* **notifications:** keep opened notifications read after going back ([ca1dd1d](https://github.com/fkula5/ref-clips/commit/ca1dd1d9da2b36f1ff6ce3c23b61a03da2615dd4))
+
 ## [1.5.0](https://github.com/fkula5/ref-clips/compare/v1.4.0...v1.5.0) (2026-11-11)
 
 
