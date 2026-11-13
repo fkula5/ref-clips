@@ -22,8 +22,8 @@
 # Variables: REFCLIPS_DEPLOY_HOST  (default ubuntu@57.131.162.204)
 #            REFCLIPS_DEPLOY_KEY   (default ~/.ssh/ref_clips_deploy)
 #            REFCLIPS_DEPLOY_DIR   (default /opt/ref-clips)
-#            REFCLIPS_DEPLOY_URL   (address for the final check; default
-#                https://57-131-162-204.sslip.io, empty = skip)
+#            REFCLIPS_DEPLOY_URL   (address for the final check; default: REFCLIPS_PUBLIC_URL from the
+#                server's .env, empty = skip)
 #            REFCLIPS_DEPLOY_CURL_OPTS     extra curl options for the final check (e.g. -k for a test
 #                with a local certificate)
 #            REFCLIPS_DEPLOY_FORCE=1       same as --force
@@ -34,7 +34,8 @@ set -euo pipefail
 HOST="${REFCLIPS_DEPLOY_HOST:-ubuntu@57.131.162.204}"
 KEY="${REFCLIPS_DEPLOY_KEY:-$HOME/.ssh/ref_clips_deploy}"
 DIR="${REFCLIPS_DEPLOY_DIR:-/opt/ref-clips}"
-URL="${REFCLIPS_DEPLOY_URL-https://57-131-162-204.sslip.io}"
+URL_FROM_ENV=1; [ -z "${REFCLIPS_DEPLOY_URL+x}" ] || URL_FROM_ENV=0
+URL="${REFCLIPS_DEPLOY_URL-}"
 FORCE=0; [ "${REFCLIPS_DEPLOY_FORCE:-}" = 1 ] && FORCE=1
 WAIT=0
 CURL_OPTS=(); [ -z "${REFCLIPS_DEPLOY_CURL_OPTS:-}" ] || read -r -a CURL_OPTS <<<"$REFCLIPS_DEPLOY_CURL_OPTS"
@@ -213,6 +214,11 @@ echo "--- sprzątanie nieużywanych obrazów:"
 echo "--- wdrożony commit: $(cut -d' ' -f1 .deploy-commit)"
 REMOTE
 
+if [ "$URL_FROM_ENV" = 1 ]; then
+  URL="$("${SSH[@]}" "sed -n 's/^REFCLIPS_PUBLIC_URL=//p' $QDIR/.env | tail -n1" 2>/dev/null | tr -d "\"' \r" || true)"
+  URL="${URL%/}"
+  [ -n "$URL" ] || echo "UWAGA: nie udało się odczytać REFCLIPS_PUBLIC_URL z .env na serwerze — pomijam sprawdzenie adresu." >&2
+fi
 if [ -n "$URL" ]; then
   echo "==> Sprawdzanie $URL/login"
   code=000
