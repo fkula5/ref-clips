@@ -1,7 +1,12 @@
 # Caddy in front of ref-clips (production). The site address comes from REFCLIPS_SITE
-# (compose.prod.yaml), e.g. 57-131-162-204.sslip.io or your own domain; Caddy issues and renews the
-# Let's Encrypt certificate itself (needs ports 80 and 443 open). Local test: REFCLIPS_SITE=localhost
-# (certificate from Caddy's internal CA: the browser warns, curl needs -k).
+# (compose.prod.yaml), e.g. refclips.pl; Caddy issues and renews the Let's Encrypt certificate itself
+# (needs ports 80 and 443 open). Local test: REFCLIPS_SITE=localhost (certificate from Caddy's internal
+# CA: the browser warns, curl needs -k).
+#
+# REFCLIPS_REDIRECT_HOSTS (optional, space-separated, e.g. "www.refclips.pl 57-131-162-204.sslip.io"):
+# extra addresses of the main site block. Caddy gets certificates for them and they answer with a
+# permanent redirect to the main site (path and query kept, so old /s/<code> and invite links work).
+# Empty or unset expands to nothing: no second block, no dummy host, no bogus certificate attempt.
 {
 	# Server-level timeouts. Request and response bodies (read_body, write) have no limit: a 50 MB tus
 	# chunk from a phone over a weak network and a movie watched for an hour must not be cut.
@@ -13,7 +18,12 @@
 	}
 }
 
-{$REFCLIPS_SITE} {
+{$REFCLIPS_SITE} {$REFCLIPS_REDIRECT_HOSTS} {
+	# Redirect hosts (see top). 308, not 301: keeps the method and body, so a stray POST/PATCH to an old
+	# address is not turned into a GET. The block's log filter below still hides tokens in these URLs.
+	@other_host not host {$REFCLIPS_SITE}
+	redir @other_host https://{$REFCLIPS_SITE}{uri} 308
+
 	# Compression for text only (Caddy's default types); video (video/mp4) is already compressed and stays
 	# as is: 206 (Range) responses go straight from the app.
 	encode zstd gzip
