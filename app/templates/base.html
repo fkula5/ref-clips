@@ -26,7 +26,7 @@
         <a href="/clips">Klipy</a>
         <a href="/sets">Zestawy</a>
         {% if perm.can_see_my_groups(user) %}<a href="/groups">Grupy</a>{% endif %}
-        {% if perm.can_manage_users(user) %}<a href="/admin/users">Administracja</a>{% endif %}
+        {% if perm.can_access_admin(user) %}<a href="{{ perm.admin_home_url(user) }}">Administracja</a>{% endif %}
       </nav>
       <div id="site-account" class="account">
         <span>{{ user.name }}</span>

@@ -4,7 +4,7 @@ Template: the two-sided „Arkusz oceny sędziów” (referee assessment sheet) 
 
 ## Content
 - **Header.** Taken from the match data: match, date, category (league), crew. Stored in the sheet: the result (short text, up to 50 characters, e.g. „78:65”) and the difficulty level (easy / normal / hard). The qualifier is filled in automatically from the logged-in account.
-- **Assessment items.** For each referee in the crew (CC, U1, U2) a separate comment per item. Items from the migration, in order: Obowiązki przedmeczowe, Przygotowanie fizyczne, Mechanika, Sygnalizacja, Ocena kontaktów, Ocena błędów, Współpraca, Kontrola gry, Przywództwo, Jakość pracy. The list is editable in the admin panel (the „Arkusz oceny” tab): adding, renaming, ordering, deactivating, and deleting only unused items.
+- **Assessment items.** For each referee in the crew (CC, U1, U2) a separate comment per item. Items from the migration, in order: Obowiązki przedmeczowe, Przygotowanie fizyczne, Mechanika, Sygnalizacja, Ocena kontaktów, Ocena błędów, Współpraca, Kontrola gry, Przywództwo, Jakość pracy. The list is editable by a coach or admin in the admin panel (the „Arkusz oceny” tab): adding, renaming, ordering, deactivating, and deleting only unused items.
 - **Overall assessment.** For each referee a description and a crew recommendation (e.g. „Może sędziować każde zawody jako sędzia główny” — "Can referee any game as chief referee"), plus one shared note about the pair.
 - The sheet **does not contain a list of moments** or points. Moments follow the existing route (markers, notes, clips); the sheet and the clips are linked by the match page (the „Arkusz oceny” card).
 

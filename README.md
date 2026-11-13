@@ -205,7 +205,8 @@ Roles (several at once, permissions add up):
 
 | Permission | Administrator | Coach | Referee |
 |---|---|---|---|
-| Managing accounts and roles, the category dictionary | yes | no | no |
+| Managing accounts and roles, retention and disk | yes | no | no |
+| Managing the category dictionary and the assessment sheet elements | yes | yes | no |
 | Viewing all matches and clips, commenting | yes | yes | yes |
 | Uploading matches and crew, creating and describing clips | every match | every match | only matches in which they are in the crew (by account) |
 | Rating a clip | no (unless they also have the coach role) | yes, own | no |
@@ -222,8 +223,10 @@ and setting a password requires logging in (pages redirect to `/login`, the API 
 
 ## Administrator panel (segment 7)
 
-The **Administracja** („Administration”) menu (administrator role only; the server checks this on every route, other roles get 403,
-logged-out users get 401/a redirect to login, and writes require a CSRF token) has three tabs.
+The **Administracja** („Administration”) menu is shown to everyone who may open at least one of its tabs and leads to the first
+one they may open. The server checks the role on every route: **Użytkownicy** and **Retencja i dysk** are for administrators only,
+**Kategorie** and **Arkusz oceny** are also open to coaches; other roles get 403, logged-out users get 401/a redirect to login,
+and writes require a CSRF token. A user sees only the tabs they may open (the out-of-space banner is shown to administrators only).
 
 **Użytkownicy** („Users”) — accounts, roles, invitation links (described above).
 

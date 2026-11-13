@@ -161,6 +161,19 @@ def test_phone_header_collapses_into_a_menu(ui):
     expect(page.locator("#site-nav")).to_be_hidden()
 
 
+def test_coach_reaches_the_admin_dictionaries_from_the_phone_menu(ui):
+    page = ui.page("coach", mobile=True, viewport={"width": 375, "height": 800})
+    page.goto("/")
+    toggle(page).tap()
+    page.locator("#site-nav").get_by_role("link", name="Administracja").tap()
+    page.wait_for_url("**/admin/categories")
+    for path in ("/admin/categories", "/admin/sheet-elements"):
+        page.goto(path)
+        page.wait_for_load_state("networkidle")
+        result = overflow(page)
+        assert result["scroll"] <= result["client"] and not result["bad"], (path, result)
+
+
 def test_phone_menu_works_from_the_keyboard_and_closes_on_escape_and_navigation(ui):
     page = ui.page("admin", mobile=True)
     page.goto("/")

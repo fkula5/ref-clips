@@ -214,12 +214,19 @@ def test_category_id_lookup_unchanged_for_helpers(db):
     assert category_named(db, "kroki") == cat(db, "kroki").id
 
 
-ADMIN_ROUTES = [
-    ("get", "/admin"), ("get", "/admin/users"), ("get", "/admin/categories"), ("get", "/admin/retention"),
-    ("post", "/admin/categories"), ("post", "/admin/categories/1/update"), ("post", "/admin/categories/1/active"),
-    ("post", "/admin/categories/1/move"), ("post", "/admin/categories/1/delete"),
+ADMIN_ONLY_ROUTES = [
+    ("get", "/admin/users"), ("get", "/admin/retention"), ("post", "/admin/users"),
     ("post", "/admin/retention"), ("post", "/admin/videos/1/purge"),
 ]
+DICTIONARY_ROUTES = [
+    ("get", "/admin/categories"), ("post", "/admin/categories"), ("post", "/admin/categories/1/update"),
+    ("post", "/admin/categories/1/active"), ("post", "/admin/categories/1/move"),
+    ("post", "/admin/categories/1/delete"),
+    ("get", "/admin/sheet-elements"), ("post", "/admin/sheet-elements"),
+    ("post", "/admin/sheet-elements/1/update"), ("post", "/admin/sheet-elements/1/active"),
+    ("post", "/admin/sheet-elements/1/move"), ("post", "/admin/sheet-elements/1/delete"),
+]
+ADMIN_ROUTES = [("get", "/admin"), *ADMIN_ONLY_ROUTES, *DICTIONARY_ROUTES]
 
 
 def test_anonymous_gets_401_or_login_redirect_on_every_admin_route(anon_client):
@@ -230,12 +237,30 @@ def test_anonymous_gets_401_or_login_redirect_on_every_admin_route(anon_client):
             assert r.headers["location"].startswith("/login")
 
 
-def test_non_admin_roles_get_403_on_every_admin_route(make_client, db):
-    for roles in (("coach",), ("referee",), ("coach", "referee"), ()):
+def test_roles_without_admin_areas_get_403_on_every_admin_route(make_client, db):
+    for roles in (("referee",), ()):
         client, _ = make_client(*roles)
         for method, path in ADMIN_ROUTES:
             r = getattr(client, method)(path, follow_redirects=False)
             assert r.status_code == 403, (roles, method, path, r.status_code)
+
+
+def test_coach_gets_403_on_users_and_retention_but_not_on_dictionaries(make_client, db):
+    for roles in (("coach",), ("coach", "referee")):
+        client, _ = make_client(*roles)
+        for method, path in ADMIN_ONLY_ROUTES:
+            r = getattr(client, method)(path, follow_redirects=False)
+            assert r.status_code == 403, (roles, method, path, r.status_code)
+        for method, path in DICTIONARY_ROUTES:
+            r = getattr(client, method)(path, follow_redirects=False)
+            assert r.status_code != 403, (roles, method, path, r.status_code)
+
+
+def test_admin_home_redirects_to_the_first_area_the_user_may_open(admin, make_client):
+    assert admin[0].get("/admin", follow_redirects=False).headers["location"] == "/admin/users"
+    coach, _ = make_client("coach")
+    r = coach.get("/admin", follow_redirects=False)
+    assert r.status_code == 303 and r.headers["location"] == "/admin/categories"
 
 
 def test_admin_post_routes_require_csrf_token(admin, db):

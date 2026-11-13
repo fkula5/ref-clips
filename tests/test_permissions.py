@@ -66,14 +66,17 @@ ROWS = [
          **{"brak ról": (False,), "admin": (True,), "coach": (False,), "referee": (False,),
             "admin+coach": (True,), "admin+referee": (True,), "coach+referee": (False,)}),
     _row("słownik kategorii", lambda u, _: p.can_manage_categories(u), [None],
-         **{"brak ról": (False,), "admin": (True,), "coach": (False,), "referee": (False,),
-            "admin+coach": (True,), "admin+referee": (True,), "coach+referee": (False,)}),
+         **{"brak ról": (False,), "admin": (True,), "coach": (True,), "referee": (False,),
+            "admin+coach": (True,), "admin+referee": (True,), "coach+referee": (True,)}),
+    _row("panel administracji", lambda u, _: p.can_access_admin(u), [None],
+         **{"brak ról": (False,), "admin": (True,), "coach": (True,), "referee": (False,),
+            "admin+coach": (True,), "admin+referee": (True,), "coach+referee": (True,)}),
     _row("retencja i dysk", lambda u, _: p.can_manage_retention(u), [None],
          **{"brak ról": (False,), "admin": (True,), "coach": (False,), "referee": (False,),
             "admin+coach": (True,), "admin+referee": (True,), "coach+referee": (False,)}),
     _row("elementy arkusza", lambda u, _: p.can_manage_sheet_elements(u), [None],
-         **{"brak ról": (False,), "admin": (True,), "coach": (False,), "referee": (False,),
-            "admin+coach": (True,), "admin+referee": (True,), "coach+referee": (False,)}),
+         **{"brak ról": (False,), "admin": (True,), "coach": (True,), "referee": (False,),
+            "admin+coach": (True,), "admin+referee": (True,), "coach+referee": (True,)}),
     _row("przeglądanie", lambda u, _: p.can_view(u), [None],
          **{k: (True,) for k in ROLE_SETS}),
     _row("nowy mecz (formularz)", lambda u, _: p.can_create_match(u), [None],
@@ -221,6 +224,13 @@ def test_permission_table(name, check, scenarios, expected, roles_name):
     assert got == expected[roles_name], f"{name} / {roles_name}"
 
 
+def test_admin_home_is_the_first_area_the_user_may_open():
+    assert p.admin_home_url(user(["admin"])) == "/admin/users"
+    assert p.admin_home_url(user(["admin", "coach"])) == "/admin/users"
+    assert p.admin_home_url(user(["coach"])) == "/admin/categories"
+    assert p.admin_home_url(user(["referee"])) is None and p.admin_home_url(None) is None
+
+
 def test_table_covers_every_permission_function():
     source = inspect.getsource(sys.modules[__name__])
     missing = {n for n in dir(p) if n.startswith("can_") and f"p.{n}(" not in source}
@@ -300,12 +310,12 @@ def forbidden_requests(w):
         ("sędzia: zmiana ról", "member", "post", f"/admin/users/{w['member_user'].id}/roles", {"data": {"roles": ["admin"]}}),
         ("sędzia: link resetu", "member", "post", f"/admin/users/{w['coach_user'].id}/invite", {}),
         ("sędzia: dezaktywacja", "outsider", "post", f"/admin/users/{w['coach_user'].id}/active", {"data": {"active": "0"}}),
-        ("szkoleniowiec: lista kategorii", "coach", "get", "/admin/categories", {}),
+        ("sędzia: lista kategorii", "outsider", "get", "/admin/categories", {}),
         ("sędzia: nowa kategoria", "member", "post", "/admin/categories", {"data": {"name": "X", "group": "Inne"}}),
-        ("szkoleniowiec: zmiana kategorii", "coach", "post", "/admin/categories/1/update", {"data": {"name": "X", "group": "Inne"}}),
-        ("szkoleniowiec: dezaktywacja kategorii", "coach", "post", "/admin/categories/1/active", {"data": {"active": "0"}}),
+        ("sędzia: zmiana kategorii", "member", "post", "/admin/categories/1/update", {"data": {"name": "X", "group": "Inne"}}),
+        ("sędzia: dezaktywacja kategorii", "outsider", "post", "/admin/categories/1/active", {"data": {"active": "0"}}),
         ("sędzia: przesunięcie kategorii", "outsider", "post", "/admin/categories/1/move", {"data": {"direction": "up"}}),
-        ("szkoleniowiec: usunięcie kategorii", "coach", "post", "/admin/categories/1/delete", {}),
+        ("sędzia: usunięcie kategorii", "member", "post", "/admin/categories/1/delete", {}),
         ("szkoleniowiec: retencja i dysk", "coach", "get", "/admin/retention", {}),
         ("sędzia: zmiana retencji", "member", "post", "/admin/retention", {"data": {"days": "1", "recalculate": "1"}}),
         ("szkoleniowiec: ręczne usunięcie pełnego nagrania", "coach", "post", f"/admin/videos/{v.id}/purge", {}),
@@ -313,10 +323,10 @@ def forbidden_requests(w):
         ("sędzia z obsady: nowy arkusz", "member", "post", f"/matches/{m.id}/sheets", {}),
         ("sędzia spoza obsady: nowy arkusz", "outsider", "post", f"/matches/{m.id}/sheets", {}),
         ("sam admin: nowy arkusz", "admin", "post", f"/matches/{m.id}/sheets", {}),
-        ("szkoleniowiec: lista elementów arkusza", "coach", "get", "/admin/sheet-elements", {}),
+        ("sędzia: lista elementów arkusza", "outsider", "get", "/admin/sheet-elements", {}),
         ("sędzia: nowy element arkusza", "member", "post", "/admin/sheet-elements", {"data": {"name": "X"}}),
-        ("szkoleniowiec: zmiana elementu arkusza", "coach", "post", "/admin/sheet-elements/1/update", {"data": {"name": "X"}}),
-        ("szkoleniowiec: usunięcie elementu arkusza", "coach", "post", "/admin/sheet-elements/1/delete", {}),
+        ("sędzia: zmiana elementu arkusza", "member", "post", "/admin/sheet-elements/1/update", {"data": {"name": "X"}}),
+        ("sędzia: usunięcie elementu arkusza", "outsider", "post", "/admin/sheet-elements/1/delete", {}),
     ]
 
 
