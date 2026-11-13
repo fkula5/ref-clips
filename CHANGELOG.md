@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.10.0](https://github.com/fkula5/ref-clips/compare/v1.9.0...v1.10.0) (2026-11-13)
+
+
+### Features
+
+* **admin:** let coaches manage categories and assessment sheet elements ([440cb1b](https://github.com/fkula5/ref-clips/commit/440cb1b9a4582544996f24eafe4311d3e8ac2301))
+* **deploy:** redirect extra hosts to the main site ([8684ad5](https://github.com/fkula5/ref-clips/commit/8684ad52dfc11dda58067a8b19c7a10e9457fe0f))
+* **notifications:** daily e-mail digest with per-account settings and unsubscribe ([b635b75](https://github.com/fkula5/ref-clips/commit/b635b756a8fd9267b839a534a3448c9f4894bf0b))
+
+
+### Bug Fixes
+
+* **deploy:** read the final check URL from the server .env ([61c8cb3](https://github.com/fkula5/ref-clips/commit/61c8cb30d38a918adc16abc540b75d83b00f76b2))
+
 ## [1.9.0](https://github.com/fkula5/ref-clips/compare/v1.8.0...v1.9.0) (2026-11-12)
 
 
