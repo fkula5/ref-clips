@@ -151,7 +151,7 @@
 - [ ] A coach whose verdict an admin changed gets nothing, and coaches who rated a clip but never commented are not told about its comments (recipient sets as decided). Revisit if people miss them.
 - [ ] A notification is opened with a POST form, so „open in a new tab” and middle click do not work on the list lines.
 - [ ] A referee removed from the crew still holds the sheet notification, but the link then answers 404 (the sheet is visible only to the current crew).
-- [ ] No per-user settings (muting a match or a kind of event) and no e-mail; the bell checks for news every minute and when the tab becomes visible again, not in real time.
+- [ ] No per-user settings for the bell (muting a match or a kind of event); e-mail has its own, see `docs/email-digest.md`. The bell checks for news every minute and when the tab becomes visible again, not in real time.
 - [ ] The count in the top bar is read with its own short database session on every page; if that ever shows up in profiling, cache it per request.
 - [ ] Not checked in Safari or on a real phone (Chromium at 390 px only).
 
@@ -182,4 +182,4 @@
 - [ ] **Training sets: sharing by link without an account.** Share a whole set with a link for people without an account, like the clip links (`/s/<code>`): random code with only the hash stored, bounded validity, revocation, `noindex`, the code kept out of logs. Names stay hidden; decide whether the coach's notes go into the link.
 - [ ] **Referee profile.** Clicking a referee anywhere in the app opens their profile: their matches, the clips they are in, ratings and activity.
 - [ ] **Request an assessment of a match.** A referee asks a coach to assess a specific match. The coach gets the request by e-mail as well as in the app, and can open the match or start the assessment sheet from it.
-- [ ] **E-mail notifications for important events only.** In-app notifications stay as they are; e-mail goes out only for important events, such as an assessment request. Needs an e-mail delivery service, a sender address and a per-user opt-out.
+- [ ] **E-mail notifications for important events only.** In-app notifications stay as they are; e-mail goes out only for important events, such as an assessment request. Needs an e-mail delivery service, a sender address and a per-user opt-out. _(partly done on branch `feat/email-digest`, to deploy: migration `mvp0011`, SMTP settings in the server's `.env`; the daily digest, a per-account settings page with opt-out and the unsubscribe link are in, see `docs/email-digest.md`. Still open: instant e-mail for a single important event, starting with the assessment request below)_
