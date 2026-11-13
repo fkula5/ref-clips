@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block title %}Ustawienia powiadomień{% endblock %}
+{% block content %}
+<h1>Ustawienia powiadomień</h1>
+{% if error %}<div class="banner error" role="alert" id="settings-error">{{ error }}</div>{% endif %}
+{% if notice %}<div class="banner ok" role="status" id="settings-notice">{{ notice }}</div>{% endif %}
+
+<p class="muted">Codzienne podsumowanie mailem przychodzi o 7:00 na adres <strong>{{ user.email }}</strong> i tylko wtedy, gdy jest o czym napisać.
+  Dzwonek w aplikacji działa bez zmian.</p>
+
+<form method="post" action="/settings/notifications" class="card form" id="notification-settings">
+  {{ csrf_input() }}
+  <label class="inline"><input type="checkbox" name="digest_enabled" value="1" {{ 'checked' if digest_enabled }}> <strong>Wysyłaj maile</strong></label>
+  <p class="muted small-note">Główny przełącznik: po wyłączeniu nie dostajesz żadnych maili, a wybór poniżej zostaje zapamiętany.</p>
+  <fieldset>
+    <legend>W podsumowaniu chcę widzieć</legend>
+    {% for key, label, on in events %}
+    <label class="inline"><input type="checkbox" name="{{ key }}" value="1" {{ 'checked' if on }}> {{ label }}</label><br>
+    {% endfor %}
+  </fieldset>
+  <button class="btn primary">Zapisz</button>
+</form>
+
+{% if perm.can_manage_users(user) %}
+<h2>Test wysyłki</h2>
+{% if mail_problem %}<div class="banner warn" id="mail-problem">Wysyłka maili jest wyłączona: {{ mail_problem }}.</div>{% endif %}
+<p class="muted small-note">Wysyła Ci od razu podsumowanie z ostatnich 24 godzin, bez względu na godzinę i główny przełącznik. Nie przesuwa okna zwykłych podsumowań.</p>
+<form method="post" action="/settings/notifications/test" id="test-digest">
+  {{ csrf_input() }}
+  <button class="btn">Wyślij mi testowe podsumowanie</button>
+</form>
+{% endif %}
+{% endblock %}

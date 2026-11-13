@@ -94,6 +94,28 @@ SHARE_DEFAULT_DAYS = 7
 SHARE_MAX_CLIPS = 30
 SHARE_ZIP_MAX_PARALLEL = 2  # concurrent ZIP builds; extra requests get 503
 
+# E-mail digest (docs/email-digest.md). Without SMTP_HOST (and a From address and PUBLIC_URL) the digest
+# is off. MAIL_MODE "file" writes .eml files to DATA_DIR/outbox instead of sending (development);
+# "memory" keeps them in `mail.OUTBOX` (tests).
+SMTP_HOST = os.environ.get("REFCLIPS_SMTP_HOST", "").strip()
+SMTP_USER = os.environ.get("REFCLIPS_SMTP_USER", "").strip()
+SMTP_PASSWORD = os.environ.get("REFCLIPS_SMTP_PASSWORD", "")
+SMTP_SECURITY = os.environ.get("REFCLIPS_SMTP_SECURITY", "").strip().lower() or "starttls"  # starttls | ssl | none
+try:
+    SMTP_PORT = int(os.environ.get("REFCLIPS_SMTP_PORT", "").strip() or (465 if SMTP_SECURITY == "ssl" else 587))
+except ValueError:
+    SMTP_PORT = 465 if SMTP_SECURITY == "ssl" else 587
+SMTP_TIMEOUT_SECONDS = 20
+MAIL_FROM = os.environ.get("REFCLIPS_MAIL_FROM", "").strip() or (SMTP_USER if "@" in SMTP_USER else "")
+MAIL_FROM_NAME = os.environ.get("REFCLIPS_MAIL_FROM_NAME", "").strip() or "ref-clips"
+MAIL_MODE = os.environ.get("REFCLIPS_MAIL_MODE", "").strip().lower()
+DIGEST_HOUR = 7  # local time (REFCLIPS_TIMEZONE, Europe/Warsaw by default)
+DIGEST_FIRST_WINDOW_HOURS = 24
+DIGEST_MAX_WINDOW_HOURS = 48
+DIGEST_CHECK_SECONDS = 300
+DIGEST_SNIPPET_WORDS = 12
+DIGEST_ABORT_AFTER_FAILURES = 3  # consecutive failed sends; the rest waits for the next check
+
 RETENTION_DAYS_MIN, RETENTION_DAYS_MAX = 1, 365
 EXPIRY_WARN_DAYS = 7
 RETENTION_INTERVAL_HOURS = 24

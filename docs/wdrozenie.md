@@ -26,7 +26,7 @@ przeglądarka ──HTTPS──► Caddy (80, 443, 443/udp) ──sieć compose�
 
 An overlay instead of a separate file: the services `init`/`app`/`worker` are defined in one place, so the smoke test (`scripts/docker-smoke.sh`) and production do not drift apart. The price: we always give both files (`-f compose.yaml -f compose.prod.yaml`) or set `COMPOSE_FILE=compose.yaml:compose.prod.yaml` (deploy.sh and backup.sh do this themselves).
 
-The application has **no secret** (no signing key etc.): sessions and invitations are random tokens in the database, and passwords are hashed (argon2). The `.env` holds only settings, and you enter the administrator password interactively. All data (database, recordings, clips) is in the Docker volume `ref-clips_dane`, and the Caddy certificates are in `ref-clips_caddy_data`.
+The application has **no signing key**: sessions and invitations are random tokens in the database, and passwords are hashed (argon2). The `.env` holds settings and, if you turn on the e-mail digest, the SMTP password (see [E-mail digest](#e-mail-digest-smtp)); you enter the administrator password interactively. All data (database, recordings, clips) is in the Docker volume `ref-clips_dane`, and the Caddy certificates are in `ref-clips_caddy_data`.
 
 A note on `ufw`: ports published by Docker bypass the `ufw` rules. Here only Caddy publishes ports (80, 443, 443/udp), and the application has no port on the host — do not change this (e.g. do not add `ports:` to `app`).
 
@@ -144,6 +144,22 @@ The thresholds can be changed in `.env`: `REFCLIPS_HEALTH_WORKER_STALE_SECONDS` 
 **External ping** (e.g. UptimeRobot, free plan): an HTTP(S) monitor on `https://57-131-162-204.sslip.io/health`, interval 5 min, an e-mail alert for a code other than 200 (checking the keyword `"ok"` is not needed). On a 503, read which check fails: `curl -s https://57-131-162-204.sslip.io/health`.
 
 **Docker healthchecks.** `app` stays on `/login` — it only answers "does the web server respond". Deliberately not `/health`: a 503 caused by the worker or a full disk is not a web server failure, restarting the application would fix nothing, and it would block `up --wait` (deployment) and the start of Caddy (`depends_on`). `worker` has its own healthcheck (`python -m app.health worker`: a liveness marker younger than 3 minutes); `docker compose ps` will show `unhealthy`, but Docker does not restart it by itself — use `docker compose restart worker`. The marker is beaten by a thread, not by the job loop, so a hung (blocked) ffmpeg does not let it expire; such a job is visible in the panel as a conversion without progress.
+
+## E-mail digest (SMTP)
+
+The daily digest ([docs/email-digest.md](email-digest.md)) is off until the server can send mail. Create a mail account at a provider (a transactional service or any SMTP mailbox) and put its settings in `/opt/ref-clips/.env` on the server; `app` and `worker` both read that file (`compose.yaml` passes the whole `.env`), and the credentials never go to git, the compose files or the image.
+
+| Variable | Meaning |
+|---|---|
+| `REFCLIPS_SMTP_HOST` | SMTP server; **without it the digest stays off** (one log line in `app` and `worker`) |
+| `REFCLIPS_SMTP_PORT` | default 587 (465 with `ssl`) |
+| `REFCLIPS_SMTP_SECURITY` | `starttls` (default), `ssl` or `none` (only for a trusted local relay) |
+| `REFCLIPS_SMTP_USER`, `REFCLIPS_SMTP_PASSWORD` | login; leave both empty for a relay without authentication |
+| `REFCLIPS_MAIL_FROM` | sender address; defaults to `REFCLIPS_SMTP_USER` when that is an address |
+| `REFCLIPS_MAIL_FROM_NAME` | sender name, default `ref-clips` |
+| `REFCLIPS_PUBLIC_URL` | already set for invitations; the links in the mails are built from it, and **without it the digest stays off** |
+
+After editing `.env`: `docker compose -f compose.yaml -f compose.prod.yaml up -d`. Check it as an administrator: **Ustawienia powiadomień** → „Wyślij mi testowe podsumowanie”. A connection or login error is shown on the page and in `docker compose logs app`. For a sender address on your own domain add the SPF and DKIM records the provider asks for, otherwise the mail lands in spam. The unsubscribe links (`/unsubscribe/<token>`) are kept out of the Caddy and application logs like the other token links.
 
 ## Links to clips without an account (`/s/<kod>`)
 

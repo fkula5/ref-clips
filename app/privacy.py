@@ -1,12 +1,12 @@
-"""Added to EVERY response under `/s/` (page, file, ZIP, errors), whatever the route:
+"""Added to EVERY response under `/s/` (shared clips) and `/unsubscribe/` (page, file, ZIP, errors), whatever the route:
 - `X-Robots-Tag: noindex, nofollow`: search engines do not index links.
 - `Referrer-Policy: no-referrer`: the link code must not leak in Referer (Caddy does not override it
-for `/s/*`, see `deploy/Caddyfile`).
+for `/s/*` and `/unsubscribe/*`, see `deploy/Caddyfile`).
 - `Cache-Control: no-store` by default; a route may set its own (video: `private, no-store`).
 """
 from __future__ import annotations
 
-PREFIX = "/s/"
+PREFIXES = ("/s/", "/unsubscribe/")
 FIXED = {b"x-robots-tag": b"noindex, nofollow", b"referrer-policy": b"no-referrer"}
 DEFAULT = {b"cache-control": b"no-store"}
 
@@ -16,7 +16,7 @@ class SharePrivacyHeadersMiddleware:
         self.app = app
 
     async def __call__(self, scope, receive, send):
-        if scope["type"] != "http" or not scope["path"].startswith(PREFIX):
+        if scope["type"] != "http" or not scope["path"].startswith(PREFIXES):
             await self.app(scope, receive, send)
             return
 

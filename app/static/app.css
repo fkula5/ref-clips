@@ -117,6 +117,7 @@ kbd { background: var(--chip-bg); border: 1px solid var(--control-line); border-
 /* The wrapper adds no box: bell, menu button, nav and account are laid out as direct children of the header, in the DOM order a phone needs. */
 .top .who { display: contents; }
 .top .account { display: flex; align-items: center; gap: 12px; color: var(--chrome-link); }
+.top .account a { color: var(--chrome-action); }
 .nav-toggle { display: none; align-items: center; gap: 6px; min-height: 36px; padding: 0 10px; font: inherit; color: var(--on-chrome); background: none; border: 1px solid var(--chrome-link); border-radius: 6px; cursor: pointer; }
 .nav-toggle:active { opacity: .7; }
 @media (min-width: 721px) {

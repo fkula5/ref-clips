@@ -1,13 +1,13 @@
 """A token in the URL lets someone set another account's password, a share code opens clips without
-login and a watch-room id lets a logged-in user into the room, so none may stay in logs (uvicorn logs
-the full URL). The rest of the path stays: /s/[ukryty]/clips/1/file. The Caddy counterpart is in deploy/Caddyfile.
+login, a watch-room id lets a logged-in user into the room and an unsubscribe token switches off someone's
+e-mail, so none may stay in logs (uvicorn logs the full URL). The rest of the path stays: /s/[ukryty]/clips/1/file. The Caddy counterpart is in deploy/Caddyfile.
 """
 from __future__ import annotations
 
 import logging
 import re
 
-TOKEN_PATH = re.compile(r"(/(?:set-password|s|watch|ws/watch)/)[^/?#\s\"]+")
+TOKEN_PATH = re.compile(r"(/(?:set-password|s|watch|ws/watch|unsubscribe)/)[^/?#\s\"]+")
 REPLACEMENT = r"\1[ukryty]"
 
 
