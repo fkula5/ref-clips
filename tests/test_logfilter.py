@@ -30,6 +30,14 @@ def test_redact_hides_the_share_link_code_and_keeps_the_rest_of_the_path():
     assert logfilter.redact("GET /sets/3/clips/5 /sets /s") == "GET /sets/3/clips/5 /sets /s"  # training sets carry no secret
 
 
+def test_redact_hides_the_unsubscribe_token_and_keeps_the_rest():
+    token = "aB3_-" * 8 + "xyz"
+    assert logfilter.redact(f"POST /unsubscribe/{token} HTTP/1.1") == "POST /unsubscribe/[ukryty] HTTP/1.1"
+    assert logfilter.redact(f'Referer: "https://klipy.example.pl/unsubscribe/{token}?x=1"') \
+        == 'Referer: "https://klipy.example.pl/unsubscribe/[ukryty]?x=1"'
+    assert logfilter.redact("GET /settings/notifications /unsubscribe") == "GET /settings/notifications /unsubscribe"
+
+
 def test_uvicorn_access_log_hides_the_token(caplog):
     logfilter.install()
     logfilter.install()

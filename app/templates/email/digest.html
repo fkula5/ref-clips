@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="pl">
+<body style="margin:0;padding:16px;background:#f4f5f7;font-family:-apple-system,'Segoe UI',Helvetica,Arial,sans-serif;color:#1d2330;font-size:15px;line-height:1.45;">
+<div style="max-width:620px;margin:0 auto;background:#ffffff;border:1px solid #dde1e8;border-radius:8px;padding:20px;">
+  <h1 style="margin:0 0 6px;font-size:20px;">ref-clips</h1>
+  {% if test %}<p style="margin:0 0 12px;padding:8px 10px;background:#fff7e0;border:1px solid #f0d78a;border-radius:6px;">To jest wiadomość testowa: podsumowanie z ostatnich 24 godzin, wysłane na żądanie administratora.</p>{% endif %}
+  <p style="margin:0 0 14px;color:#5b6475;">Cześć {{ user.name }}, {% if digest.empty %}w okresie {{ period }} nic się nie zmieniło w tym, o czym chcesz być informowany(-a).{% else %}oto co nowego ({{ period }}).{% endif %}</p>
+  {% for section in digest.sections %}
+  <div style="margin:0 0 16px;padding:10px 12px;border:1px solid #e3e6ec;border-radius:6px;">
+    <div style="font-weight:600;margin-bottom:6px;">{% if section.url %}<a href="{{ section.url }}" style="color:#1a56c4;text-decoration:none;">{{ section.title }}</a>{% else %}{{ section.title }}{% endif %}</div>
+    <ul style="margin:0;padding-left:18px;">
+      {% for entry in section.entries %}
+      <li style="margin:0 0 6px;">{{ entry.text }}{% if entry.url %} <a href="{{ entry.url }}" style="color:#1a56c4;">Otwórz</a>{% endif %}
+        {% if entry.snippets %}
+        <ul style="margin:4px 0 0;padding-left:16px;color:#3a4252;">
+          {% for snippet in entry.snippets %}<li style="margin:0 0 3px;">{{ snippet.text }} <a href="{{ snippet.url }}" style="color:#1a56c4;">Zobacz</a></li>{% endfor %}
+          {% if entry.more %}<li style="list-style:none;color:#5b6475;">...i {{ entry.more }} więcej</li>{% endif %}
+        </ul>
+        {% endif %}
+      </li>
+      {% endfor %}
+    </ul>
+  </div>
+  {% endfor %}
+  <p style="margin:18px 0 0;padding-top:12px;border-top:1px solid #e3e6ec;font-size:13px;color:#5b6475;">
+    <a href="{{ settings_url }}" style="color:#1a56c4;">Zmień ustawienia</a> &middot;
+    <a href="{{ unsubscribe_url }}" style="color:#1a56c4;">Wyłącz wszystkie maile</a>
+  </p>
+</div>
+</body>
+</html>

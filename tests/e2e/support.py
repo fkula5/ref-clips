@@ -79,7 +79,9 @@ class Server:
     def env(self) -> dict[str, str]:
         env = {k: v for k, v in os.environ.items() if not k.startswith("REFCLIPS_") and k != "DATABASE_URL"}
         env.update(REFCLIPS_DATA_DIR=str(self.data_dir), REFCLIPS_FFMPEG_NICE="0",
-                   REFCLIPS_TEST_UPLOAD_CHUNK_KB=str(CHUNK_KB), PYTHONUNBUFFERED="1")
+                   REFCLIPS_TEST_UPLOAD_CHUNK_KB=str(CHUNK_KB), PYTHONUNBUFFERED="1",
+                   # e-mail goes to DATA_DIR/outbox as .eml files instead of an SMTP server
+                   REFCLIPS_MAIL_MODE="file", REFCLIPS_PUBLIC_URL=self.base_url)
         return env
 
     def start(self) -> None:
@@ -314,6 +316,24 @@ class Server:
         from app.models import PeriodMark
         with self.db() as db:
             return {m.period: m.time_sec for m in db.scalars(select(PeriodMark).where(PeriodMark.video_id == video_id))}
+
+    def outbox(self) -> list[Path]:
+        return sorted((self.data_dir / "outbox").glob("*.eml"))
+
+    def unsubscribe_token(self, user_key: str) -> str:
+        from app import digest
+        with self.db() as db:
+            token = digest.ensure_token(digest.get_pref(db, self.users[user_key]))
+            db.commit()
+            return token
+
+    def email_preference(self, user_key: str):
+        from app.models import EmailPreference
+        with self.db() as db:
+            pref = db.get(EmailPreference, self.users[user_key])
+            if pref is not None:
+                db.expunge(pref)
+            return pref
 
     def user_by_email(self, email: str) -> User | None:
         with self.db() as db:

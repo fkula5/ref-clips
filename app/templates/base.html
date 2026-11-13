@@ -30,6 +30,7 @@
       </nav>
       <div id="site-account" class="account">
         <span>{{ user.name }}</span>
+        <a href="/settings/notifications">Ustawienia powiadomień</a>
         <form method="post" action="/logout" class="inline">{{ csrf_input() }}<button class="linklike">Wyloguj</button></form>
       </div>
     </div>

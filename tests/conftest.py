@@ -37,6 +37,20 @@ def db():
 
 
 @pytest.fixture()
+def mailbox(monkeypatch):
+    """In-memory outbox and a configured public address; nothing is ever sent."""
+    from app import mail
+    monkeypatch.setattr(config, "MAIL_MODE", "memory")
+    monkeypatch.setattr(config, "PUBLIC_URL", "https://klipy.example.pl")
+    monkeypatch.setattr(config, "MAIL_FROM", "klipy@example.pl")
+    mail.OUTBOX.clear()
+    mail._logged.clear()
+    yield mail.OUTBOX
+    mail.OUTBOX.clear()
+    mail._logged.clear()
+
+
+@pytest.fixture()
 def anon_client(db):
     """No context manager: lifespan (migrations) is not started; migrations are tested separately."""
     return TestClient(app)

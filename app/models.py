@@ -33,6 +33,14 @@ NOTIFICATION_KINDS = {
     "sheet_published": "opublikowany arkusz oceny", "group_added": "dodano Cię do grupy",
 }
 GROUP_ROLES = {"coach": "szkoleniowiec", "referee": "sędzia"}
+# Events of the daily e-mail digest, in display order (see app/digest.py).
+DIGEST_EVENTS = {
+    "new_clips_in_groups": "Nowe opisane klipy w meczach sędziów z moich grup",
+    "new_match_in_groups": "Nowe mecze sędziów z moich grup",
+    "comments_and_ratings": "Komentarze i oceny dotyczące mnie",
+    "sheet_published": "Opublikowane arkusze oceny moich meczów",
+    "group_added": "Dodanie mnie do grupy",
+}
 
 
 def _in(column: str, values) -> str:
@@ -686,3 +694,23 @@ class TrainingSetGroup(Base):
 
     training_set: Mapped[TrainingSet] = relationship(back_populates="pins")
     group: Mapped[TrainingGroup] = relationship()
+
+
+class EmailPreference(Base):
+    """Created on first use; no row means the defaults. An event column of NULL means "the default for the
+    account's roles" (`digest.default_for`), so a role change moves the defaults of people who never
+    touched the switch. `unsubscribe_token` is stored in plain text, not hashed, because every e-mail has
+    to carry it again; it can only switch the digest off. `last_digest_until` is the end of the window the
+    last scheduled digest covered, whether or not a message was sent.
+    """
+    __tablename__ = "email_preferences"
+
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    digest_enabled: Mapped[bool] = mapped_column(Boolean, default=True, server_default="1")
+    new_clips_in_groups: Mapped[bool | None] = mapped_column(Boolean)
+    new_match_in_groups: Mapped[bool | None] = mapped_column(Boolean)
+    comments_and_ratings: Mapped[bool | None] = mapped_column(Boolean)
+    sheet_published: Mapped[bool | None] = mapped_column(Boolean)
+    group_added: Mapped[bool | None] = mapped_column(Boolean)
+    unsubscribe_token: Mapped[str | None] = mapped_column(String(64), unique=True)
+    last_digest_until: Mapped[datetime | None] = mapped_column(DateTime)
