@@ -4,7 +4,7 @@
 
 **Regular deployments are done by GitHub Actions** after merging the release PR (image from GHCR, a CI key with a forced command, automatic rollback when the start fails): [docs/ci-cd.md](ci-cd.md). This document describes the server, the first deployment and the manual emergency exit (`deploy/deploy.sh`).
 
-Planned: an OVH VPS (Ubuntu 24.04, 2 vCPU, approx. 3.7 GB RAM, 38 GB disk), Docker Engine with the Compose plugin, and `ufw` with ports 22/80/443 open. Without its own domain the address is `https://57-131-162-204.sslip.io` (sslip.io turns the IP into a name that points to that IP; Caddy gets a Let's Encrypt certificate).
+Planned: an OVH VPS (Ubuntu 24.04, 2 vCPU, approx. 3.7 GB RAM, 38 GB disk), Docker Engine with the Compose plugin, and `ufw` with ports 22/80/443 open. The address is the domain from `REFCLIPS_SITE` (production: `https://refclips.pl`; see "Own domain" below). Without a domain, a name like `203-0-113-7.sslip.io` works (sslip.io turns the IP written with dashes into a name that points to that IP; Caddy gets a Let's Encrypt certificate).
 
 ## How it is built
 
@@ -53,7 +53,7 @@ cp deploy/env.prod.example .env && chmod 600 .env
 nano .env        # sprawdź REFCLIPS_SITE i REFCLIPS_PUBLIC_URL; limity dopasowane do dysku 38 GB
 ```
 
-Then `deploy/deploy.sh` again (locally). The first image build takes several minutes, and Caddy needs a moment for the certificate. The script waits until `app` is healthy and checks `https://57-131-162-204.sslip.io/login`.
+Then `deploy/deploy.sh` again (locally). The first image build takes several minutes, and Caddy needs a moment for the certificate. The script waits until `app` is healthy and checks `<REFCLIPS_PUBLIC_URL>/login`.
 
 **Administrator account** (interactively, the password at least 10 characters; `-t` is needed so the password is not visible):
 
@@ -80,7 +80,7 @@ ls -la /var/backups/ref-clips/
 
 After changing the `.service`/`.timer` files in the repository, copy them again and run `daemon-reload`.
 
-**Final check:** open `https://57-131-162-204.sslip.io`, log in, create an invitation (the link must start with `https://57-131-162-204.sslip.io`), and upload a short video. Measuring the conversion time of a 2-hour recording on this VPS is still to be done (see `TODO.md`).
+**Final check:** open the site address (`REFCLIPS_PUBLIC_URL`), log in, create an invitation (the link must start with that address), and upload a short video. Measuring the conversion time of a 2-hour recording on this VPS is still to be done (see `TODO.md`).
 
 ## Subsequent deployments
 
@@ -110,7 +110,7 @@ Building the image takes minutes, so right before `up` the check is repeated on 
 
 Before a risky database change: `sudo /opt/ref-clips/deploy/backup.sh`.
 
-Another server or key: `deploy/deploy.sh -H user@host -i ~/.ssh/klucz -d /opt/ref-clips`, or the variables `REFCLIPS_DEPLOY_HOST`, `REFCLIPS_DEPLOY_KEY`, `REFCLIPS_DEPLOY_DIR`, `REFCLIPS_DEPLOY_URL` (the address for the final check; empty = skip). The script uses `StrictHostKeyChecking=accept-new`: the first connection remembers the server's key, and a later change of the key stops the deployment.
+Another server or key: `deploy/deploy.sh -H user@host -i ~/.ssh/klucz -d /opt/ref-clips`, or the variables `REFCLIPS_DEPLOY_HOST`, `REFCLIPS_DEPLOY_KEY`, `REFCLIPS_DEPLOY_DIR`, `REFCLIPS_DEPLOY_URL` (the address for the final check; default `REFCLIPS_PUBLIC_URL` read from the server's `.env`; empty = skip). The script uses `StrictHostKeyChecking=accept-new`: the first connection remembers the server's key, and a later change of the key stops the deployment.
 
 ## Day-to-day operation
 
@@ -141,7 +141,7 @@ Container logs rotate by themselves (5 files of 20 MB per service). The Caddy ac
 The response is `200 {"status":"ok"}` or `503 {"status":"error","checks":{"db":"ok","worker":"stale","disk":"ok"}}` — only names and states, with no paths, sizes, versions or exception contents (the details are in the logs: `docker compose logs app worker`).
 The thresholds can be changed in `.env`: `REFCLIPS_HEALTH_WORKER_STALE_SECONDS` (default 180), `REFCLIPS_HEALTH_DISK_MIN_GB`.
 
-**External ping** (e.g. UptimeRobot, free plan): an HTTP(S) monitor on `https://57-131-162-204.sslip.io/health`, interval 5 min, an e-mail alert for a code other than 200 (checking the keyword `"ok"` is not needed). On a 503, read which check fails: `curl -s https://57-131-162-204.sslip.io/health`.
+**External ping** (e.g. UptimeRobot, free plan): an HTTP(S) monitor on `<REFCLIPS_PUBLIC_URL>/health`, interval 5 min, an e-mail alert for a code other than 200 (checking the keyword `"ok"` is not needed). On a 503, read which check fails: `curl -s <REFCLIPS_PUBLIC_URL>/health`.
 
 **Docker healthchecks.** `app` stays on `/login` — it only answers "does the web server respond". Deliberately not `/health`: a 503 caused by the worker or a full disk is not a web server failure, restarting the application would fix nothing, and it would block `up --wait` (deployment) and the start of Caddy (`depends_on`). `worker` has its own healthcheck (`python -m app.health worker`: a liveness marker younger than 3 minutes); `docker compose ps` will show `unhealthy`, but Docker does not restart it by itself — use `docker compose restart worker`. The marker is beaten by a thread, not by the job loop, so a hung (blocked) ffmpeg does not let it expire; such a job is visible in the panel as a conversion without progress.
 
@@ -196,14 +196,37 @@ Space: 38 GB of disk is little for Docker images (approx. 2 GB), backups and rec
 
 See [deploy/restore.md](../deploy/restore.md). A test restore once a quarter (on a separate Compose stack) is recommended.
 
-## Changing the address to your own domain
+## Own domain
 
-1. At the registrar, set an `A` record (and possibly `AAAA`) for the domain, e.g. `klipy.example.pl`, to `57.131.162.204`. Wait until `dig +short klipy.example.pl` shows this address.
-2. In `/opt/ref-clips/.env` change:
-   `REFCLIPS_SITE=klipy.example.pl` and `REFCLIPS_PUBLIC_URL=https://klipy.example.pl`.
-3. `docker compose -f compose.yaml -f compose.prod.yaml up -d` (Caddy will issue a new certificate; ports 80/443 must be reachable from the internet).
-4. Locally, set `REFCLIPS_DEPLOY_URL=https://klipy.example.pl` (deploy.sh checks this address).
-5. Invitations sent earlier have the old address in the link; issue them again. Old session cookies refer to the old host name — users will have to log in again.
+Production runs on `https://refclips.pl`; the apex is the canonical address and everything else redirects to it. The same steps apply to any other domain (replace `refclips.pl`). Caddy keeps certificates for the extra hosts and answers them with a permanent redirect (`308`, path and query kept), so links shared before the switch (`/s/<kod>`, invitations) keep working.
+
+1. **DNS** at the registrar (OVH): `A` records for the apex `refclips.pl` and for `www` pointing to the server IP (`57.131.162.204`). Delete OVH's default `A`/`AAAA` records of the apex (they point to OVH's parking page; a leftover `AAAA` makes Let's Encrypt validate the wrong host). Wait until `dig +short refclips.pl` and `dig +short www.refclips.pl` show the server IP and `dig +short AAAA refclips.pl` is empty.
+2. **`/opt/ref-clips/.env`** on the server:
+
+   ```
+   REFCLIPS_SITE=refclips.pl
+   REFCLIPS_PUBLIC_URL=https://refclips.pl
+   REFCLIPS_REDIRECT_HOSTS="www.refclips.pl 57-131-162-204.sslip.io"
+   ```
+
+   `REFCLIPS_REDIRECT_HOSTS` is optional (space-separated, in quotes); without it only `REFCLIPS_SITE` is served. Every host in it needs a DNS record to this server, otherwise Caddy cannot get its certificate (it keeps retrying in the background and the other hosts are not affected).
+3. **Apply.** First deploy a release that contains the redirect support (`compose.prod.yaml` passes the variable to Caddy, `deploy/Caddyfile` uses it), then edit `.env` as above and recreate the containers: a changed `.env` is read only when containers are created (data and certificates are in volumes and stay):
+
+   ```bash
+   cd /opt/ref-clips
+   export COMPOSE_FILE=compose.yaml:compose.prod.yaml
+   docker compose up -d        # recreates caddy, app and worker, whose environment changed
+   docker compose logs --tail 50 caddy    # certificate obtained for each host
+   ```
+
+   Ports 80/443 must be reachable from the internet. A later release restarts Caddy by itself when the Caddyfile changes, but never re-reads `.env` for the running containers: after any `.env` edit run `docker compose up -d`.
+4. **Check** (the full list is in the PR that introduced this): `curl -sI https://refclips.pl/health` gives `200`; `curl -sI "https://www.refclips.pl/s/abc?x=1"` and `curl -sI "https://57-131-162-204.sslip.io/s/abc?x=1"` give `308` with `location: https://refclips.pl/s/abc?x=1`.
+5. **What changes elsewhere:**
+   - **Monitoring:** change the UptimeRobot monitor URL to `https://refclips.pl/health`.
+   - **Links in e-mails and invitations** use `REFCLIPS_PUBLIC_URL`, so new ones point to the new domain. E-mails and invitations sent earlier keep the old address and still work through the redirect.
+   - **Sessions:** cookies are per host, so after the switch everyone has to log in again on the new domain (the old session cookie never reaches `refclips.pl`). A watch room (`/watch/<id>`) opened before the switch has to be reopened.
+   - **Deploy:** `deploy.sh` reads `REFCLIPS_PUBLIC_URL` from the server's `.env`; `REFCLIPS_DEPLOY_HOST`, `DEPLOY_HOST` in CI and `deploy/known_hosts` keep using the server IP.
+   - The permanent redirect is cached by browsers: to undo it, users would need to clear the cache, so keep the old hosts in `REFCLIPS_REDIRECT_HOSTS` only as long as you want them redirected.
 
 ## Revoking the access of the key `claude-deploy-ref-clips`
 
@@ -220,7 +243,7 @@ If the key had an entry in `sudoers` or some other way of access, remove it too 
 
 ## Troubleshooting
 
-- **No certificate / TLS error after the first start:** `docker compose logs caddy`. The address must point to this server, and ports 80 and 443 must be reachable (ufw, the OVH firewall). `sslip.io` is a shared domain of many people and Let's Encrypt may return a rate limit — Caddy then tries another issuer automatically (ZeroSSL); if that fails too, use your own domain.
+- **No certificate / TLS error after the first start:** `docker compose logs caddy`. The address must point to this server, and ports 80 and 443 must be reachable (ufw, the OVH firewall). On the shared `sslip.io` domain Let's Encrypt may return a rate limit — Caddy then tries another issuer automatically (ZeroSSL); if that fails too, use your own domain ("Own domain").
 - **`deploy.sh`: „brak pliku .env”:** see "First deployment". **"permission denied" with docker:** add the user to the `docker` group or set up `sudo` without a password.
 - **Large uploads break off:** Caddy has no time limit for the request body, and a tus chunk is 50 MB (the Caddy limit is 64 MB); check `docker compose logs app caddy` and the free disk space.
 - **`deploy.sh` ends with code 3 („na serwerze coś trwa”):** this is a protective lock, nothing has changed. Wait, or use `--wait` or `--force` (see "Subsequent deployments"). If „konwersja nagrania #N — 0%” blocks for many hours and `docker compose ps` shows the worker as `unhealthy`: `docker compose restart worker` (the jobs return to the queue).

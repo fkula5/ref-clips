@@ -32,7 +32,9 @@ services:
     image: caddy:2.9.1
     restart: unless-stopped
     environment:
-      REFCLIPS_SITE: ${REFCLIPS_SITE:?Ustaw REFCLIPS_SITE w pliku .env (np. 57-131-162-204.sslip.io)}
+      REFCLIPS_SITE: ${REFCLIPS_SITE:?Ustaw REFCLIPS_SITE w pliku .env (np. refclips.pl)}
+      # Optional, space-separated: hosts that redirect to REFCLIPS_SITE (www, the old sslip.io name).
+      REFCLIPS_REDIRECT_HOSTS: ${REFCLIPS_REDIRECT_HOSTS:-}
     ports:
       - "${REFCLIPS_HTTP_PORT:-80}:80"
       - "${REFCLIPS_HTTPS_PORT:-443}:443"
