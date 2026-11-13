@@ -80,7 +80,7 @@ Environment variables:
 | `REFCLIPS_DATA_DIR` | data directory (default `./data`): SQLite database, uploaded files, proxies, clips |
 | `DATABASE_URL` | database address (default: SQLite in the data directory) |
 | `REFCLIPS_COOKIE_SECURE` | `1` sets cookies with the `Secure` flag — enable over HTTPS; leave off locally over `http://` |
-| `REFCLIPS_PUBLIC_URL` | application address in invitation links (e.g. `https://klipy.example.pl`); default: from the request |
+| `REFCLIPS_PUBLIC_URL` | application address in invitation links and share links (e.g. `https://refclips.pl`); default: from the request |
 | `REFCLIPS_TRUST_PROXY` | `1` takes the client address (login attempt limit) from `X-Forwarded-For` — only behind a trusted proxy |
 | `REFCLIPS_UPLOAD_MAX_GB` | max size of one uploaded file (default 8) |
 | `REFCLIPS_DRAFT_RESERVE_GB` | space reserved for a proxy when an upload is accepted (default 1.5) |
