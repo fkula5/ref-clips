@@ -19,7 +19,8 @@ from app.db import SessionLocal, get_db
 from app.initdb import init_db
 from app.models import Job, User
 from app.routers import (admin, auth, clips, clips_v2, describe, feedback, groups, matches, notifications,
-                         scoresheets, share, share_links, sheets, training_sets, uploads, videos, watch as watch_routes)
+                         scoresheets, settings, share, share_links, sheets, training_sets, unsubscribe, uploads, videos,
+                         watch as watch_routes)
 from app.web import BASE, back_url, render
 
 
@@ -42,6 +43,7 @@ app.mount("/static", StaticFiles(directory=BASE / "static"), name="static")
 
 app.include_router(auth.public_router, dependencies=PUBLIC)
 app.include_router(share.router)  # no session or CSRF: read-only public links
+app.include_router(unsubscribe.router)  # no session or CSRF: the token in the URL is the proof
 app.include_router(auth.router, dependencies=PROTECTED)
 app.include_router(admin.router, dependencies=PROTECTED)
 app.include_router(matches.router, dependencies=PROTECTED)
@@ -56,6 +58,7 @@ app.include_router(share_links.router, dependencies=PROTECTED)
 app.include_router(sheets.router, dependencies=PROTECTED)
 app.include_router(scoresheets.router, dependencies=PROTECTED)
 app.include_router(notifications.router, dependencies=PROTECTED)
+app.include_router(settings.router, dependencies=PROTECTED)
 app.include_router(groups.router, dependencies=PROTECTED)
 app.include_router(training_sets.router, dependencies=PROTECTED)
 app.include_router(watch_routes.router, dependencies=PROTECTED)

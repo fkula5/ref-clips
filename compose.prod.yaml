@@ -4,6 +4,9 @@
 # defined in compose.yaml; only the differences are here: no app port on the host, Caddy with HTTPS, log
 # rotation.
 # Settings come from .env (template: deploy/env.prod.example). Guide: docs/wdrozenie.md
+# The e-mail digest needs no entry here: compose.yaml gives app and worker the whole .env (env_file), and
+# the REFCLIPS_SMTP_* / REFCLIPS_MAIL_FROM* variables, including the SMTP password, are read from there.
+# Nothing secret is written in the compose files. Guide: docs/email-digest.md
 name: ref-clips
 
 x-logi: &logi

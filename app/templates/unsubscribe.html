@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="pl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow">
+  <meta name="referrer" content="no-referrer">
+  <title>Wyłączenie maili</title>
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body class="share-page">
+<main class="share">
+{% if state == "confirm" %}
+  <h1>Wyłączyć wszystkie maile?</h1>
+  <p>Przestaniesz dostawać z ref-clips codzienne podsumowania. Powiadomienia w aplikacji zostają bez zmian.</p>
+  <form method="post" action="/unsubscribe/{{ token }}"><button class="btn primary">Wyłącz wszystkie maile</button></form>
+{% elif state == "done" %}
+  <h1>Maile wyłączone</h1>
+  <div class="banner ok" role="status">Nie wyślemy już do Ciebie podsumowań. Możesz je włączyć z powrotem w <a href="/settings/notifications">ustawieniach powiadomień</a> po zalogowaniu.</div>
+{% else %}
+  <h1>Link jest nieprawidłowy</h1>
+  <div class="banner error" role="alert">Ten link do wyłączenia maili nie działa. Zaloguj się i zmień <a href="/settings/notifications">ustawienia powiadomień</a>.</div>
+{% endif %}
+</main>
+</body>
+</html>

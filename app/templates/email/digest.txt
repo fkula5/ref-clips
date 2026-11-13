@@ -1,0 +1,32 @@
+{% if test %}To jest wiadomość testowa: podsumowanie z ostatnich 24 godzin, wysłane na żądanie administratora.
+
+{% endif %}
+Cześć {{ user.name }},
+
+{% if digest.empty %}
+W okresie {{ period }} nic się nie zmieniło w tym, o czym chcesz być informowany(-a).
+{% else %}
+Co nowego w ref-clips ({{ period }}):
+{% endif %}
+{% for section in digest.sections %}
+
+{{ section.title }}
+{% if section.url %}{{ section.url }}
+{% endif %}
+{% for entry in section.entries %}
+- {{ entry.text }}
+{% if entry.url %}  {{ entry.url }}
+{% endif %}
+{% for snippet in entry.snippets %}
+    {{ snippet.text }}
+    {{ snippet.url }}
+{% endfor %}
+{% if entry.more %}
+    ...i {{ entry.more }} więcej
+{% endif %}
+{% endfor %}
+{% endfor %}
+
+--
+Zmień ustawienia: {{ settings_url }}
+Wyłącz wszystkie maile: {{ unsubscribe_url }}

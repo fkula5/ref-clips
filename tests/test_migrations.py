@@ -14,7 +14,7 @@ EXPECTED_TABLES = {
     "jobs", "settings", "upload_rejections", "share_links", "share_link_clips",
     "sheet_elements", "sheets", "sheet_columns", "sheet_rows", "sheet_cells", "notifications",
     "training_groups", "group_members", "training_sets", "training_set_clips", "training_set_groups",
-    "match_scoresheets",
+    "match_scoresheets", "email_preferences",
 }
 
 
@@ -373,3 +373,39 @@ def test_scoresheets_migration_is_additive_and_cascades(tmp_path):
     command.downgrade(cfg, "mvp0009")
     assert "match_scoresheets" not in set(inspect(create_engine(url)).get_table_names())
     assert {"training_sets", "matches"} <= set(inspect(create_engine(url)).get_table_names())
+
+
+def test_email_digest_migration_is_additive_and_cascades(tmp_path):
+    from sqlalchemy import text
+
+    url = f"sqlite:///{tmp_path / 'm.db'}"
+    cfg = _config(url)
+    command.upgrade(cfg, "mvp0010")
+    engine = create_engine(url)
+    with engine.begin() as conn:
+        conn.execute(text("INSERT INTO users (id, email, name, is_active) VALUES (1, 'a@b.pl', 'A', 1), "
+                          "(2, 'c@d.pl', 'C', 1)"))
+    assert "email_preferences" not in inspect(engine).get_table_names()
+    command.upgrade(cfg, "head")
+    assert {"email_preferences"} <= set(inspect(create_engine(url)).get_table_names())
+    with engine.begin() as conn:
+        conn.execute(text("PRAGMA foreign_keys=ON"))
+        assert conn.execute(text("SELECT count(*) FROM users")).scalar() == 2  # existing accounts untouched
+        assert conn.execute(text("SELECT count(*) FROM email_preferences")).scalar() == 0  # no row means the defaults
+        conn.execute(text("INSERT INTO email_preferences (user_id, unsubscribe_token) VALUES (1, 'tok'), (2, NULL)"))
+        row = conn.execute(text("SELECT digest_enabled, new_clips_in_groups, group_added, last_digest_until "
+                                "FROM email_preferences WHERE user_id = 1")).one()
+        assert tuple(row) == (1, None, None, None)  # on by default, every event follows the roles
+        assert compare_metadata(MigrationContext.configure(conn), Base.metadata) == []
+    with engine.begin() as conn, pytest.raises(Exception):  # a token identifies one account
+        conn.execute(text("PRAGMA foreign_keys=ON"))
+        conn.execute(text("INSERT INTO email_preferences (user_id, unsubscribe_token) VALUES (3, 'tok')"))
+    with engine.begin() as conn:
+        conn.execute(text("PRAGMA foreign_keys=ON"))
+        conn.execute(text("DELETE FROM users WHERE id = 1"))
+        assert conn.execute(text("SELECT user_id FROM email_preferences")).scalars().all() == [2]
+    command.downgrade(cfg, "mvp0010")
+    tables = set(inspect(create_engine(url)).get_table_names())
+    assert "email_preferences" not in tables and {"users", "match_scoresheets"} <= tables
+    command.upgrade(cfg, "head")
+    assert "email_preferences" in set(inspect(create_engine(url)).get_table_names())

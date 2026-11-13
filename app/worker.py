@@ -9,7 +9,7 @@ import time
 from sqlalchemy import and_, case, exists, or_, select, update
 from sqlalchemy.orm import Session
 
-from app import config, health, notify, retention, scoresheets, services, uploads, video as vid
+from app import config, digest, health, notify, retention, scoresheets, services, uploads, video as vid
 from app.db import SessionLocal
 from app.models import Clip, Job, Video
 from app.storage import storage
@@ -179,6 +179,21 @@ def heartbeat_loop(stop: threading.Event, interval: float = config.WORKER_HEARTB
             return
 
 
+def digest_loop(stop: threading.Event, interval: float = config.DIGEST_CHECK_SECONDS) -> None:
+    """A thread of its own, like the heartbeat, so a long ffmpeg conversion in the main loop cannot delay
+    the 07:00 mail. `run_due` is cheap when nothing is due and safe to repeat; a failing check only
+    logs and the next one retries.
+    """
+    while True:
+        try:
+            with SessionLocal() as db:
+                digest.run_due(db)
+        except Exception:  # noqa: BLE001
+            log.exception("Sprawdzanie podsumowania mailowego nie powiodło się")
+        if stop.wait(interval):
+            return
+
+
 def _on_sigterm(signum, frame) -> None:
     """docker stop / systemd: kills a running ffmpeg and exits. The interrupted job stays `running` in the DB and returns to the queue at the next start (`recover_interrupted`)."""
     vid.terminate_active()
@@ -192,6 +207,7 @@ def main() -> None:
     init_db()
     recover_interrupted()
     threading.Thread(target=heartbeat_loop, args=(threading.Event(),), name="heartbeat", daemon=True).start()
+    threading.Thread(target=digest_loop, args=(threading.Event(),), name="digest", daemon=True).start()
     warned_at = 0.0
     maintained_at = float("-inf")
     log.info("Worker uruchomiony")
