@@ -29,8 +29,8 @@ def render_admin(request: Request, db: Session, template: str, status_code: int 
 
 
 @router.get("")
-def admin_home(_admin: User = admin_only):
-    return RedirectResponse("/admin/users", status_code=303)
+def admin_home(user: User = require(permissions.can_access_admin)):
+    return RedirectResponse(permissions.admin_home_url(user), status_code=303)
 
 
 def _invite_url(request: Request, token: str) -> str:

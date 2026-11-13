@@ -81,7 +81,7 @@ A user may have **several roles at once** (e.g. administrator + coach). Permissi
   - **category** from the dictionary (list below) or "custom" („własna”) with a short name typed in by hand,
   - **quarter and time since the start of the quarter in the recording**, calculated automatically from the quarter markers. The interface labels it directly, e.g. „Q2 · 4:12 od początku kwarty (czas nagrania)” ("Q2 · 4:12 since the start of the quarter (recording time)"). **This is not the match clock.**
   - an optional text description.
-- Starting dictionary of categories (editable by the administrator, with aliases for recognition in notes):
+- Starting dictionary of categories (editable by a coach or the administrator, with aliases for recognition in notes):
   - **Fouls:** personal, in a shooting action, block / charge, unsportsmanlike, technical, disqualifying.
   - **Violations:** travelling, double dribble, 3 s, 5 s, 8 s, 24 s, out of bounds, goaltending / interference.
   - **No whistle:** no whistle (there should have been one), whistle not needed.

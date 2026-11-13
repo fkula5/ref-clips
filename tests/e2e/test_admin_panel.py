@@ -72,6 +72,35 @@ def test_admin_adds_and_deactivates_a_category_and_the_describe_form_loses_it(ui
     expect(page.locator("#category-select option", has_text="Faul w ataku")).to_have_count(1)
 
 
+def test_coach_opens_administration_and_edits_a_category(ui):
+    coach = ui.page("coach")
+    coach.goto("/")
+    coach.locator("#site-nav").get_by_role("link", name="Administracja").click()
+    expect(coach).to_have_url(ui.server.base_url + "/admin/categories")
+    expect(coach.get_by_role("heading", name="Kategorie klipów")).to_be_visible()
+    tabs = coach.locator(".admin-tabs")
+    expect(tabs.get_by_role("link", name="Kategorie")).to_be_visible()
+    expect(tabs.get_by_role("link", name="Arkusz oceny")).to_be_visible()
+    expect(tabs.get_by_role("link", name="Użytkownicy")).to_have_count(0)
+    expect(tabs.get_by_role("link", name="Retencja i dysk")).to_have_count(0)
+
+    form = coach.locator("#new-category")
+    form.get_by_label("Nazwa").fill("Faul trenera")
+    form.get_by_role("button", name="Dodaj kategorię").click()
+    expect(coach.locator("#admin-notice")).to_contain_text("Dodano kategorię „Faul trenera”")
+    row = category_row(coach, "Faul trenera")
+    row.locator('input[name="name"]').fill("Faul trenera 2")
+    row.get_by_role("button", name="Zapisz").click()
+    expect(coach.locator("#admin-notice")).to_contain_text("Zapisano kategorię „Faul trenera 2”")
+    expect(category_row(coach, "Faul trenera 2")).to_have_count(1)
+
+    tabs.get_by_role("link", name="Arkusz oceny").click()
+    expect(coach).to_have_url(ui.server.base_url + "/admin/sheet-elements")
+
+    ui.allow(r"status of 403")
+    assert coach.goto("/admin/users").status == 403
+
+
 def test_admin_changes_retention_days_with_validation_and_the_recalculate_option(ui):
     match_id = ui.server.make_match()
     video_id = ui.server.make_ready_video(match_id)
@@ -185,18 +214,19 @@ def test_banner_about_uploads_rejected_for_lack_of_space(ui):
     expect(admin.locator("#odrzucone")).to_contain_text(ui.server.user_name("coach"))
 
 
-def test_non_admin_does_not_see_the_panel(ui):
-    for role in ("coach", "referee"):
-        page = ui.page(role)
-        page.goto("/")
-        expect(page.get_by_role("link", name="Administracja")).to_have_count(0)
+def test_referee_does_not_see_the_panel_and_coach_not_the_admin_only_tabs(ui):
+    page = ui.page("referee")
+    page.goto("/")
+    expect(page.get_by_role("link", name="Administracja")).to_have_count(0)
     ui.allow(r"status of 403")
-    page = ui.page("coach")
-    for path in ("/admin/users", "/admin/categories", "/admin/retention"):
-        response = page.goto(path)
-        assert response.status == 403, path
-        expect(page.get_by_role("heading", name="Brak dostępu")).to_be_visible()
-        expect(page.locator(".admin-tabs")).to_have_count(0)
+    for role, paths in (("referee", ("/admin/users", "/admin/categories", "/admin/sheet-elements", "/admin/retention")),
+                        ("coach", ("/admin/users", "/admin/retention"))):
+        page = ui.page(role)
+        for path in paths:
+            response = page.goto(path)
+            assert response.status == 403, (role, path)
+            expect(page.get_by_role("heading", name="Brak dostępu")).to_be_visible()
+            expect(page.locator(".admin-tabs")).to_have_count(0)
 
 
 def test_admin_table_row_cells_have_one_height(ui):

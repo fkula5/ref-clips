@@ -18,8 +18,8 @@ A tool for basketball referees and coaches for **analysing referee decisions in 
 | Role | Who it is | What it does |
 |---|---|---|
 | **Referee** | member of a training group | uploads matches, marks and describes their own situations, responds to comments, browses the library |
-| **Coach** | observer / instructor | points out situations to describe, rates, comments, publishes clips to the library |
-| **Admin** | group leader | manages accounts, dictionaries (tags, league levels), settings |
+| **Coach** | observer / instructor | points out situations to describe, rates, comments, publishes clips to the library, manages the category dictionary and the assessment sheet elements |
+| **Admin** | group leader | manages accounts and roles, retention and disk (the dictionaries are shared with coaches) |
 
 Referee functions in a match crew: **CC** (first referee), **U1** (second), **U2** (optional third).
 
@@ -125,7 +125,7 @@ field are public.
 | C-03 | Drawing on a still frame (arrows, lines, positions) attached to a comment | ⬜ | |
 | C-04 | A coach's rating separate from the referee's self-assessment | ⬜ | |
 | C-05 | A reference to the FIBA rule / interpretation for a clip | ⬜ | |
-| C-06 | Qualifier assessment sheet: a descriptive assessment of the match crew (a comment on each item for each referee, overall assessment and recommendation, a note about the pair), draft and publication, printing to PDF; items editable in the admin panel. Details: `docs/arkusz-kwalifikatora.md` | ✅ | |
+| C-06 | Qualifier assessment sheet: a descriptive assessment of the match crew (a comment on each item for each referee, overall assessment and recommendation, a note about the pair), draft and publication, printing to PDF; items editable in the admin panel by a coach or admin. Details: `docs/arkusz-kwalifikatora.md` | ✅ | |
 
 ### 4.7 Dictionaries and settings
 

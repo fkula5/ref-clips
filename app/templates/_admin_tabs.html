@@ -4,7 +4,7 @@
   {% if perm.can_manage_sheet_elements(user) %}<a href="/admin/sheet-elements" {{ 'class=active aria-current=page' if tab == 'sheet' }}>Arkusz oceny</a>{% endif %}
   {% if perm.can_manage_retention(user) %}<a href="/admin/retention" {{ 'class=active aria-current=page' if tab == 'retention' }}>Retencja i dysk{% if rejected_count %} <span class="chip warn" title="Odrzucone uploady z braku miejsca">{{ rejected_count }}</span>{% endif %}</a>{% endif %}
 </nav>
-{% if rejected_count and tab != 'retention' %}
+{% if rejected_count and tab != 'retention' and perm.can_manage_retention(user) %}
 <div class="banner warn" id="rejected-banner" role="alert">
   <strong>Brak miejsca na dysku:</strong> w ostatnich {{ warn_days }} dniach odrzucono uploady z tego powodu ({{ rejected_count }}).
   <a href="/admin/retention#odrzucone">Zobacz szczegóły i zwolnij miejsce</a>.
