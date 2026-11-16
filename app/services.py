@@ -491,6 +491,17 @@ def clip_filename(clip: Clip, *, with_referee: bool = True, function_only: bool 
     return ("_".join(part for part in parts if part) or "klip") + ".mp4"
 
 
+def recording_filename(video: Video) -> str:
+    """date_teams_label.mp4, e.g. 2026-10-28_Legia-Wisla_Calosc.mp4 (teams only when named; the label,
+    or what the file contains when there is none; ASCII only; no crew names).
+    """
+    match = video.match
+    teams = "-".join(part for part in (_filename_part(name) for name in (match.team_a_name, match.team_b_name))
+                     if part)
+    position = _filename_part(video.label) or _filename_part(content_label(video.content))
+    return "_".join(part for part in (match.date.isoformat(), teams, position) if part) + ".mp4"
+
+
 def unique_filenames(names: Iterable[str]) -> list[str]:
     """Later duplicates get _2, _3 before the extension."""
     used: set[str] = set()

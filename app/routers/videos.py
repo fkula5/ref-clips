@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
@@ -19,6 +21,7 @@ from app.web import clip_json, file_response, mark_json, render
 router = APIRouter()
 
 can_upload_video = via_match(permissions.can_upload_to_match)
+can_download_recording = via_match(permissions.can_download_recording)
 can_manage_video_clips = via_match(permissions.can_manage_clips)
 
 
@@ -31,11 +34,21 @@ def videos_panel(request: Request, match: Match = Depends(get_match),
 
 @router.get("/videos/{video_id}/stream")
 def stream_video(video: Video = Depends(get_video), user: User = require(permissions.can_view)):
+    return file_response(_proxy_file(video))
+
+
+@router.get("/videos/{video_id}/download")
+def download_video(video: Video = Depends(get_video),
+                   user: User = require(can_download_recording, get_video)):
+    return file_response(_proxy_file(video), download_name=services.recording_filename(video))
+
+
+def _proxy_file(video: Video) -> Path:
     if video.purged_at is not None:
         raise HTTPException(409, "Pełne nagranie zostało usunięte")
     if video.status != "ready" or not video.proxy_path or not storage.exists(video.proxy_path):
         raise HTTPException(409, "Wersja robocza nie jest jeszcze gotowa")
-    return file_response(storage.local_path(video.proxy_path))
+    return storage.local_path(video.proxy_path)
 
 
 @router.post("/videos/{video_id}/retry")

@@ -62,6 +62,7 @@ Priority: **M** = must be in the MVP · **S** = worth having · **P** = later (o
 | N-05 | Choice of proxy quality (720p / 1080p) or cutting clips from the original | ⬜ | |
 | N-06 | Downloading a recording from a YouTube link | ⬜ | |
 | N-07 | Synchronising several recordings of the same match (e.g. a Veo camera + a phone) | ⬜ | |
+| N-08 | Downloading the recording (the 720p working copy, MP4) from the recordings panel: the match crew's referees, coaches and admins, only until retention removes the full recording; file name `2026-10-28_Legia-Wisla_Calosc.mp4` (date, teams, label; no referee names) | ✅ | |
 
 ### 4.3 Player
 

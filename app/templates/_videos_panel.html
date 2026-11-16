@@ -40,6 +40,7 @@
           {% set note = video_expiry_note(v) %}
           <div class="small-note {{ 'warn-text' if note else 'muted' }} video-expiry">{{ note|capitalize if note else 'Pełne nagranie dostępne do ' ~ v.expires_at|local("%d.%m.%Y") }}{% if note %} (do {{ v.expires_at|local("%d.%m.%Y") }}){% endif %}.</div>
         {% endif %}
+        {% if v.status == 'ready' and not v.purged_at and perm.can_download_recording(user, match) %}<div class="muted small-note video-download-note">Pobierany plik to wersja robocza 720p, nie oryginał.</div>{% endif %}
         {% if v.error %}<div class="error-text">{{ v.error }}</div>{% endif %}
         {% if v.status == 'error' and not v.original_path %}<div class="error-text">Oryginał został już usunięty — ponowna konwersja jest niemożliwa. Usuń nagranie i wgraj plik jeszcze raz.</div>{% endif %}
       </div>
@@ -48,6 +49,7 @@
       {% if v.status == 'ready' and not v.purged_at %}
         <a class="btn primary" href="/videos/{{ v.id }}">Odtwarzacz</a>
         {% if perm.can_manage_clips(user, match) %}<a class="btn" href="/videos/{{ v.id }}/notes">Wklej notatki</a>{% endif %}
+        {% if perm.can_download_recording(user, match) %}<a class="btn" href="/videos/{{ v.id }}/download" download>Pobierz nagranie{% if v.proxy_bytes %} ({{ v.proxy_bytes|filesize }}){% endif %}</a>{% endif %}
       {% endif %}
       {% if perm.can_upload_to_match(user, match) %}<a class="btn" href="/videos/{{ v.id }}/edit">Edytuj</a>{% endif %}
       {% if v.status == 'error' and v.original_path and perm.can_upload_to_match(user, match) %}
