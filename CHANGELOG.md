@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.12.0](https://github.com/fkula5/ref-clips/compare/v1.11.0...v1.12.0) (2026-11-17)
+
+
+### Features
+
+* allow extra sites behind Caddy ([#36](https://github.com/fkula5/ref-clips/issues/36)) ([4856969](https://github.com/fkula5/ref-clips/commit/4856969e4c7075f96b7e3abe485a1fe2a7d07d6f))
+
 ## [1.11.0](https://github.com/fkula5/ref-clips/compare/v1.10.0...v1.11.0) (2026-11-17)
 
 
