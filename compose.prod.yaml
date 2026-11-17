@@ -43,6 +43,12 @@ services:
       - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data  # certificates and Let's Encrypt account keys: do NOT delete
       - caddy_config:/config
+      # Extra sites (see the end of deploy/Caddyfile); docker creates the directory if it is missing.
+      - ${REFCLIPS_CADDY_SITES_DIR:-/opt/caddy-sites}:/etc/caddy/sites:ro
+    networks:
+      - default
+      # Only Caddy joins this network, so other sites' containers can be proxied without reaching app/worker.
+      - sites
     depends_on:
       app:
         condition: service_healthy
@@ -51,3 +57,8 @@ services:
 volumes:
   caddy_data:
   caddy_config:
+
+networks:
+  # Fixed name, so other compose projects can join it as `external: true`.
+  sites:
+    name: caddy-sites
