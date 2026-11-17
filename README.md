@@ -209,6 +209,7 @@ Roles (several at once, permissions add up):
 | Managing the category dictionary and the assessment sheet elements | yes | yes | no |
 | Viewing all matches and clips, commenting | yes | yes | yes |
 | Uploading matches and crew, creating and describing clips | every match | every match | only matches in which they are in the crew (by account) |
+| Downloading a recording (the 720p working copy) | every match | every match | only matches in which they are in the crew (by account) |
 | Rating a clip | no (unless they also have the coach role) | yes, own | no |
 | Editing and deleting | everything | own | own |
 
@@ -368,6 +369,12 @@ Publicly only the video, the league and the decision category are visible — no
    The „Zaznacz” button can be seen and used by the administrator, the coach and the referee from the match crew
    (the server enforces this also for requests bypassing the interface). A recording whose full version
    has been deleted (retention) has no player or markers — the page shows a message, and the cut clips stay.
+
+   **Downloading a recording.** In the recordings panel „Pobierz nagranie” („Download recording”, with the file size) saves the 720p
+   working copy — the original is deleted after conversion. Available to the administrator, the coach and the referee from the
+   match crew (`can_download_recording`; the server answers 403 to others), only while the full recording exists (409 after retention
+   or before the conversion ends). The file name is `data_druzyny_nagranie.mp4`, e.g. `2026-10-28_Legia-Wisla_Calosc.mp4`
+   (ASCII only, no referee names; the teams are left out when unnamed; without a label the content stands in, e.g. `kwarta-Q3`).
    Note: in browsers without `requestFullscreen` on the container (e.g. Safari on an iPhone) the full screen
    of the native player does not show the flash — the `Z` key still works, but the confirmation is visible only after exiting.
 

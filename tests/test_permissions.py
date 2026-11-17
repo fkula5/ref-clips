@@ -98,6 +98,11 @@ ROWS = [
          **{"brak ról": (False, False), "admin": (True, True), "coach": (True, True),
             "referee": (True, False), "admin+coach": (True, True), "admin+referee": (True, True),
             "coach+referee": (True, True)}),
+    _row("pobieranie nagrania", lambda u, m: p.can_download_recording(u, m),
+         [match(in_crew=True), match(in_crew=False)],
+         **{"brak ról": (False, False), "admin": (True, True), "coach": (True, True),
+            "referee": (True, False), "admin+coach": (True, True), "admin+referee": (True, True),
+            "coach+referee": (True, True)}),
     _row("tworzenie klipów", lambda u, m: p.can_manage_clips(u, m),
          [match(in_crew=True), match(in_crew=False)],
          **{"brak ról": (False, False), "admin": (True, True), "coach": (True, True),
@@ -253,6 +258,8 @@ def test_inactive_user_and_anonymous_have_no_access():
     assert not p.can_upload_to_match(None, match(in_crew=True))
     assert not p.can_manage_scoresheet(None, match(in_crew=True))
     assert not p.can_manage_scoresheet(inactive, match(in_crew=True))
+    assert not p.can_download_recording(None, match(in_crew=True))
+    assert not p.can_download_recording(inactive, match(in_crew=True))
     assert not p.can_share_clip(inactive, clip(author=ME)) and not p.can_share_clip(None, clip())
     assert not p.can_revoke_share(inactive, ShareLink(created_by=ME)) and not p.can_revoke_share(None, ShareLink())
     own = sheet(author=ME, published=True, in_crew=True)
@@ -288,6 +295,7 @@ def forbidden_requests(w):
         ("spoza obsady: znacznik kwarty", "outsider", "post", f"/api/videos/{v.id}/marks", {"json": {"time_sec": 1}}),
         ("spoza obsady: nowy klip", "outsider", "post", f"/api/videos/{v.id}/quick-clip", {"json": {"time_sec": 5}}),
         ("spoza obsady: notatki", "outsider", "post", f"/videos/{v.id}/notes/commit", {"data": {"count": "0"}}),
+        ("spoza obsady: pobranie nagrania", "outsider", "get", f"/videos/{v.id}/download", {}),
         ("spoza obsady: podgląd notatek", "outsider", "post", f"/videos/{v.id}/notes/preview", {"data": {"text": "1:00 CC aut"}}),
         ("spoza obsady: opis klipu", "outsider", "post", f"/clips/{c.id}/update", {"data": {"official": "team"}}),
         ("spoza obsady: ponowne cięcie", "outsider", "post", f"/clips/{c.id}/recut", {}),

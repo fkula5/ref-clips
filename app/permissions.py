@@ -85,6 +85,11 @@ def can_manage_scoresheet(user, match) -> bool:
     return can_view(user) and _staff_or_official(user, match)
 
 
+def can_download_recording(user, match) -> bool:
+    """Download the 720p working copy of a recording: the crew's referees, coaches and admins."""
+    return can_view(user) and _staff_or_official(user, match)
+
+
 def can_edit_match(user, match) -> bool:
     return _has(user, ADMIN) or (_has(user, COACH, REFEREE) and match.created_by == user.id)
 
