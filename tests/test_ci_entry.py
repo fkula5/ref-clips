@@ -6,13 +6,16 @@ from pathlib import Path
 
 import pytest
 
-SCRIPT = Path(__file__).resolve().parent.parent / "deploy" / "ci-entry.sh"
+DEPLOY = Path(__file__).resolve().parent.parent / "deploy"
+SCRIPT = DEPLOY / "ci-entry.sh"
+SITE_FILES = ("ref-clips.caddy", "render-site.sh", "install-site.sh")
 IMG = "ghcr.io/fkula5/ref-clips"
 
 DOCKER_STUB = r"""#!/usr/bin/env bash
 echo "docker $*" >> "$STUB/calls"
 case "$1" in
   info) exit 0 ;;
+  inspect) [ "$(cat "$STUB/bad")" = noedge ] && exit 1; echo true; exit 0 ;;
   pull) exit 0 ;;
   image) [ "$2" = ls ] && cat "$STUB/images"; exit 0 ;;
 esac
@@ -25,7 +28,7 @@ case "$1" in
             busy) printf 'ZAJĘTE — trwa:\n  - konwersja nagrania #1 — 40%%\n'; exit 1 ;;
             error) echo 'BŁĄD'; exit 2 ;;
           esac
-        else cat "$STUB/caddyfile_running"; fi ;;
+        fi ;;
   up) echo "up $(grep '^REFCLIPS_IMAGE=' .env)" >> "$STUB/calls"
       [ "$(cat "$STUB/bad")" = up ] && grep -q ':v1.2.3$' .env && exit 1 ;;
 esac
@@ -43,41 +46,55 @@ if [ "$(cat "$STUB/bad")" = health ] && grep -q ':v1.2.3$' .env; then
   echo '{"status":"error","checks":{"db":"ok","worker":"stale","disk":"ok"}}' > "$out"; printf 503
 else echo '{"status":"ok"}' > "$out"; printf 200; fi
 """
+RELOAD_STUB = r"""#!/usr/bin/env bash
+echo "reload $(sed -n 2p @SITE@)" >> "$STUB/calls"
+[ "$(cat "$STUB/bad")" = reload ] && grep -q nowy @SITE@ && exit 1
+exit 0
+"""
 
 
 @pytest.fixture()
 def server(tmp_path):
-    stub, app_dir, bin_dir = tmp_path / "stub", tmp_path / "opt", tmp_path / "bin"
-    for d in (stub, app_dir / "deploy", bin_dir):
+    stub, app_dir, bin_dir, edge_dir = tmp_path / "stub", tmp_path / "opt", tmp_path / "bin", tmp_path / "edge"
+    for d in (stub, app_dir / "deploy", bin_dir, edge_dir / "conf" / "sites"):
         d.mkdir(parents=True)
     for name, body in (("docker", DOCKER_STUB), ("curl", CURL_STUB)):
         (bin_dir / name).write_text(body)
         (bin_dir / name).chmod(0o755)
     (app_dir / "compose.yaml").write_text("STARE compose\n")
     (app_dir / "compose.prod.yaml").write_text("STARE prod\n")
-    (app_dir / "deploy" / "Caddyfile").write_text("stary caddyfile\n")
+    for name in SITE_FILES:
+        (app_dir / "deploy" / name).write_text((DEPLOY / name).read_text())
+    (app_dir / "deploy" / "ref-clips.caddy").write_text("# stary szablon\n{$REFCLIPS_SITE} {\n}\n")
+    (edge_dir / "reload.sh").write_text(RELOAD_STUB.replace("@SITE@", str(edge_dir / "conf" / "sites" / "ref-clips.caddy")))
+    (edge_dir / "reload.sh").chmod(0o755)
+    (edge_dir / "conf" / "sites" / "ref-clips.caddy").write_text("# stary\nold.example {\n}\n")
     (app_dir / ".env").write_text(f"REFCLIPS_SITE=x.example\nREFCLIPS_IMAGE={IMG}:v1.1.0\nREFCLIPS_TRUST_PROXY=1\n")
     with tarfile.open(stub / "src.tar.gz", "w:gz") as tar:
         for name, text in {"compose.yaml": "NOWE compose\n", "compose.prod.yaml": "NOWE prod\n",
-                           "deploy/Caddyfile": "nowy caddyfile\n", "deploy/backup.sh": "#!/bin/sh\n",
-                           "app/busy.py": "print('wolne')\n"}.items():
+                           "deploy/ref-clips.caddy": "# nowy szablon\n{$REFCLIPS_SITE} {\n}\n", "deploy/backup.sh": "#!/bin/sh\n",
+                           "app/busy.py": "print('wolne')\n",
+                           **{f"deploy/{n}": (DEPLOY / n).read_text() for n in SITE_FILES[1:]}}.items():
             info = tarfile.TarInfo(f"ref-clips-1.2.3/{name}")
             data = text.encode()
             info.size = len(data)
             tar.addfile(info, io.BytesIO(data))
-    for name, text in {"running": "app\nworker\ncaddy\n", "busy": "", "bad": "-\n", "caddyfile_running": "stary caddyfile\n",
+    for name, text in {"running": "app\nworker\n", "busy": "", "bad": "-\n",
                        "images": "\n".join(f"v{v}" for v in ("1.2.3", "1.2.0", "1.1.5", "1.1.0", "1.0.0")) + "\nlocal\n"}.items():
         (stub / name).write_text(text)
 
     class Server:
         dir = app_dir
+        edge = edge_dir
+        site_file = edge_dir / "conf" / "sites" / "ref-clips.caddy"
 
         def run(self, command, busy=(), bad="-", wait_seconds=60):
             (stub / "busy").write_text("".join(f"{b}\n" for b in busy))
             (stub / "bad").write_text(bad + "\n")
             env = {"PATH": os.environ["PATH"], "REFCLIPS_CI_PATH_PREFIX": str(bin_dir), "STUB": str(stub), "SSH_ORIGINAL_COMMAND": command,
                    "REFCLIPS_CI_DIR": str(app_dir), "REFCLIPS_CI_WAIT_SECONDS": str(wait_seconds),
-                   "REFCLIPS_CI_WAIT_INTERVAL": "1", "REFCLIPS_CI_HEALTH_TRIES": "2", "REFCLIPS_CI_HEALTH_SLEEP": "0"}
+                   "REFCLIPS_CI_WAIT_INTERVAL": "1", "REFCLIPS_CI_HEALTH_TRIES": "2", "REFCLIPS_CI_HEALTH_SLEEP": "0",
+                   "REFCLIPS_EDGE_DIR": str(edge_dir)}
             return subprocess.run(["bash", str(SCRIPT)], env=env, capture_output=True, text=True, timeout=60)
 
         def calls(self):
@@ -137,26 +154,53 @@ def test_success_waits_for_idle_replaces_files_and_cleans_up(server):
     assert r.returncode == 0, r.stderr
     assert r.stdout.count("Czekam") == 2 and "Gotowe: wdrożono v1.2.3" in r.stdout
     assert (server.dir / "compose.yaml").read_text() == "NOWE compose\n"
-    assert (server.dir / "deploy" / "Caddyfile").read_text() == "nowy caddyfile\n"
+    assert (server.dir / "deploy" / "ref-clips.caddy").read_text() == "# nowy szablon\n{$REFCLIPS_SITE} {\n}\n"
+    assert server.site_file.read_text() == "# Generated by deploy/render-site.sh from deploy/ref-clips.caddy; do not edit, the next deploy overwrites it.\n# nowy szablon\nx.example {\n}\n"
     assert (server.dir / ".deploy-commit").read_text().startswith("v1.2.3 ")
     assert server.env_lines() == ["REFCLIPS_SITE=x.example", "REFCLIPS_TRUST_PROXY=1", f"REFCLIPS_IMAGE={IMG}:v1.2.3"]
     calls = server.calls()
     assert f"docker pull --quiet {IMG}:v1.2.3" in calls
     assert "up -d --no-build --remove-orphans --wait --wait-timeout 300" in calls
-    assert "restart caddy" in calls
+    assert "restart" not in calls and calls.count("reload # nowy szablon") == 1
+    assert sorted(p.name for p in server.site_file.parent.iterdir()) == ["ref-clips.caddy"]
     assert f"image rm {IMG}:v1.0.0" in calls  # outside the 3 newest, the current one and the previous one (v1.1.0)
     assert f"image rm {IMG}:v1.1.0" not in calls and "prune" not in calls and "image rm ref-clips" not in calls
     assert not list(server.dir.glob(".ci-incoming.*")) and not (server.dir / ".rollback").exists()
 
 
-@pytest.mark.parametrize("bad", ["up", "health"])
+@pytest.mark.parametrize("bad", ["up", "health", "reload"])
 def test_failed_start_restores_the_previous_version(server, bad):
     r = server.run("deploy v1.2.3", bad=bad)
     assert r.returncode == 4, r.stderr
     assert "Wracam do poprzedniej wersji" in r.stderr and "serwer działa na poprzedniej wersji" in r.stderr
     assert (server.dir / "compose.yaml").read_text() == "STARE compose\n"
-    assert (server.dir / "deploy" / "Caddyfile").read_text() == "stary caddyfile\n"
+    assert (server.dir / "deploy" / "ref-clips.caddy").read_text() == "# stary szablon\n{$REFCLIPS_SITE} {\n}\n"
+    if bad == "reload":  # the failed site file is restored first, then the old release's own file is delivered
+        assert "# stary szablon" in server.site_file.read_text()
+        assert "reload # stary szablon" in server.calls()
     assert server.env_lines().count(f"REFCLIPS_IMAGE={IMG}:v1.1.0") == 1 and not any("v1.2.3" in l for l in server.env_lines())
     assert not (server.dir / ".deploy-commit").exists()
     ups = [c for c in server.calls().splitlines() if c.startswith("up ")]
     assert ups == [f"up REFCLIPS_IMAGE={IMG}:v1.2.3", f"up REFCLIPS_IMAGE={IMG}:v1.1.0"]
+
+
+@pytest.mark.parametrize("what", ["edge-dir", "container"])
+def test_missing_edge_stops_before_any_change(server, what):
+    if what == "edge-dir":
+        for p in sorted(server.edge.rglob("*"), reverse=True):
+            p.rmdir() if p.is_dir() else p.unlink()
+        server.edge.rmdir()
+        r = server.run("deploy v1.2.3")
+    else:
+        r = server.run("deploy v1.2.3", bad="noedge")
+    assert r.returncode == 1 and "nic nie zmieniono" in r.stderr and "docs/wdrozenie.md" in r.stderr
+    assert "STARE" in (server.dir / "compose.yaml").read_text()
+    assert f"REFCLIPS_IMAGE={IMG}:v1.1.0" in server.env_lines()
+    assert "docker pull" not in server.calls() and " up " not in server.calls()
+
+
+def test_invalid_site_in_env_stops_before_any_change(server):
+    (server.dir / ".env").write_text(f"REFCLIPS_SITE=x{{evil\nREFCLIPS_IMAGE={IMG}:v1.1.0\n")
+    r = server.run("deploy v1.2.3")
+    assert r.returncode == 1 and "REFCLIPS_SITE" in r.stderr
+    assert "STARE" in (server.dir / "compose.yaml").read_text() and "docker pull" not in server.calls()

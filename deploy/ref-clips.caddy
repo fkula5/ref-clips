@@ -1,23 +1,13 @@
-# Caddy in front of ref-clips (production). The site address comes from REFCLIPS_SITE
-# (compose.prod.yaml), e.g. refclips.pl; Caddy issues and renews the Let's Encrypt certificate itself
-# (needs ports 80 and 443 open). Local test: REFCLIPS_SITE=localhost (certificate from Caddy's internal
-# CA: the browser warns, curl needs -k).
+# ref-clips site block for the shared edge proxy (github.com/fkula5/vps-edge). Not read by Caddy as is:
+# deploy/render-site.sh substitutes the two placeholders below from .env and install-site.sh puts the
+# result in /opt/edge/conf/sites/ (docs/wdrozenie.md). Global options live in the edge Caddyfile.
 #
+# REFCLIPS_SITE: the host this block serves (e.g. refclips.pl); Caddy issues and renews its Let's Encrypt
+# certificate itself.
 # REFCLIPS_REDIRECT_HOSTS (optional, space-separated, e.g. "www.refclips.pl 57-131-162-204.sslip.io"):
 # extra addresses of the main site block. Caddy gets certificates for them and they answer with a
 # permanent redirect to the main site (path and query kept, so old /s/<code> and invite links work).
-# Empty or unset expands to nothing: no second block, no dummy host, no bogus certificate attempt.
-{
-	# Server-level timeouts. Request and response bodies (read_body, write) have no limit: a 50 MB tus
-	# chunk from a phone over a weak network and a movie watched for an hour must not be cut.
-	servers {
-		timeouts {
-			read_header 30s
-			idle 2m
-		}
-	}
-}
-
+# Empty or unset renders to nothing: no second block, no dummy host, no bogus certificate attempt.
 {$REFCLIPS_SITE} {$REFCLIPS_REDIRECT_HOSTS} {
 	# Redirect hosts (see top). 308, not 301: keeps the method and body, so a stray POST/PATCH to an old
 	# address is not turned into a GET. The block's log filter below still hides tokens in these URLs.
@@ -80,18 +70,10 @@
 
 	# Video (/videos, clips) is served by the app (FileResponse with Range -> 206); Caddy only passes it
 	# through. flush_interval -1 = no response buffering, so seeking starts at once.
-	reverse_proxy app:8000 {
+	reverse_proxy ref-clips-app:8000 {
 		flush_interval -1
 		transport http {
 			dial_timeout 5s
 		}
 	}
 }
-
-# Other sites on this server (e.g. the quiz): one `*.caddy` file per site in REFCLIPS_CADDY_SITES_DIR
-# (default /opt/caddy-sites on the host, mounted read-only). Kept outside this repository, so ref-clips
-# releases never overwrite them. An empty or missing directory is only a warning in the Caddy log, not an
-# error. Their containers join the `caddy-sites` network (compose.prod.yaml), never ref-clips' own network.
-# After adding or changing a file: `docker compose exec caddy caddy reload --config /etc/caddy/Caddyfile`
-# (graceful, no restart).
-import /etc/caddy/sites/*.caddy
