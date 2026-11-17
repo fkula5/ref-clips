@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.12.1](https://github.com/fkula5/ref-clips/compare/v1.12.0...v1.12.1) (2026-11-17)
+
+
+### Miscellaneous Chores
+
+* release the shared edge proxy deploy change ([#39](https://github.com/fkula5/ref-clips/issues/39)) ([6b0bee1](https://github.com/fkula5/ref-clips/commit/6b0bee1e5cca536717b9ff16a3f2546772fab01a))
+
 ## [1.12.0](https://github.com/fkula5/ref-clips/compare/v1.11.0...v1.12.0) (2026-11-17)
 
 
