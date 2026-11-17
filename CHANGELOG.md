@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.11.0](https://github.com/fkula5/ref-clips/compare/v1.10.0...v1.11.0) (2026-11-17)
+
+
+### Features
+
+* **videos:** download the 720p working copy of a recording ([44d8c65](https://github.com/fkula5/ref-clips/commit/44d8c6586ce683d3eaaaa379ca5ca23b33383462))
+* **videos:** download the 720p working copy of a recording ([fc5b9bc](https://github.com/fkula5/ref-clips/commit/fc5b9bc9d71fbdc92a2d1d81c379189a341889e9))
+
 ## [1.10.0](https://github.com/fkula5/ref-clips/compare/v1.9.0...v1.10.0) (2026-11-13)
 
 
