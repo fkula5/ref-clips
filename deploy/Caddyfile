@@ -87,3 +87,11 @@
 		}
 	}
 }
+
+# Other sites on this server (e.g. the quiz): one `*.caddy` file per site in REFCLIPS_CADDY_SITES_DIR
+# (default /opt/caddy-sites on the host, mounted read-only). Kept outside this repository, so ref-clips
+# releases never overwrite them. An empty or missing directory is only a warning in the Caddy log, not an
+# error. Their containers join the `caddy-sites` network (compose.prod.yaml), never ref-clips' own network.
+# After adding or changing a file: `docker compose exec caddy caddy reload --config /etc/caddy/Caddyfile`
+# (graceful, no restart).
+import /etc/caddy/sites/*.caddy

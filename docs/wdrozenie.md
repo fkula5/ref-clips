@@ -228,6 +228,16 @@ Production runs on `https://refclips.pl`; the apex is the canonical address and 
    - **Deploy:** `deploy.sh` reads `REFCLIPS_PUBLIC_URL` from the server's `.env`; `REFCLIPS_DEPLOY_HOST`, `DEPLOY_HOST` in CI and `deploy/known_hosts` keep using the server IP.
    - The permanent redirect is cached by browsers: to undo it, users would need to clear the cache, so keep the old hosts in `REFCLIPS_REDIRECT_HOSTS` only as long as you want them redirected.
 
+## Other sites on this server
+
+Caddy owns ports 80/443, so other applications on this VPS (e.g. the quiz in `/opt/quiz`) go through it without touching this repository:
+
+- one file per site in `/opt/caddy-sites/<name>.caddy` (directory overridable with `REFCLIPS_CADDY_SITES_DIR` in `.env`), mounted read-only and imported at the end of `deploy/Caddyfile`; ref-clips releases never overwrite it,
+- the site's container joins the `caddy-sites` network (`external: true` in its compose file) and the `.caddy` file proxies to it by service name, e.g. `reverse_proxy quiz:3000`; only Caddy is on that network, `app` and `worker` are not,
+- after adding or changing a file: `docker compose exec caddy caddy reload --config /etc/caddy/Caddyfile` (graceful, no restart; a broken file is rejected and the old config keeps running).
+
+An empty directory is only a warning in the Caddy log. Do not reuse the hosts from `REFCLIPS_SITE` / `REFCLIPS_REDIRECT_HOSTS` there.
+
 ## Revoking the access of the key `claude-deploy-ref-clips`
 
 The key is in `~ubuntu/.ssh/authorized_keys` (comment `claude-deploy-ref-clips`). On the server, after logging in with your own key:
