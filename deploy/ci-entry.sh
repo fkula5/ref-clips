@@ -9,6 +9,7 @@ export PATH="${REFCLIPS_CI_PATH_PREFIX:+$REFCLIPS_CI_PATH_PREFIX:}/usr/local/sbi
 unset REFCLIPS_IMAGE COMPOSE_FILE COMPOSE_PROJECT_NAME DOCKER_HOST
 
 DIR="${REFCLIPS_CI_DIR:-/opt/ref-clips}"
+export REFCLIPS_EDGE_DIR="${REFCLIPS_EDGE_DIR:-/opt/edge}"  # the shared proxy (github.com/fkula5/vps-edge)
 REPO="fkula5/ref-clips"
 IMAGE_REPO="ghcr.io/${REPO}"
 WAIT_SECONDS="${REFCLIPS_CI_WAIT_SECONDS:-7200}"
@@ -126,10 +127,15 @@ curl -fsSL --proto '=https' --proto-redir '=https' --tlsv1.2 --retry 2 --max-tim
 tar -xzf "$STAGE/src.tar.gz" -C "$STAGE" --strip-components=1 --no-same-owner --no-same-permissions \
   || die "archiwum $TAG jest uszkodzone"
 rm -f "$STAGE/src.tar.gz"
-for f in compose.yaml compose.prod.yaml deploy/Caddyfile deploy/backup.sh app/busy.py; do
+for f in compose.yaml compose.prod.yaml deploy/ref-clips.caddy deploy/render-site.sh deploy/install-site.sh deploy/backup.sh app/busy.py; do
   [ -f "$STAGE/$f" ] && [ ! -L "$STAGE/$f" ] || die "w archiwum $TAG brak pliku $f"
 done
 [ -z "$(find "$STAGE/deploy" -type l)" ] || die "katalog deploy/ w $TAG zawiera dowiązania symboliczne — odmawiam"
+
+# Before anything is changed: the edge proxy is there and .env renders into a valid site file.
+[ -f .env ] || die "brak pliku .env w $DIR — patrz docs/wdrozenie.md"
+bash "$STAGE/deploy/install-site.sh" --check "$STAGE/deploy/ref-clips.caddy" .env \
+  || die "stos edge albo .env nie są gotowe (patrz wyżej) — nic nie zmieniono"
 
 log "Sprawdzam, czy na serwerze coś trwa (limit czekania $(( WAIT_SECONDS / 60 )) min)..."
 wait_until_free
@@ -158,15 +164,9 @@ log "Podmieniam compose.yaml, compose.prod.yaml i deploy/ (kopia poprzednich: $D
 install_tree "$STAGE"
 set_env_line "REFCLIPS_IMAGE=$IMAGE"
 
-caddy_refresh() {  # The Caddyfile is mounted as a single file: after a change Caddy must be restarted (as in deploy.sh).
-  local services current
-  services="$(dc ps --status running --services 2>/dev/null || true)"
-  grep -qx caddy <<<"$services" || return 0
-  current="$(dc exec -T caddy cat /etc/caddy/Caddyfile 2>/dev/null || true)"
-  if [ "$current" != "$(cat deploy/Caddyfile)" ]; then
-    log "Caddyfile się zmienił, restart Caddy."
-    dc restart caddy
-  fi
+edge_refresh() {  # delivers deploy/ref-clips.caddy to the edge proxy; restores the previous file on failure
+  [ -f deploy/install-site.sh ] || { err "brak deploy/install-site.sh"; return 1; }
+  bash deploy/install-site.sh deploy/ref-clips.caddy .env
 }
 
 HEALTH_BODY=""
@@ -190,7 +190,7 @@ rollback() {
     return 1
   fi
   dc up -d --no-build --remove-orphans --wait --wait-timeout 300 || return 1
-  caddy_refresh || true
+  edge_refresh || true
   local i
   for i in $(seq 1 "$HEALTH_TRIES"); do health_ok && { log "Poprzednia wersja działa (/health 200)."; return 0; }; sleep "$HEALTH_SLEEP"; done
   err "po powrocie /health nie odpowiada 200: $HEALTH_BODY"
@@ -214,7 +214,7 @@ log "Uruchamiam $TAG (docker compose up --wait)..."
 if ! dc up -d --no-build --remove-orphans --wait --wait-timeout 300; then
   fail_and_rollback "docker compose up nie zakończył się powodzeniem"
 fi
-caddy_refresh || fail_and_rollback "restart Caddy nie powiódł się"
+edge_refresh || fail_and_rollback "wdrożenie ref-clips.caddy na edge nie powiodło się"
 
 # Missing disk space alone is not the new version's fault and does not justify a rollback.
 log "Sprawdzam /health (do $(( HEALTH_TRIES * HEALTH_SLEEP )) s)..."

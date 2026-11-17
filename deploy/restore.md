@@ -17,7 +17,7 @@ sudo cat "$SNAP/INFO.txt"
 ## 2. Restoring on the same server
 
 ```bash
-docker compose stop app worker                      # Caddy zostaje, pokaże błąd 502 do końca
+docker compose stop app worker                      # proxy (edge-caddy) zostaje, pokaże błąd 502 do końca
 
 docker compose run --rm --no-deps --user root -v "$SNAP:/backup:ro" app sh -c '
   set -e
@@ -54,5 +54,5 @@ If the restore failed, go back to the state before (`przed-odtworzeniem.db`, `cl
 ## 4. Test restore (once a quarter)
 
 On a separate stack, so as not to touch production: make a copy of the repository in another directory, run it with another project
-(`COMPOSE_PROJECT_NAME=ref-clips-test`, other ports `REFCLIPS_HTTP_PORT`/`REFCLIPS_HTTPS_PORT`, `REFCLIPS_SITE=localhost`),
+(`COMPOSE_PROJECT_NAME=ref-clips-test`, only `compose.yaml` without the production overlay, so no `edge` network or proxy is needed, and another port `REFCLIPS_PORT`),
 perform step 2 and check login and clip playback. At the end run `docker compose down -v` for **this** project.

@@ -76,7 +76,8 @@ arguments on:
 Everything else ends with code 2. The CI key has no write channel to the server: the server fetches the version files
 itself over HTTPS from the public repository (`codeload.github.com/fkula5/ref-clips`), and the image from GHCR. The script
 replaces only `compose.yaml`, `compose.prod.yaml` and `deploy/` in `/opt/ref-clips` and one line `REFCLIPS_IMAGE` in `.env`
-(`.env` is not printed, the data is in volumes). A side effect of the trust model: whoever can merge code into `main`
+(`.env` is not printed, the data is in volumes), and writes the one file `ref-clips.caddy` into the edge proxy's
+`/opt/edge/conf/sites/`. A side effect of the trust model: whoever can merge code into `main`
 controls what is deployed to the server — that is why the `main` protection and the `production` environment matter.
 
 The server's host key is pinned in the repository (`deploy/known_hosts`, a public value), and `ssh` runs with
@@ -87,16 +88,20 @@ server: `ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub`).
 ### Steps of `deploy` on the server
 
 1. an `flock` lock (`/opt/ref-clips/.deploy.lock`, the same as in `deploy.sh`) for the whole duration;
-2. fetching the version's files into a temporary directory (a wrong tag ends immediately, not after 2 hours of waiting);
+2. fetching the version's files into a temporary directory (a wrong tag ends immediately, not after 2 hours of waiting) and
+   a check that the edge proxy (`/opt/edge`, container `edge-caddy`) is there and that `.env` renders into a valid site file
+   — otherwise code 1 with nothing changed;
 3. waiting until nothing is running: `app/busy.py` sent to the input of `python -` of the running `app` container; a stopped
    stack does not block, **a failed check blocks** (code 1); checking every 60 s, up to 120 min in total, then code 3 and
    a message saying what is running;
 4. `docker pull` of the version's image (before any change) and **a re-check of busyness right before the restart**;
 5. a copy of the previous files to `.rollback/`, replacing the files, `REFCLIPS_IMAGE=ghcr.io/fkula5/ref-clips:vX.Y.Z` in `.env`
    (a new file next to it + `mv`, one line; the same image is used by `deploy/backup.sh`);
-6. `docker compose up -d --no-build --remove-orphans --wait --wait-timeout 300`; Caddy restarts only after a change to
-   `Caddyfile`;
-7. a check of `GET /health` through Caddy (up to 150 s). When `up` or `/health` fails: **return to the previous files and the
+6. `docker compose up -d --no-build --remove-orphans --wait --wait-timeout 300` (also removes a leftover `caddy` container
+   from before the shared edge proxy), then `deploy/install-site.sh`: renders `deploy/ref-clips.caddy` with the values from
+   `.env`, puts it in `/opt/edge/conf/sites/` and runs `/opt/edge/reload.sh`; a failed validation restores the previous
+   file and counts as a failed start (rollback, code 4) — [docs/wdrozenie.md](wdrozenie.md), „How the site file reaches the edge”;
+7. a check of `GET /health` through the edge proxy (up to 150 s). When `up` or `/health` fails: **return to the previous files and the
    previous `REFCLIPS_IMAGE`**, code 4 (the rollback succeeded) or 5 (it did not succeed — you need to log in to the server).
    Exception: if `/health` returns an error only because of the disk (database and worker `ok`), it is not the version's
    fault — the new version stays, with a warning;
@@ -150,7 +155,14 @@ cp ~/.ssh/authorized_keys ~/.ssh/authorized_keys.bak
 echo 'command="/usr/local/bin/ref-clips-ci-entry",restrict ssh-ed25519 AAAA…TWÓJ_KLUCZ… ref-clips-ci' >> ~/.ssh/authorized_keys
 ```
 
-The server needs `curl`, `tar` and `flock` (they are present on Ubuntu 24.04). A check **from the computer** (the CI key
+The server needs `curl`, `tar` and `flock` (they are present on Ubuntu 24.04) and the shared edge proxy (`/opt/edge`,
+[vps-edge](https://github.com/fkula5/vps-edge); [docs/wdrozenie.md](wdrozenie.md)); `ubuntu` must be able to write to
+`/opt/edge/conf/sites` (the script puts `ref-clips.caddy` there) and `REFCLIPS_EDGE_DIR` overrides `/opt/edge`.
+The installed script is a copy: **reinstall it by hand after every change to `deploy/ci-entry.sh`** (the commands above);
+the release that moved Caddy out of this project changed it, and the old copy would refuse that release (it requires
+`deploy/Caddyfile` in the archive).
+
+A check **from the computer** (the CI key
 should give only `status`):
 
 ```bash
@@ -273,7 +285,9 @@ Note: `deploy.sh` writes the commit hash to `.deploy-commit`, deployments from G
 | `deploy/ci-entry.sh` | forced command of the CI key on the server (`deploy vX.Y.Z`, `status`) |
 | `deploy/known_hosts` | pinned host key of the server for `ssh` from Actions |
 | `deploy/deploy.sh` | emergency deployment (build on the server) |
+| `deploy/ref-clips.caddy`, `deploy/render-site.sh`, `deploy/install-site.sh` | the site block for the shared edge proxy, its renderer and the step that delivers it (used by both deploy paths) |
 | `tests/test_ci_entry.py` | test of `ci-entry.sh` with stubbed `docker` and `curl` |
+| `tests/test_edge_site.py` | tests of the renderer, `install-site.sh` (stubbed `docker` and edge `reload.sh`) and the compose layout |
 
 Actions from other authors are pinned to full SHAs (a comment next to each gives the version); update them consciously.
 Images in GHCR and releases on GitHub have no automatic cleanup.

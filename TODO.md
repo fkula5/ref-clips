@@ -104,7 +104,7 @@
 - [ ] Conversion time measurement on a real VPS (2 vCPU, ~3.7 GB RAM) and on a real recording (see segment 3); possibly swap on the server, because RAM is small for ffmpeg 4K/HEVC, and memory limits in `compose.prod.yaml`.
 - [x] Monitoring: the `/health` endpoint (database, worker, free space) — done in segment 9 (`app/health.py`, worker heartbeat in `settings`, worker healthcheck in `compose.yaml`; described in `docs/wdrozenie.md`, „Monitoring”). Setting up an external ping (UptimeRobot) remains — see „Notes from segment 9”.
 - [x] The Caddy access log contained tokens in invitation links (`/set-password/...`) — done in segment 9: a `log { format filter }` filter in `deploy/Caddyfile` (request address and Referer → `/set-password/[ukryty]`), the same filter in the uvicorn access log (`app/logfilter.py`), `Referrer-Policy: no-referrer` and `Cache-Control: no-store` on the set-password page.
-- [ ] Pinned Caddy 2.9.1: check the current 2.x version on Docker Hub at the next deployment and raise it (security fixes). Ubuntu: `unattended-upgrades`, SSH login with keys only and `fail2ban` are server preparation (outside the repository).
+- [ ] Pinned Caddy 2.9.1 (now in the separate `vps-edge` stack, `compose.yaml` there): check the current 2.x version on Docker Hub at the next deployment and raise it (security fixes). Ubuntu: `unattended-upgrades`, SSH login with keys only and `fail2ban` are server preparation (outside the repository).
 - [ ] `docker image prune -f` in `deploy.sh` removes all unused untagged images on the server (not only ref-clips); the server is dedicated, but if it is shared, change it to `--filter label=...`.
 - [x] `REFCLIPS_TRUST_PROXY=1` took the first (left) `X-Forwarded-For` entry, which the client can inject when the proxy appends an address instead of replacing it. Now the last entry (appended by the proxy) counts and must be a valid IP address; tests in `tests/test_auth.py`.
 
@@ -128,7 +128,7 @@
 - [ ] Link preview bots (Messenger, WhatsApp) open the page `GET /s/<kod>` and increase the visit counter. Possibly skip known preview User-Agents.
 - [ ] The clip file served publicly carries the cutting time in its `Last-Modified` header (close to the day the recording was uploaded), and the image and sound may show team names or surnames (overlays, commentary) — the application does not control this.
 - [ ] No request limit on `/s/*` (the code has 256 bits, so guessing makes no sense; the ZIP has a limit of parallel builds). If traffic grows: a limit in Caddy.
-- [ ] The syntax of `deploy/Caddyfile` after the change has not been checked with Caddy (Docker not available in this session); check with `docker run --rm -v ... caddy:2.9.1 caddy validate` before deployment. The regular expression was verified in Go (the same RE2 syntax).
+- [ ] The syntax of `deploy/ref-clips.caddy` (rendered by `deploy/render-site.sh`) after the change has not been checked with Caddy (Docker not available in this session); check with `docker run --rm -v ... caddy:2.9.1 caddy validate` before deployment. The regular expression was verified in Go (the same RE2 syntax).
 - [ ] The „Udostępnij zaznaczone” („Share selected”) list remembers the selection only until the page reloads (`static/share.js`); „Wyczyść” („Clear”) in the filters reloads the page and clears it.
 
 ## Notes from the sheet (minor, postponed)

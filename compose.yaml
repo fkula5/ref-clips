@@ -37,8 +37,7 @@ services:
         condition: service_completed_successfully
     # Deliberately /login, not /health: /health returns 503 also when the worker is missing or the disk
     # is low, which neither a restart nor "unhealthy" fixes; it would only block the deploy (`up
-    # --wait`) and the Caddy start (depends_on). /health is for external monitoring and the post-deploy
-    # check.
+    # --wait`). /health is for external monitoring and the post-deploy check.
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/login', timeout=4).status == 200 else 1)"]
       interval: 15s

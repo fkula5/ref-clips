@@ -2,8 +2,12 @@
 # Deploys ref-clips to the server; run LOCALLY from the repository.
 # Sends the current commit (git archive HEAD, not the working directory) over ssh without touching .env
 # or data (data lives in Docker volumes), builds the images, starts the stack (docker compose -f
-# compose.yaml -f compose.prod.yaml up -d --build), waits for the app to be healthy and shows the
-# status. Idempotent. Never prints .env.
+# compose.yaml -f compose.prod.yaml up -d --build), waits for the app to be healthy, delivers the
+# site file to the shared edge proxy (deploy/install-site.sh) and shows the status. Idempotent. Never
+# prints .env.
+#
+# HTTPS is not handled by this stack: the separate edge proxy (github.com/fkula5/vps-edge, /opt/edge on
+# the server) must be installed first, otherwise the script stops before changing anything (docs/wdrozenie.md).
 #
 # Before changing anything on the server it checks for an upload (activity in the last 10 min), a
 # conversion/cut or queued jobs (python -m app.busy in the running container). If something is running
@@ -26,6 +30,7 @@
 #                server's .env, empty = skip)
 #            REFCLIPS_DEPLOY_CURL_OPTS     extra curl options for the final check (e.g. -k for a test
 #                with a local certificate)
+#            REFCLIPS_EDGE_DIR     directory of the edge proxy ON THE SERVER (default /opt/edge)
 #            REFCLIPS_DEPLOY_FORCE=1       same as --force
 #            REFCLIPS_DEPLOY_WAIT_MINUTES  wait limit for --wait (default 120)
 #            REFCLIPS_DEPLOY_WAIT_INTERVAL seconds between checks for --wait (default 60)
@@ -92,6 +97,7 @@ echo "==> Wdrażam $COMMIT ($SUBJECT) na $HOST:$DIR"
 SSH=(ssh -i "$KEY" -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=accept-new
      -o ConnectTimeout=15 -o ServerAliveInterval=30 "$HOST")
 QDIR="$(printf '%q' "$DIR")"
+QEDGE="$(printf '%q' "${REFCLIPS_EDGE_DIR:-/opt/edge}")"
 
 # The busy check happens BEFORE replacing files, so after an abort the server directory matches the
 # running version. It is app.busy from the deployed commit, piped into `python -` of the running
@@ -162,7 +168,7 @@ git archive --format=tar HEAD | "${SSH[@]}" "set -e
   printf '%s %s\\n' $COMMIT \"\$(date -u +%FT%TZ)\" > .deploy-commit"
 
 echo "==> Budowanie i uruchamianie na serwerze"
-"${SSH[@]}" "bash -s -- $QDIR $FORCE" <<'REMOTE'
+"${SSH[@]}" "bash -s -- $QDIR $FORCE $QEDGE" <<'REMOTE'
 set -euo pipefail
 cd "$1"
 exec 9>.deploy.lock
@@ -172,6 +178,11 @@ flock -n 9 || { echo "BŁĄD: inne wdrożenie trwa (blokada .deploy.lock)" >&2; 
 for key in REFCLIPS_SITE REFCLIPS_COOKIE_SECURE REFCLIPS_TRUST_PROXY REFCLIPS_PUBLIC_URL; do
   grep -Eq "^${key}=." .env || { echo "BŁĄD: w .env brakuje ustawienia $key" >&2; exit 1; }
 done
+
+# The edge proxy is a separate stack: without it nothing would serve the site, so stop before any change.
+# Also checks that REFCLIPS_SITE and REFCLIPS_REDIRECT_HOSTS render into a valid site file.
+export REFCLIPS_EDGE_DIR="$3"
+bash deploy/install-site.sh --check deploy/ref-clips.caddy .env
 
 # The image built here is ref-clips:local regardless of REFCLIPS_IMAGE in .env (it may point to GHCR).
 # The variable goes through `env` because sudo clears the environment.
@@ -201,12 +212,13 @@ chmod --reference=.env "$env_tmp"
 mv -f "$env_tmp" .env
 
 "${DOCKER[@]}" compose up -d --remove-orphans --wait --wait-timeout 300
-# The Caddyfile is mounted as a single file and the upload recreates it: the running Caddy still sees
-# the old content and compose does not recreate it. After a config change it must be restarted.
-if ! "${DOCKER[@]}" compose exec -T caddy cat /etc/caddy/Caddyfile | cmp -s - deploy/Caddyfile; then
-  echo "--- Caddyfile się zmienił, restart Caddy:"
-  "${DOCKER[@]}" compose restart caddy
-fi
+# The old bundled `caddy` container (if any) is removed above by --remove-orphans. The site file goes in
+# after `up`, when the app is already reachable as ref-clips-app on the edge network.
+echo "--- ref-clips.caddy → edge-caddy:"
+bash deploy/install-site.sh deploy/ref-clips.caddy .env || {
+  echo "BŁĄD: nie udało się wdrożyć ref-clips.caddy na edge (poprzedni plik przywrócony); aplikacja już działa w nowej wersji." >&2
+  exit 1
+}
 echo "--- status:"
 "${DOCKER[@]}" compose ps
 echo "--- sprzątanie nieużywanych obrazów:"
@@ -225,9 +237,9 @@ if [ -n "$URL" ]; then
   for _ in $(seq 1 20); do
     code="$(curl -sS ${CURL_OPTS[@]+"${CURL_OPTS[@]}"} -o /dev/null -w '%{http_code}' --max-time 10 "$URL/login" 2>/dev/null || true)"
     [ "$code" = 200 ] && break
-    sleep 3  # first start: Caddy is still obtaining the certificate
+    sleep 3  # first start: the edge Caddy is still obtaining the certificate
   done
-  [ "$code" = 200 ] || die "$URL/login odpowiada kodem $code (logi: ssh ... docker compose logs caddy app)"
+  [ "$code" = 200 ] || die "$URL/login odpowiada kodem $code (logi: ssh ... 'docker logs --tail 50 edge-caddy'; docker compose logs app)"
   # /health: DB, worker (the heartbeat renews every 30 s, so after a restart it may take a moment) and
   # disk.
   echo "==> Sprawdzanie $URL/health"

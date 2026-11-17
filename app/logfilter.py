@@ -1,6 +1,6 @@
 """A token in the URL lets someone set another account's password, a share code opens clips without
 login, a watch-room id lets a logged-in user into the room and an unsubscribe token switches off someone's
-e-mail, so none may stay in logs (uvicorn logs the full URL). The rest of the path stays: /s/[ukryty]/clips/1/file. The Caddy counterpart is in deploy/Caddyfile.
+e-mail, so none may stay in logs (uvicorn logs the full URL). The rest of the path stays: /s/[ukryty]/clips/1/file. The Caddy counterpart is in deploy/ref-clips.caddy.
 """
 from __future__ import annotations
 

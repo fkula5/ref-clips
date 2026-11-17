@@ -19,7 +19,7 @@ Scanned or photographed scoresheets attached to a match. Migration `mvp0010` onl
 - `GET .../scoresheets/{id}/file` is `inline`, `.../download` is `attachment`. Both send the stored `Content-Type`, `X-Content-Type-Options: nosniff` and `Cache-Control: private, no-cache`.
 - HEIC is shown as a file tile with a download link: only Safari displays it, and there is no server-side conversion. Photos are served at full size (no thumbnails are generated), so the page loads them lazily.
 - The worker's hourly cleanup removes files in `scoresheets/` that have no row (older than an hour), e.g. after a crash between writing and saving.
-- `deploy/Caddyfile` gives this one route a 220 MB request body limit (the rest of the site stays at 10 MB). Keep it above `SCORESHEET_MAX_FILES * SCORESHEET_MAX_BYTES` if the limits change.
+- `deploy/ref-clips.caddy` gives this one route a 220 MB request body limit (the rest of the site stays at 10 MB). Keep it above `SCORESHEET_MAX_FILES * SCORESHEET_MAX_BYTES` if the limits change.
 
 - The nightly backup copies `scoresheets/` next to `clips/` (`deploy/backup_snapshot.py`; restore steps in `deploy/restore.md`).
 
