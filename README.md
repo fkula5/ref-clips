@@ -179,10 +179,13 @@ Smoke test of the whole set (build, start, creating the admin, uploading a video
 
 ## Deployment to the server (production)
 
-The production configuration (Caddy with HTTPS, backups, deployment script run from the local computer) is
-described in [docs/wdrozenie.md](docs/wdrozenie.md): `compose.prod.yaml` (overlay on `compose.yaml`),
-`deploy/Caddyfile`, `deploy/env.prod.example`, `deploy/deploy.sh`, `deploy/backup.sh`. Restoring
-from a backup: [deploy/restore.md](deploy/restore.md).
+The production configuration (HTTPS through the shared edge proxy, backups, deployment script run from the local computer)
+is described in [docs/wdrozenie.md](docs/wdrozenie.md): `compose.prod.yaml` (overlay on `compose.yaml`),
+`deploy/ref-clips.caddy` (the site file this project delivers to the proxy), `deploy/env.prod.example`, `deploy/deploy.sh`,
+`deploy/backup.sh`. The proxy itself (Caddy, ports 80/443, certificates) is a separate stack,
+[vps-edge](https://github.com/fkula5/vps-edge) (private), installed at `/opt/edge` on the server before the first
+deployment; local development (`docker compose up`) does not need it. Restoring from a backup:
+[deploy/restore.md](deploy/restore.md).
 
 Releases and deployment are automated (GitHub Actions): tests on every PR, a PR „wydanie vX.Y.Z” ("release vX.Y.Z") created by
 release-please, the Docker image in GHCR and deployment after it is merged, with automatic rollback when the start fails.
@@ -546,7 +549,7 @@ app/share.py           linki udostępniające klipy bez konta: tworzenie, ważno
                        zarządzanie: app/routers/share_links.py, nagłówki prywatności: app/privacy.py
 app/categories.py      słownik kategorii: walidacja nazw i aliasów, kolejność, aktywacja
 Dockerfile, compose.yaml, .env.example   obraz i uruchomienie w Dockerze (app, worker, init)
-compose.prod.yaml, deploy/               produkcja: Caddy, wdrożenie (deploy.sh), kopie zapasowe; docs/wdrozenie.md
+compose.prod.yaml, deploy/               produkcja: plik witryny dla proxy edge, wdrożenie (deploy.sh), kopie zapasowe; docs/wdrozenie.md
 scripts/docker-smoke.sh                  test dymny Dockera
 .github/workflows/, release-please-config.json   CI (testy), wydania i wdrożenie; docs/ci-cd.md
 scripts/e2e.sh, tests/e2e/               testy interfejsu w przeglądarce (Playwright)
