@@ -127,6 +127,7 @@ field are public.
 | C-04 | A coach's rating separate from the referee's self-assessment | ⬜ | |
 | C-05 | A reference to the FIBA rule / interpretation for a clip | ⬜ | |
 | C-06 | Qualifier assessment sheet: a descriptive assessment of the match crew (a comment on each item for each referee, overall assessment and recommendation, a note about the pair), draft and publication, printing to PDF; items editable in the admin panel by a coach or admin. Details: `docs/arkusz-kwalifikatora.md` | ✅ | |
+| C-07 | Referee self-assessment („Arkusz samooceny RC 2026/27”): a digital copy of the Excel sheet. Each referee of a match crew fills in one sheet per match: at least 3 clips picked from the match (time and name fill in from the clip, the description is copied from the clip and can be edited in the sheet only) and answers to three open questions; draft, then „Wyślij” (locked afterwards, an admin can return it to draft). Coaches and admins see submitted sheets only; the report looks like the Excel sheet and downloads as PDF; submitting notifies the coaches of the author's groups (bell and e-mail digest). Details: `docs/samoocena-sedziow.md` | ✅ | |
 
 ### 4.7 Dictionaries and settings
 
