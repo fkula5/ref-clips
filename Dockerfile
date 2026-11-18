@@ -1,8 +1,11 @@
 # One image for the web server (app) and the worker; they differ only in the command.
 FROM python:3.12-slim-bookworm
 
+# pango and harfbuzz-subset are WeasyPrint's native libraries (PDF export of the self-assessment sheet); Carlito
+# is the free font metric-compatible with Calibri, which the Excel original uses.
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends ffmpeg \
+    && apt-get install -y --no-install-recommends ffmpeg libpango-1.0-0 libpangoft2-1.0-0 libharfbuzz-subset0 \
+        fonts-crosextra-carlito \
     && rm -rf /var/lib/apt/lists/*
 
 # Fixed UID/GID (can be changed when the data is on a plain host directory).

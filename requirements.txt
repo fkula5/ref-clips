@@ -8,3 +8,5 @@ Jinja2==3.1.6
 python-multipart==0.0.32
 argon2-cffi==25.1.0
 tzdata==2026.1
+# PDF export of the self-assessment sheet (needs pango, see the Dockerfile)
+weasyprint==70.0
