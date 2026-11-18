@@ -19,4 +19,7 @@ echo "::warning::ffmpeg install failed, retrying with archive.ubuntu.com"
 files=(/etc/apt/sources.list.d/*.sources)
 [ -f /etc/apt/sources.list ] && files+=(/etc/apt/sources.list)
 sudo sed -i -E 's#https?://[a-z0-9.-]*archive\.ubuntu\.com/ubuntu/?#http://archive.ubuntu.com/ubuntu/#' "${files[@]}"
+# Newer runners point apt at a mirror list (mirror+file:/etc/apt/apt-mirrors.txt), which the rewrite above
+# does not touch.
+[ -f /etc/apt/apt-mirrors.txt ] && echo "http://archive.ubuntu.com/ubuntu/" | sudo tee /etc/apt/apt-mirrors.txt >/dev/null
 install_ffmpeg
