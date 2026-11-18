@@ -1,0 +1,34 @@
+/* The read-only report mirrors the Excel sheet "Arkusz samooceny RC 2026/27": same grid (columns B-K in Excel
+   character widths converted to pixels), same colours, thick black borders. Used by the page and, inlined,
+   by the PDF. Calibri is not free: Carlito has the same metrics. */
+@page sa { size: A4 portrait; margin: 0.75in 0.25in; }
+.sa-sheet {
+  page: sa; background: #F0E5DB; padding: 16px 12px; color: #000;
+  font-family: Calibri, Carlito, Arial, sans-serif; font-size: 10pt; line-height: normal;
+}
+.sa-paper { width: 717px; margin: 0 auto; padding: 8px 22px 22px; background: #fff; }
+.sa-draft {
+  margin: 0 0 8px; padding: 4px 8px; border: 3px solid #C90012; color: #C90012; background: #fff;
+  font-size: 12pt; font-weight: 700; text-align: center; letter-spacing: .08em;
+}
+.sa-table { width: 673px; table-layout: fixed; border-collapse: collapse; border: 0; border-radius: 0; background: none; margin: 0; }
+.sa-table td {
+  box-sizing: border-box; padding: 0 3px; border: 3px solid #000; background: #F9F3EA; color: #000;
+  font-size: 10pt; text-align: center; vertical-align: middle; overflow-wrap: anywhere; white-space: pre-wrap;
+}
+.sa-table tr { height: 15pt; }
+.sa-table tr.h13 { height: 13.5pt; } .sa-table tr.h6 { height: 6pt; } .sa-table tr.h16 { height: 15.75pt; }
+.sa-table tr.h5x15 { height: 75pt; } .sa-table tr.h8x16 { height: 126pt; }
+.sa-table td.sa-title { border: 0; background: none; padding: 0; color: #C90012; font-size: 14pt; font-weight: 700; }
+.sa-table td.sa-title h1 { margin: 0; font-size: 14pt; line-height: 15pt; font-weight: 700; }
+.sa-table td.sa-none { border: 0; background: none; padding: 0; font-size: 0; line-height: 0; }
+.sa-table td.sa-lab, .sa-table td.sa-hd, .sa-table td.sa-num { background: #C90012; color: #fff; white-space: normal; }
+.sa-table td.sa-lab, .sa-table td.sa-hd { font-size: 11pt; line-height: 1.05; }
+.sa-table td.sa-lab { text-align: right; padding: 0 2px; }
+.sa-table td.sa-q { text-align: center; }
+.sa-table td.sa-answer { text-align: left; vertical-align: top; padding: 2px 5px; }
+.sa-table tbody { break-inside: avoid; page-break-inside: avoid; }
+@media print {
+  .sa-sheet { background: #fff; padding: 0; }
+  .sa-paper { padding: 0 22px; }
+}

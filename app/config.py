@@ -127,6 +127,7 @@ NOTIFICATION_UNREAD_KEEP_DAYS = 90
 MATCH_PAGE_SIZE = 25
 CLIP_PAGE_SIZE = 50  # /clips and the clip tab of a match
 NOTIFICATION_PAGE_SIZE = 50
+SELF_ASSESSMENT_PAGE_SIZE = 25  # /self-assessments
 REVIEW_PAGE_SIZE = 50
 SET_PAGE_SIZE = 25  # /sets
 VIDEO_PAGE_SIZE = 25  # recordings table in the admin panel

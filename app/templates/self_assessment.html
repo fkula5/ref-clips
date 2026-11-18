@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block title %}Samoocena: {{ match.title }}{% endblock %}
+{% block content %}
+<link rel="stylesheet" href="/static/self_assessment_report.css">
+<div class="row between no-print">
+  <p class="muted"><a href="/matches/{{ match.id }}#samoocena">&larr; {{ match.title }}</a></p>
+  <div class="row">
+    <button type="button" class="btn" id="sa-print" onclick="window.print()">Drukuj</button>
+    <a class="btn primary" id="sa-pdf" href="/self-assessments/{{ sa.id }}/pdf">Pobierz PDF</a>
+    {% if perm.can_edit_self_assessment(user, sa) %}<a class="btn" href="/self-assessments/{{ sa.id }}/edit">Edytuj</a>{% endif %}
+    {% if perm.can_reopen_self_assessment(user, sa) %}
+    <form method="post" action="/self-assessments/{{ sa.id }}/reopen" onsubmit="return confirm('Przywrócić tę samoocenę do edycji? Autor będzie mógł ją zmienić i wysłać ponownie.')">
+      {{ csrf_input() }}<button class="btn" id="sa-reopen">Przywróć do edycji</button></form>
+    {% endif %}
+  </div>
+</div>
+<p class="muted no-print" id="sa-status">
+  Autor: <strong>{{ sa.author.name }}</strong>{% if sa.user_id == user.id %} <small class="me">to Ty</small>{% endif %}.
+  {% if sa.is_submitted %}Wysłana {{ sa.submitted_at|local("%d.%m.%Y %H:%M") }}.
+  {% else %}<span class="badge state-uploading">szkic</span> Podgląd; widzisz go tylko Ty, dopóki go nie wyślesz.
+    {% if sa.submitted_at %}Wcześniej wysłana {{ sa.submitted_at|local("%d.%m.%Y %H:%M") }}, przywrócona do edycji przez administratora.{% endif %}{% endif %}
+</p>
+{% include "_self_assessment_report.html" %}
+{% endblock %}

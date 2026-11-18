@@ -1,0 +1,42 @@
+{# The read-only sheet, laid out like the Excel original (see static/self_assessment_report.css). Shared by the
+   page and the PDF; needs `sa`, `h` (header) and `questions`. A clip block is the Excel's 5 merged rows and an
+   answer block its 8 merged rows, so each is one row with the same minimum height; it grows with the text. #}
+<div class="sa-sheet" id="sa-report">
+<div class="sa-paper">
+  {% if not sa.is_submitted %}<div class="sa-draft" id="sa-draft-mark">SZKIC</div>{% endif %}
+  <table class="sa-table">
+    <colgroup>
+      <col style="width:61px"><col style="width:61px"><col style="width:61px"><col style="width:61px">
+      <col style="width:82px"><col style="width:61px"><col style="width:61px"><col style="width:61px">
+      <col style="width:61px"><col style="width:103px">
+    </colgroup>
+    <tbody>
+      <tr><td class="sa-title" colspan="10"><h1>ARKUSZ SAMOOCENY RC 2026/27</h1></td></tr>
+      <tr class="h13"><td class="sa-none" colspan="10"></td></tr>
+      <tr><td class="sa-lab" colspan="2">Liga:</td><td colspan="3">{{ h.level }}</td>
+          <td class="sa-lab" colspan="2">Data meczu:</td><td colspan="3">{{ h.date }}</td></tr>
+      <tr><td class="sa-lab" colspan="2">Gospodarze:</td><td colspan="3">{{ h.team_a }}</td>
+          <td class="sa-lab" colspan="2">Goście:</td><td colspan="3">{{ h.team_b }}</td></tr>
+      <tr><td class="sa-lab" colspan="2">Sędzia główny:</td><td colspan="3">{{ h.main_referee }}</td>
+          <td class="sa-lab" colspan="2">Sędzia pomocniczy:</td><td colspan="3">{{ h.assistants }}</td></tr>
+      <tr class="h6"><td class="sa-none" colspan="10"></td></tr>
+    </tbody>
+    {% for row in sa.rows %}
+    <tbody class="sa-block" id="sa-clip-{{ loop.index }}">
+      {% if loop.first %}<tr><td class="sa-hd">Klip</td><td class="sa-hd" colspan="2">Czas z nagrania</td>
+          <td class="sa-hd" colspan="2">Nazwa klipu</td><td class="sa-hd" colspan="5">Opis</td></tr>{% endif %}
+      <tr class="h5x15"><td class="sa-num">{{ loop.index }}</td><td colspan="2">{{ row.time_label }}</td>
+          <td colspan="2">{{ row.name_label }}</td><td colspan="5">{{ row.description }}</td></tr>
+    </tbody>
+    {% endfor %}
+    {% for key, text in questions %}
+    <tbody class="sa-block" id="sa-answer-{{ key }}">
+      {% if loop.first %}<tr class="h6"><td class="sa-none" colspan="10"></td></tr>
+      <tr class="h16"><td class="sa-none" colspan="3"></td><td class="sa-hd" colspan="7">Opis</td></tr>{% endif %}
+      <tr class="h8x16"><td class="sa-lab sa-q" colspan="3">{{ text }}</td>
+          <td class="sa-answer" colspan="7">{{ sa[key] }}</td></tr>
+    </tbody>
+    {% endfor %}
+  </table>
+</div>
+</div>

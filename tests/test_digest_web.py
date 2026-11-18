@@ -34,7 +34,8 @@ def test_page_shows_role_defaults_and_only_the_switches_that_apply(make_client):
     referee, _ = make_client("referee")
     assert boxes(coach.get(URL).text) == {
         "digest_enabled": True, "new_clips_in_groups": True, "new_match_in_groups": True,
-        "comments_and_ratings": True, "sheet_published": False, "group_added": True}
+        "comments_and_ratings": True, "sheet_published": False, "group_added": True,
+        "self_assessment_submitted": True}
     assert boxes(referee.get(URL).text) == {
         "digest_enabled": True, "comments_and_ratings": True, "sheet_published": True, "group_added": True}
 
@@ -51,11 +52,13 @@ def test_saving_stores_exactly_what_was_ticked(db, make_client):
     assert (r.status_code, r.headers["location"]) == (303, URL)
     saved = pref(db, user)
     assert (saved.digest_enabled, saved.new_clips_in_groups, saved.new_match_in_groups, saved.comments_and_ratings,
-            saved.sheet_published, saved.group_added) == (True, False, False, True, True, False)
+            saved.sheet_published, saved.group_added, saved.self_assessment_submitted) == (
+        True, False, False, True, True, False, False)
     page = client.get(URL)
     assert "Zapisano ustawienia powiadomień." in page.text
     assert boxes(page.text) == {"digest_enabled": True, "new_clips_in_groups": False, "new_match_in_groups": False,
-                                "comments_and_ratings": True, "sheet_published": True, "group_added": False}
+                                "comments_and_ratings": True, "sheet_published": True, "group_added": False,
+                                "self_assessment_submitted": False}
 
 
 def test_master_switch_is_remembered_separately_from_the_events(db, make_client):

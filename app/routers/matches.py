@@ -8,7 +8,7 @@ from fastapi.responses import RedirectResponse
 from sqlalchemy import case, func, select
 from sqlalchemy.orm import Session, selectinload
 
-from app import clip_list, groups, match_list, permissions, services, share, sheets, uploads
+from app import clip_list, groups, match_list, permissions, self_assessments, services, share, sheets, uploads
 from app.auth import require
 from app.db import get_db
 from app.loaders import get_match
@@ -126,6 +126,7 @@ def render_match(request: Request, db: Session, match: Match, *, status_code: in
     user = request.state.user
     return render(request, "match_detail.html", status_code=status_code, match=match, busy=busy, clips=clips,
                   match_sheets=sheets.visible_to(user, match),
+                  match_self_assessments=self_assessments.visible_to(user, match),
                   f=f, pager=pager, stats=clip_list.clip_stats(db, clips),
                   page_href=lambda page: f.page_query(page, scope=False),
                   shareable={c.id for c in clips if share.offerable(request.state.user, c)},
@@ -173,6 +174,8 @@ def confirm_delete_match(request: Request, match: Match = Depends(get_match),
                   scoresheet_files=len(match.scoresheets),
                   # others' drafts must stay hidden, so a non-admin only counts the sheets they can see
                   sheets=len(match.sheets if permissions.can_manage_users(user) else sheets.visible_to(user, match)),
+                  self_assessments=len(match.self_assessments if permissions.can_manage_users(user)
+                                       else self_assessments.visible_to(user, match)),
                   undescribed=sum(1 for c in match.clips if not c.is_described))
 
 

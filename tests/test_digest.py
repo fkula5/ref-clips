@@ -114,7 +114,7 @@ def pref_of(w, user):
 
 def test_defaults_by_role():
     assert digest.default_for({"coach"}) == {"new_clips_in_groups", "new_match_in_groups", "comments_and_ratings",
-                                             "group_added"}
+                                             "group_added", "self_assessment_submitted"}
     assert digest.default_for({"referee"}) == {"comments_and_ratings", "sheet_published", "group_added"}
     assert digest.default_for({"admin"}) == set()
     assert digest.default_for({"admin", "coach"}) == digest.default_for({"coach"})
@@ -125,12 +125,13 @@ def test_chosen_switch_beats_the_default_and_null_follows_the_roles(w):
     coach = w.u["coach"]
     pref = EmailPreference(user_id=coach.id, digest_enabled=True, group_added=False, sheet_published=True)
     assert digest.enabled_events(coach, pref) == {"new_clips_in_groups", "new_match_in_groups",
-                                                  "comments_and_ratings", "sheet_published"}
+                                                  "comments_and_ratings", "sheet_published",
+                                                  "self_assessment_submitted"}
     assert digest.enabled_events(coach, None) == digest.default_for({"coach"})
 
 
 def test_only_coaches_and_admins_see_the_group_switches(w):
-    assert digest.configurable_events(w.u["ref"]) == ["comments_and_ratings", "sheet_published", "group_added"]
+    assert digest.configurable_events(w.u["ref"]) == ["comments_and_ratings", "sheet_published", "group_added"]  # no group switches
     assert digest.configurable_events(w.u["coach"]) == list(digest.DIGEST_EVENTS)
     assert digest.configurable_events(w.u["admin"]) == list(digest.DIGEST_EVENTS)
 

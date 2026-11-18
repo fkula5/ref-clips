@@ -382,3 +382,17 @@ tr.no-activity td { background: var(--warn-wash); }
 .chip.pinned form { display: inline; margin-left: 4px; }
 ul.plain { list-style: none; margin: 0; padding: 0; }
 .chip.pinned .linklike { color: var(--accent); }
+
+/* Self-assessment form */
+.sa-rows { list-style: none; margin: 8px 0; padding: 0; }
+.sa-row textarea { font-family: inherit; min-height: 70px; resize: vertical; }
+.sa-row .btn.sa-insert { margin-top: 6px; }
+.sa-picker { list-style: none; margin: 8px 0; padding: 0 12px; background: var(--card); border: 1px solid var(--line); border-radius: 8px; }
+.sa-question { display: block; margin: 12px 0; }
+.sa-question textarea { display: block; margin-top: 4px; font-family: inherit; min-height: 110px; resize: vertical; }
+
+/* Self-assessment report: the Excel grid is fixed-width, so a phone scrolls it sideways instead of reflowing it */
+.sa-sheet { overflow-x: auto; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+.sa-table td.sa-title h1 { text-wrap: initial; }
+@media screen and (max-width: 720px) { .sa-sheet { padding: 8px 0; } }
+@media print { .sa-sheet { overflow: visible; } }

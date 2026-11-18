@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% from "_pager.html" import pagination %}
+{% block title %}{{ 'Samooceny' if staff else 'Moje samooceny' }}{% endblock %}
+{% block content %}
+{% macro item(s, with_author) %}
+  <li class="sheet-item" data-self-assessment="{{ s.id }}">
+    <div>
+      <a href="{{ '/self-assessments/%d'|format(s.id) }}"><strong>{{ s.match.title }}</strong></a>
+      {% if s.match.level %}<span class="muted">{{ s.match.level }}</span>{% endif %}
+      {% if with_author %}<span>· {{ s.author.name }}</span>{% endif %}
+      {% if s.is_submitted %}<span class="badge ready">wysłana</span>{% else %}<span class="badge state-uploading">szkic</span>{% endif %}
+      <span class="muted small-note">{% if s.is_submitted %}{{ s.submitted_at|local("%d.%m.%Y %H:%M") }}{% else %}zapisano {{ s.updated_at|local("%d.%m.%Y %H:%M") }}{% endif %}</span>
+    </div>
+    <div class="table-actions">
+      {% if perm.can_edit_self_assessment(user, s) %}<a class="btn small primary" href="/self-assessments/{{ s.id }}/edit">Kontynuuj szkic</a>{% endif %}
+      <a class="btn small" href="/self-assessments/{{ s.id }}">{{ 'Podgląd' if not s.is_submitted else 'Otwórz' }}</a>
+    </div>
+  </li>
+{% endmacro %}
+<h1>{{ 'Samooceny sędziów' if staff else 'Moje samooceny' }}</h1>
+{% if mine or not staff %}
+<h2>Moje samooceny</h2>
+<ul class="card scoresheet-list" id="sa-mine">
+  {% for s in mine %}{{ item(s, false) }}{% else %}
+  <li class="muted">Nie masz jeszcze samooceny. Zacznij ją na stronie meczu, w którym sędziowałeś(-aś).</li>
+  {% endfor %}
+</ul>
+{% endif %}
+{% if staff %}
+<h2>Wysłane samooceny</h2>
+<ul class="card scoresheet-list" id="sa-submitted">
+  {% for s in submitted %}{{ item(s, true) }}{% else %}
+  <li class="muted">Nikt jeszcze nie wysłał samooceny.</li>
+  {% endfor %}
+</ul>
+{% if submitted %}{{ pagination(pager, "Samooceny", page_query, "/self-assessments") }}{% endif %}
+{% endif %}
+{% endblock %}
