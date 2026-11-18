@@ -2,6 +2,7 @@ import io
 import re
 import shutil
 import subprocess
+from datetime import timedelta
 from types import SimpleNamespace
 
 import pytest
@@ -635,7 +636,9 @@ def digest_text(w, user):
     mail.OUTBOX.clear()
     w.db.execute(Notification.__table__.update().values(created_at=NOW))
     w.db.commit()
-    digest.run_due(w.db, now=NOW.replace(hour=12) if NOW.hour < 12 else NOW, sender=sender,
+    # Run after today's local digest hour: computed in UTC, the test failed between local midnight and 07:00.
+    run_at = max(NOW, digest.digest_time(NOW) + timedelta(minutes=1))
+    digest.run_due(w.db, now=run_at, sender=sender,
                    base="https://klipy.example.pl")
     found = [m for m in mail.OUTBOX if m["To"].addresses[0].addr_spec == user.email]
     return found[0].get_body(("plain",)).get_content() if found else None
@@ -656,7 +659,8 @@ def test_the_digest_item_follows_the_switch(w, mailbox):
     submit(w, sa_id)
     w.db.add(EmailPreference(user_id=w.u["coach"].id, digest_enabled=True, self_assessment_submitted=False))
     w.db.commit()
-    assert digest_text(w, w.u["coach"]) is None or "samoocenę" not in digest_text(w, w.u["coach"])
+    text = digest_text(w, w.u["coach"])
+    assert text is None or "samoocenę" not in text
 
 
 def test_the_switch_defaults_to_coaches_and_is_hidden_from_referees(w):
