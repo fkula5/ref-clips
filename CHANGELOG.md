@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.13.0](https://github.com/fkula5/ref-clips/compare/v1.12.1...v1.13.0) (2026-11-18)
+
+
+### Features
+
+* **self-assessment:** referee self-assessment sheet with PDF export ([#41](https://github.com/fkula5/ref-clips/issues/41)) ([35fad00](https://github.com/fkula5/ref-clips/commit/35fad00dec9c011945e42e40d8681adbae92a977))
+
+
+### Bug Fixes
+
+* **ci:** make the apt mirror fallback cover the runner's mirror list ([#42](https://github.com/fkula5/ref-clips/issues/42)) ([dc71b57](https://github.com/fkula5/ref-clips/commit/dc71b5723230ef12488147dc1c3607f0306009a0))
+
 ## [1.12.1](https://github.com/fkula5/ref-clips/compare/v1.12.0...v1.12.1) (2026-11-17)
 
 
