@@ -1,7 +1,7 @@
 """Daily e-mail digest. One message per account per day, grouped by match, only when something happened.
 
 Events 1 and 2 (clips described, matches created in the groups the recipient coaches) are computed from
-the data when the digest is built and never touch the bell. Events 3-5 are read from the `Notification`
+the data when the digest is built and never touch the bell. Events 3-6 are read from the `Notification`
 rows created in the window, read or not, so the recipient rules are exactly the bell's.
 
 A run covers (last_digest_until, now]. The end is stored after every run, including one with nothing to
@@ -35,9 +35,10 @@ RATING_KINDS = ("rating", "rating_changed")
 SNIPPETS_PER_MATCH = 5
 SNIPPET_MAX_CHARS = 140
 SNIPPET_PAIRING_SECONDS = 10  # Comment.created_at is a whole second, the notification's is not
-COACH_DEFAULTS = frozenset({"new_clips_in_groups", "new_match_in_groups", "comments_and_ratings", "group_added"})
+COACH_DEFAULTS = frozenset({"new_clips_in_groups", "new_match_in_groups", "comments_and_ratings", "group_added",
+                            "self_assessment_submitted"})
 REFEREE_DEFAULTS = frozenset({"comments_and_ratings", "sheet_published", "group_added"})
-GROUP_EVENTS = ("new_clips_in_groups", "new_match_in_groups")  # only meaningful for someone who can coach a group
+GROUP_EVENTS = ("new_clips_in_groups", "new_match_in_groups", "self_assessment_submitted")  # only meaningful for someone who can coach a group
 
 _env = Environment(loader=FileSystemLoader(Path(__file__).parent / "templates" / "email"),
                    autoescape=select_autoescape(["html"]), trim_blocks=True, lstrip_blocks=True)
@@ -130,6 +131,7 @@ class _MatchBlock:
     comments: list[Notification] = field(default_factory=list)
     ratings: list[Notification] = field(default_factory=list)
     sheets: list[Notification] = field(default_factory=list)
+    self_assessments: list[Notification] = field(default_factory=list)
 
 
 def digest_time(now: datetime) -> datetime:
@@ -221,6 +223,8 @@ def collect(db: Session, user: User, pref: EmailPreference | None, since: dateti
         kinds.append("sheet_published")
     if "group_added" in events:
         kinds.append("group_added")
+    if "self_assessment_submitted" in events:
+        kinds.append("self_assessment")
     notes = list(db.scalars(
         select(Notification).where(Notification.recipient_id == user.id, Notification.kind.in_(kinds),
                                    Notification.created_at > since, Notification.created_at <= until)
@@ -238,6 +242,8 @@ def collect(db: Session, user: User, pref: EmailPreference | None, since: dateti
             block(note.match).comments.append(note)
         elif note.kind in RATING_KINDS:
             block(note.match).ratings.append(note)
+        elif note.kind == "self_assessment":
+            block(note.match).self_assessments.append(note)
         else:
             block(note.match).sheets.append(note)
 
@@ -280,6 +286,8 @@ def _section(b: _MatchBlock, texts: dict[int, str], base: str) -> Section:
     for note in b.sheets:
         entries.append(Entry(f"Opublikowano arkusz oceny (szkoleniowiec: {_actor_name(note)})",
                              f"{base}{notify.target_url(note)}"))
+    for note in b.self_assessments:
+        entries.append(Entry(f"Wysłano samoocenę sędziego: {_actor_name(note)}", f"{base}{notify.target_url(note)}"))
     return Section(f"Mecz {match.title}", match_url, entries)
 
 

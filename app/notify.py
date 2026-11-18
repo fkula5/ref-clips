@@ -11,7 +11,8 @@ from sqlalchemy import delete, func, or_, select, update
 from sqlalchemy.orm import Session, selectinload
 
 from app import config, permissions
-from app.models import Clip, Comment, Match, Notification, Rating, Sheet, TrainingGroup, User, Video
+from app.models import (Clip, Comment, GroupMember, Match, Notification, Rating, SelfAssessment, Sheet, TrainingGroup,
+                        User, Video)
 from app.pagination import Page, paginate
 from app.timeutil import utcnow
 
@@ -26,6 +27,7 @@ def _commenters(db: Session, scope) -> set[int]:
 
 def _deliver(db: Session, recipients: Iterable[int | None], *, actor_id: int, kind: str, match: Match | None,
              clip: Clip | None = None, sheet: Sheet | None = None, group: TrainingGroup | None = None,
+             self_assessment: SelfAssessment | None = None,
              verdict: str | None = None,
              may_see: Callable[[User], bool] = permissions.can_view) -> None:
     wanted = {r for r in recipients if r is not None} - {actor_id}
@@ -37,6 +39,7 @@ def _deliver(db: Session, recipients: Iterable[int | None], *, actor_id: int, ki
             db.add(Notification(
                 recipient_id=user.id, kind=kind, actor_id=actor_id, match_id=match.id if match else None,
                 clip_id=clip.id if clip else None, sheet_id=sheet.id if sheet else None,
+                self_assessment_id=self_assessment.id if self_assessment else None,
                 group_id=group.id if group else None, verdict=verdict, created_at=now))
     db.flush()
 
@@ -62,6 +65,17 @@ def comment_added(db: Session, comment: Comment) -> None:
 def sheet_published(db: Session, sheet: Sheet) -> None:
     _deliver(db, _crew(sheet.match), actor_id=sheet.coach_id, kind="sheet_published", match=sheet.match,
              sheet=sheet, may_see=lambda user: permissions.can_view_sheet(user, sheet))
+
+
+def self_assessment_submitted(db: Session, sa: SelfAssessment) -> None:
+    """The coaches of the groups the author belongs to as a referee; the sheet itself is open to every coach
+    and admin on the list page.
+    """
+    groups = select(GroupMember.group_id).where(GroupMember.user_id == sa.user_id, GroupMember.role == "referee")
+    coaches = db.scalars(select(GroupMember.user_id).where(GroupMember.group_id.in_(groups),
+                                                           GroupMember.role == "coach"))
+    _deliver(db, coaches, actor_id=sa.user_id, kind="self_assessment", match=sa.match, self_assessment=sa,
+             may_see=lambda user: permissions.can_view_self_assessment(user, sa))
 
 
 def group_added(db: Session, group: TrainingGroup, user_id: int, actor_id: int) -> None:
@@ -112,12 +126,15 @@ def target_of(notification: Notification) -> dict[str, int | None]:
             return {"match_id": notification.match_id}
         case "group_added":
             return {"group_ids": [notification.group_id]}
+        case "self_assessment":
+            return {"self_assessment_id": notification.self_assessment_id}
         case _:
             return {"sheet_id": notification.sheet_id}
 
 
 def mark_target_read(db: Session, user_id: int, *, clip_id: int | None = None, match_id: int | None = None,
-                     sheet_id: int | None = None, group_ids: Iterable[int] = ()) -> int:
+                     sheet_id: int | None = None, self_assessment_id: int | None = None,
+                     group_ids: Iterable[int] = ()) -> int:
     """One UPDATE; never commits. `match_id` means the match's own comments, not its clips' events. With no
     target nothing is marked.
     """
@@ -127,6 +144,8 @@ def mark_target_read(db: Session, user_id: int, *, clip_id: int | None = None, m
         target = (Notification.kind == "match_comment") & (Notification.match_id == match_id)
     elif sheet_id is not None:
         target = Notification.sheet_id == sheet_id
+    elif self_assessment_id is not None:
+        target = Notification.self_assessment_id == self_assessment_id
     elif ids := list(group_ids):
         target = Notification.group_id.in_(ids)
     else:
@@ -146,6 +165,8 @@ def target_url(notification: Notification) -> str:
             return f"/matches/{notification.match_id}#komentarze"
         case "group_added":
             return "/groups"
+        case "self_assessment":
+            return f"/self-assessments/{notification.self_assessment_id}"
         case _:
             return f"/sheets/{notification.sheet_id}"
 

@@ -25,6 +25,7 @@
         <a href="/">Mecze</a>
         <a href="/clips">Klipy</a>
         <a href="/sets">Zestawy</a>
+        {% if perm.can_see_self_assessments(user) %}<a href="/self-assessments">{{ 'Samooceny' if perm.can_view_submitted_self_assessments(user) else 'Moje samooceny' }}</a>{% endif %}
         {% if perm.can_see_my_groups(user) %}<a href="/groups">Grupy</a>{% endif %}
         {% if perm.can_access_admin(user) %}<a href="{{ perm.admin_home_url(user) }}">Administracja</a>{% endif %}
       </nav>

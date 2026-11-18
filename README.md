@@ -7,7 +7,8 @@ the clips with descriptions, comments and coach ratings.
 
 Project documentation: [MVP specification](docs/specyfikacja-mvp.md),
 [technical plan](docs/plan-techniczny.md), [deployment to the server](docs/wdrozenie.md),
-[releases and automatic deployment (GitHub Actions)](docs/ci-cd.md). Status of the work: segment 1 („Fundament” — "Foundation") — accounts,
+[releases and automatic deployment (GitHub Actions)](docs/ci-cd.md),
+[referee self-assessment sheet](docs/samoocena-sedziow.md). Status of the work: segment 1 („Fundament” — "Foundation") — accounts,
 login, roles, crew CC/U1/U2, new data model; segment 2 („Mecze i obsada” — "Matches and crew") — match list
 with filters and status, match page, errors in forms; segment 3 („Wgrywanie i konwersja” — "Upload and conversion") —
 resumable upload (tus), declaration of the file contents, deleting the original after conversion;
@@ -25,11 +26,14 @@ The next segment (deployment to a VPS) is described in the plan.
 
 ```bash
 sudo apt install ffmpeg            # konwersja i wycinanie wideo
+sudo apt install libpango-1.0-0 libpangoft2-1.0-0 fonts-crosextra-carlito   # eksport samooceny do PDF (WeasyPrint)
 python3 -m venv .venv
 .venv/bin/pip install -r requirements.txt
 ```
 
 For tests: `.venv/bin/pip install -r requirements-dev.txt`.
+
+The PDF export of a self-assessment needs pango (the second line); without it only that download answers 503, and the on-screen report and printing still work.
 
 Without ffmpeg the application starts, but the interface shows the message
 „Brak ffmpeg — uruchom: sudo apt install ffmpeg”, and jobs wait in the queue
@@ -214,6 +218,9 @@ Roles (several at once, permissions add up):
 | Uploading matches and crew, creating and describing clips | every match | every match | only matches in which they are in the crew (by account) |
 | Downloading a recording (the 720p working copy) | every match | every match | only matches in which they are in the crew (by account) |
 | Rating a clip | no (unless they also have the coach role) | yes, own | no |
+| Filling in a self-assessment sheet (one per match) | no (unless they are in the crew) | no (unless they are in the crew) | only matches in which they are in the crew (by account) |
+| Reading a submitted self-assessment | yes, all | yes, all | only their own (a draft is visible to its author only) |
+| Returning a submitted self-assessment to draft | yes | no | no |
 | Editing and deleting | everything | own | own |
 
 The rules are in one place, `app/permissions.py` (pure functions), and every write route checks

@@ -1,6 +1,8 @@
 -r requirements.txt
 pytest==9.2.0
 httpx==0.28.1
+# Reads the text back from generated PDFs in tests
+pypdf==7.1.1
 # Browser UI tests (E2E); after installing: .venv/bin/playwright install chromium
 playwright==1.64.1
 pytest-playwright==0.10.0

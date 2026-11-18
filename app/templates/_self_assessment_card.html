@@ -1,0 +1,32 @@
+{# Shows only what the current user may see; for someone who sees nothing and cannot start a self-assessment
+   there is no card at all. #}
+{% set own = match_self_assessments|selectattr('user_id', 'equalto', user.id)|first %}
+{% if match_self_assessments or perm.can_fill_self_assessment(user, match) or perm.can_view_submitted_self_assessments(user) %}
+<h2 id="samoocena">Samoocena</h2>
+<div class="card" id="sa-card">
+  {% for s in match_self_assessments %}
+  <div class="sheet-item" data-self-assessment="{{ s.id }}">
+    <div>
+      <strong>{{ s.author.name }}</strong>
+      {% if s.is_submitted %}<span class="badge ready">wysłana</span>{% else %}<span class="badge state-uploading">szkic</span>{% endif %}
+      {% if s.user_id == user.id %}<small class="me">to Ty</small>{% endif %}
+      <span class="muted small-note">
+        {% if s.is_submitted %}{{ s.submitted_at|local("%d.%m.%Y %H:%M") }}{% else %}zapisano {{ s.updated_at|local("%d.%m.%Y %H:%M") }}{% endif %}</span>
+    </div>
+    <div class="table-actions">
+      {% if perm.can_edit_self_assessment(user, s) %}<a class="btn small primary" href="/self-assessments/{{ s.id }}/edit">Kontynuuj szkic</a>
+      <a class="btn small" href="/self-assessments/{{ s.id }}">Podgląd</a>
+      {% else %}<a class="btn small" href="/self-assessments/{{ s.id }}">{{ 'Zobacz wysłaną' if s.user_id == user.id else 'Otwórz' }}</a>{% endif %}
+    </div>
+  </div>
+  {% else %}
+  <p class="muted">Nikt jeszcze nie wysłał samooceny do tego meczu.</p>
+  {% endfor %}
+  {% if perm.can_fill_self_assessment(user, match) and not own %}
+  <form method="post" action="/matches/{{ match.id }}/self-assessments" class="row">
+    {{ csrf_input() }}<button class="btn primary" id="sa-open">Wypełnij samoocenę</button>
+    <span class="muted small-note">Do czasu wysłania szkic widzisz tylko Ty. Po wysłaniu zobaczą go szkoleniowcy i administratorzy.</span>
+  </form>
+  {% endif %}
+</div>
+{% endif %}

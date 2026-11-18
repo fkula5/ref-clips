@@ -37,12 +37,13 @@ def notification_settings(request: Request, db: Session = Depends(get_db), user:
 def save_notification_settings(
         db: Session = Depends(get_db), user: User = require(permissions.can_view),
         digest_enabled: str = Form(""), new_clips_in_groups: str = Form(""), new_match_in_groups: str = Form(""),
-        comments_and_ratings: str = Form(""), sheet_published: str = Form(""), group_added: str = Form("")):
+        comments_and_ratings: str = Form(""), sheet_published: str = Form(""), group_added: str = Form(""),
+        self_assessment_submitted: str = Form("")):
     pref = digest.get_pref(db, user.id)
     pref.digest_enabled = bool(digest_enabled)
     submitted = {"new_clips_in_groups": new_clips_in_groups, "new_match_in_groups": new_match_in_groups,
                  "comments_and_ratings": comments_and_ratings, "sheet_published": sheet_published,
-                 "group_added": group_added}
+                 "group_added": group_added, "self_assessment_submitted": self_assessment_submitted}
     for event in digest.configurable_events(user):  # a switch the page did not show is never changed
         setattr(pref, event, bool(submitted[event]))
     db.commit()

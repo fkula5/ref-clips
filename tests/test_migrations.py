@@ -14,7 +14,7 @@ EXPECTED_TABLES = {
     "jobs", "settings", "upload_rejections", "share_links", "share_link_clips",
     "sheet_elements", "sheets", "sheet_columns", "sheet_rows", "sheet_cells", "notifications",
     "training_groups", "group_members", "training_sets", "training_set_clips", "training_set_groups",
-    "match_scoresheets", "email_preferences",
+    "match_scoresheets", "email_preferences", "self_assessments", "self_assessment_clips",
 }
 
 

@@ -4,7 +4,7 @@ One e-mail per account per day at 07:00 Warsaw time, grouped by match, sent only
 
 ## What goes in
 
-Five events, each a switch on **Ustawienia powiadomień** (`/settings/notifications`, linked in the header), plus a master switch „Wysyłaj maile”.
+Six events, each a switch on **Ustawienia powiadomień** (`/settings/notifications`, linked in the header), plus a master switch „Wysyłaj maile”.
 
 | Event | Source | Who | Default for |
 |---|---|---|---|
@@ -13,8 +13,9 @@ Five events, each a switch on **Ustawienia powiadomień** (`/settings/notificati
 | `comments_and_ratings` | `Notification` rows of kind comment/rating created in the window, read or not, so the recipients are the bell's; „2 komentarze, 1 ocena” with the first 12 words of each comment and links | the bell's recipients | coach, referee |
 | `sheet_published` | `Notification` rows of kind `sheet_published` | the crew | referee |
 | `group_added` | `Notification` rows of kind `group_added`: „Dodano Cię do grupy Y (szkoleniowiec: Z)” | the person added | coach, referee |
+| `self_assessment_submitted` | `Notification` rows of kind `self_assessment`: „Wysłano samoocenę sędziego: X”, one line per sheet under its match, with a link; switch label „Wysłane samooceny sędziów z moich grup” | coaches of the groups the author belongs to as a referee (the bell's recipients) | coach |
 
-Events 1-2 are computed when the digest is built and are not in the bell. Defaults apply while the account has not touched a switch (the column is NULL), so they follow later role changes; the admin role gives nothing by itself, and a switch the page does not show (group events for a plain referee) is never changed by saving. Nobody is told about their own actions. Accounts that are inactive or have no password get nothing.
+Events 1-2 are computed when the digest is built and are not in the bell. Event 6 is shown, like 1-2, only to coaches and admins (`GROUP_EVENTS`). Defaults apply while the account has not touched a switch (the column is NULL), so they follow later role changes; the admin role gives nothing by itself, and a switch the page does not show (group events, including this one, for a plain referee) is never changed by saving. Nobody is told about their own actions. Accounts that are inactive or have no password get nothing.
 
 ## When it runs
 
@@ -40,3 +41,5 @@ Every mail has the footer links „Zmień ustawienia” (login needed) and „Wy
 ## Data
 
 Migration `mvp0011` adds one table, `email_preferences` (one row per account, created on first use): `digest_enabled` (default on), five nullable event switches, `unsubscribe_token`, `last_digest_until`. No existing table changes; downgrade drops it.
+
+Migration `mvp0012` adds the sixth switch, `email_preferences.self_assessment_submitted` (nullable, NULL = the role default), together with the self-assessment tables and the `self_assessment` notification kind.

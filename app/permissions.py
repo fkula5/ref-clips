@@ -95,12 +95,14 @@ def can_edit_match(user, match) -> bool:
 
 
 def can_delete_match(user, match) -> bool:
-    """A published sheet goes with the match, so only an admin may remove such a match; otherwise a
-    referee who created it could erase the assessment of their own work.
+    """A published sheet or a submitted self-assessment goes with the match, so only an admin may remove such a
+    match; otherwise a referee who created it could erase the assessment of their own work or a colleague's
+    self-assessment.
     """
     if _has(user, ADMIN):
         return True
-    return can_edit_match(user, match) and not any(sheet.is_published for sheet in match.sheets)
+    return (can_edit_match(user, match) and not any(sheet.is_published for sheet in match.sheets)
+            and not any(sa.is_submitted for sa in match.self_assessments))
 
 
 def can_delete_video(user, video) -> bool:
@@ -169,6 +171,46 @@ def can_view_sheet(user, sheet) -> bool:
     if sheet.coach_id == user.id:
         return True
     return sheet.status == "published" and (_has(user, ADMIN, COACH) or is_official(user, sheet.match))
+
+
+def can_see_self_assessments(user) -> bool:
+    """Whether the self-assessment list is offered: referees (their own sheets), coaches and admins."""
+    return can_view(user) and _has(user, ADMIN, COACH, REFEREE)
+
+
+def can_view_submitted_self_assessments(user) -> bool:
+    """Coaches and admins read every submitted self-assessment; the list page and the match card use this."""
+    return can_view(user) and _has(user, ADMIN, COACH)
+
+
+def can_fill_self_assessment(user, match) -> bool:
+    """Only a referee of the match's crew (an account-linked slot) starts a self-assessment of that match."""
+    return can_view(user) and _has(user, REFEREE) and is_official(user, match)
+
+
+def can_edit_self_assessment(user, sa) -> bool:
+    """The author, and only while it is a draft. Submitting needs the same right."""
+    return can_view(user) and sa.user_id == user.id and sa.status == "draft"
+
+
+def can_delete_self_assessment(user, sa) -> bool:
+    return can_edit_self_assessment(user, sa)
+
+
+def can_view_self_assessment(user, sa) -> bool:
+    """The author always; coaches and admins only after submission. Everybody else, other crew members
+    included, must not learn that it exists, so a denied view is answered with 404.
+    """
+    if not can_view(user):
+        return False
+    if sa.user_id == user.id:
+        return True
+    return sa.status == "submitted" and can_view_submitted_self_assessments(user)
+
+
+def can_reopen_self_assessment(user, sa) -> bool:
+    """Admin only: returns a submitted sheet to draft so the author can edit it again."""
+    return can_view(user) and _has(user, ADMIN) and sa.status == "submitted"
 
 
 def can_view_notification(user, notification) -> bool:

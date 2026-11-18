@@ -19,7 +19,7 @@ from app.db import SessionLocal, get_db
 from app.initdb import init_db
 from app.models import Job, User
 from app.routers import (admin, auth, clips, clips_v2, describe, feedback, groups, matches, notifications,
-                         scoresheets, settings, share, share_links, sheets, training_sets, unsubscribe, uploads, videos,
+                         scoresheets, self_assessments, settings, share, share_links, sheets, training_sets, unsubscribe, uploads, videos,
                          watch as watch_routes)
 from app.web import BASE, back_url, render
 
@@ -56,6 +56,7 @@ app.include_router(clips.router, dependencies=PROTECTED)
 app.include_router(feedback.router, dependencies=PROTECTED)
 app.include_router(share_links.router, dependencies=PROTECTED)
 app.include_router(sheets.router, dependencies=PROTECTED)
+app.include_router(self_assessments.router, dependencies=PROTECTED)
 app.include_router(scoresheets.router, dependencies=PROTECTED)
 app.include_router(notifications.router, dependencies=PROTECTED)
 app.include_router(settings.router, dependencies=PROTECTED)
