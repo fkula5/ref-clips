@@ -27,10 +27,12 @@ RATING_VERDICTS = {"correct": "prawidłowa", "incorrect": "nieprawidłowa", "deb
 PERIODS = ["Q1", "Q2", "Q3", "Q4", "OT1", "OT2", "OT3"]
 SHEET_DIFFICULTIES = {"latwy": "łatwy", "normalny": "normalny", "trudny": "trudny"}
 SHEET_STATUSES = {"draft": "szkic", "published": "opublikowany"}
+SELF_ASSESSMENT_STATUSES = {"draft": "szkic", "submitted": "wysłana"}
 NOTIFICATION_KINDS = {
     "rating": "nowa ocena klipu", "rating_changed": "zmieniona ocena klipu",
     "clip_comment": "komentarz do klipu", "match_comment": "komentarz do meczu",
     "sheet_published": "opublikowany arkusz oceny", "group_added": "dodano Cię do grupy",
+    "self_assessment": "wysłana samoocena",
 }
 GROUP_ROLES = {"coach": "szkoleniowiec", "referee": "sędzia"}
 # Events of the daily e-mail digest, in display order (see app/digest.py).
@@ -40,6 +42,7 @@ DIGEST_EVENTS = {
     "comments_and_ratings": "Komentarze i oceny dotyczące mnie",
     "sheet_published": "Opublikowane arkusze oceny moich meczów",
     "group_added": "Dodanie mnie do grupy",
+    "self_assessment_submitted": "Wysłane samooceny sędziów z moich grup",
 }
 
 
@@ -144,6 +147,8 @@ class Match(Base):
         back_populates="match", cascade="all, delete-orphan", order_by="Sheet.id")
     scoresheets: Mapped[list[MatchScoresheet]] = relationship(
         back_populates="match", cascade="all, delete-orphan", order_by="MatchScoresheet.id")
+    self_assessments: Mapped[list[SelfAssessment]] = relationship(
+        back_populates="match", cascade="all, delete-orphan", order_by="SelfAssessment.id")
 
     @property
     def teams(self) -> str:
@@ -462,6 +467,58 @@ class Sheet(Base):
         return self.published_at is not None and self.updated_at > self.published_at
 
 
+class SelfAssessment(Base):
+    """A referee's own assessment of one match (one per referee and match). Only the author sees a draft;
+    a submitted one is read-only for the author and visible to coaches and admins. `submitted_at` is kept
+    when an admin returns the sheet to draft, so it shows when the sheet was first sent.
+    """
+    __tablename__ = "self_assessments"
+    __table_args__ = (
+        UniqueConstraint("match_id", "user_id"),
+        CheckConstraint(_in("status", SELF_ASSESSMENT_STATUSES), name="status_valid"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    match_id: Mapped[int] = mapped_column(ForeignKey("matches.id", ondelete="CASCADE"))
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    opinion: Mapped[str] = mapped_column(Text, default="", server_default="")
+    good: Mapped[str] = mapped_column(Text, default="", server_default="")
+    bad: Mapped[str] = mapped_column(Text, default="", server_default="")
+    status: Mapped[str] = mapped_column(String(20), default="draft", server_default="draft")
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())  # set in code
+    submitted_at: Mapped[datetime | None] = mapped_column(DateTime)
+
+    match: Mapped[Match] = relationship(back_populates="self_assessments")
+    author: Mapped[User] = relationship()
+    rows: Mapped[list[SelfAssessmentClip]] = relationship(
+        back_populates="self_assessment", cascade="all, delete-orphan", order_by="SelfAssessmentClip.position")
+
+    @property
+    def is_submitted(self) -> bool:
+        return self.status == "submitted"
+
+
+class SelfAssessmentClip(Base):
+    """One row of the clips table. `time_label` and `name_label` are text snapshots, so the row stays
+    readable after the clip is deleted (`clip_id` then becomes NULL). A clip appears at most once per sheet.
+    `description` is the author's own text, copied from the clip when it was added; it never touches the clip.
+    """
+    __tablename__ = "self_assessment_clips"
+    __table_args__ = (UniqueConstraint("self_assessment_id", "clip_id"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    self_assessment_id: Mapped[int] = mapped_column(ForeignKey("self_assessments.id", ondelete="CASCADE"), index=True)
+    clip_id: Mapped[int | None] = mapped_column(ForeignKey("clips.id", ondelete="SET NULL"), index=True)
+    position: Mapped[int] = mapped_column(Integer)
+    description: Mapped[str] = mapped_column(Text, default="", server_default="")
+    time_label: Mapped[str] = mapped_column(String(200), default="", server_default="")
+    name_label: Mapped[str] = mapped_column(String(200), default="", server_default="")
+
+    self_assessment: Mapped[SelfAssessment] = relationship(back_populates="rows")
+    clip: Mapped[Clip | None] = relationship()
+
+
 class SheetColumn(Base):
     """Function and name are copies because the crew may change later."""
     __tablename__ = "sheet_columns"
@@ -563,6 +620,8 @@ class Notification(Base):
     match_id: Mapped[int | None] = mapped_column(ForeignKey("matches.id", ondelete="CASCADE"), index=True)
     clip_id: Mapped[int | None] = mapped_column(ForeignKey("clips.id", ondelete="CASCADE"), index=True)
     sheet_id: Mapped[int | None] = mapped_column(ForeignKey("sheets.id", ondelete="CASCADE"), index=True)
+    self_assessment_id: Mapped[int | None] = mapped_column(
+        ForeignKey("self_assessments.id", ondelete="CASCADE"), index=True)
     group_id: Mapped[int | None] = mapped_column(ForeignKey("training_groups.id", ondelete="CASCADE"), index=True)
     verdict: Mapped[str | None] = mapped_column(String(20))
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
@@ -573,6 +632,7 @@ class Notification(Base):
     group: Mapped[TrainingGroup | None] = relationship()
     clip: Mapped[Clip | None] = relationship()
     sheet: Mapped[Sheet | None] = relationship()
+    self_assessment: Mapped[SelfAssessment | None] = relationship()
 
     @property
     def is_unread(self) -> bool:
@@ -712,5 +772,6 @@ class EmailPreference(Base):
     comments_and_ratings: Mapped[bool | None] = mapped_column(Boolean)
     sheet_published: Mapped[bool | None] = mapped_column(Boolean)
     group_added: Mapped[bool | None] = mapped_column(Boolean)
+    self_assessment_submitted: Mapped[bool | None] = mapped_column(Boolean)
     unsubscribe_token: Mapped[str | None] = mapped_column(String(64), unique=True)
     last_digest_until: Mapped[datetime | None] = mapped_column(DateTime)

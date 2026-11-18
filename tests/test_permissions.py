@@ -5,8 +5,8 @@ import pytest
 from sqlalchemy import select
 
 from app import permissions as p
-from app.models import (Clip, Comment, GroupMember, Match, MatchOfficial, Notification, Rating, ShareLink, Sheet,
-                        TrainingGroup, User, Video)
+from app.models import (Clip, Comment, GroupMember, Match, MatchOfficial, Notification, Rating, SelfAssessment,
+                        ShareLink, Sheet, TrainingGroup, User, Video)
 from tests.helpers import (TUS, category_named, make_match, make_ready_video, make_user, mark_periods, tus_create,
                            tus_metadata)
 
@@ -44,6 +44,10 @@ def clip(*, in_crew=False, author=OTHER) -> Clip:
 
 def sheet(*, author=OTHER, published=False, in_crew=False) -> Sheet:
     return Sheet(match=match(in_crew=in_crew), coach_id=author, status="published" if published else "draft")
+
+
+def self_assessment(*, author=OTHER, submitted=False) -> SelfAssessment:
+    return SelfAssessment(match=match(), user_id=author, status="submitted" if submitted else "draft")
 
 
 def group(role=None) -> TrainingGroup:
@@ -198,6 +202,42 @@ ROWS = [
             "coach": (True, True, False, True, True), "referee": (True, True, False, True, False),
             "admin+coach": (True, True, False, True, True), "admin+referee": (True, True, False, True, True),
             "coach+referee": (True, True, False, True, True)}),
+    # self-assessment: starting needs a referee role and a place in the crew; the author edits and deletes only
+    # a draft; coaches and admins see only submitted sheets; only an admin reopens
+    _row("lista samoocen", lambda u, _: p.can_see_self_assessments(u), [None],
+         **{"brak ról": (False,), "admin": (True,), "coach": (True,), "referee": (True,),
+            "admin+coach": (True,), "admin+referee": (True,), "coach+referee": (True,)}),
+    _row("wysłane samooceny wszystkich", lambda u, _: p.can_view_submitted_self_assessments(u), [None],
+         **{"brak ról": (False,), "admin": (True,), "coach": (True,), "referee": (False,),
+            "admin+coach": (True,), "admin+referee": (True,), "coach+referee": (True,)}),
+    # in the crew / not in the crew
+    _row("zakładanie samooceny", lambda u, m: p.can_fill_self_assessment(u, m),
+         [match(in_crew=True), match()],
+         **{"brak ról": (False, False), "admin": (False, False), "coach": (False, False),
+            "referee": (True, False), "admin+coach": (False, False), "admin+referee": (True, False),
+            "coach+referee": (True, False)}),
+    # own draft / own submitted / foreign draft
+    _row("edycja samooceny", lambda u, s: p.can_edit_self_assessment(u, s),
+         [self_assessment(author=ME), self_assessment(author=ME, submitted=True), self_assessment()],
+         **{k: (True, False, False) for k in ROLE_SETS}),
+    _row("usuwanie szkicu samooceny", lambda u, s: p.can_delete_self_assessment(u, s),
+         [self_assessment(author=ME), self_assessment(author=ME, submitted=True), self_assessment()],
+         **{k: (True, False, False) for k in ROLE_SETS}),
+    # own draft / own submitted / foreign draft / foreign submitted
+    _row("podgląd samooceny", lambda u, s: p.can_view_self_assessment(u, s),
+         [self_assessment(author=ME), self_assessment(author=ME, submitted=True), self_assessment(),
+          self_assessment(submitted=True)],
+         **{"brak ról": (True, True, False, False), "admin": (True, True, False, True),
+            "coach": (True, True, False, True), "referee": (True, True, False, False),
+            "admin+coach": (True, True, False, True), "admin+referee": (True, True, False, True),
+            "coach+referee": (True, True, False, True)}),
+    # own submitted / foreign submitted / foreign draft / own draft
+    _row("przywrócenie samooceny do edycji", lambda u, s: p.can_reopen_self_assessment(u, s),
+         [self_assessment(author=ME, submitted=True), self_assessment(submitted=True), self_assessment(),
+          self_assessment(author=ME)],
+         **{"brak ról": (False,) * 4, "admin": (True, True, False, False), "coach": (False,) * 4,
+            "referee": (False,) * 4, "admin+coach": (True, True, False, False),
+            "admin+referee": (True, True, False, False), "coach+referee": (False,) * 4}),
     # groups; view and manage: I am its coach / I am only a referee in it / I am not in it
     _row("tworzenie grupy", lambda u, _: p.can_create_group(u), [None],
          **{"brak ról": (False,), "admin": (True,), "coach": (True,), "referee": (False,),
@@ -265,6 +305,11 @@ def test_inactive_user_and_anonymous_have_no_access():
     own = sheet(author=ME, published=True, in_crew=True)
     assert not any(f(inactive, own) for f in (p.can_view_sheet, p.can_edit_sheet, p.can_delete_sheet))
     assert not p.can_view_sheet(None, own) and not p.can_create_sheet(None) and not p.can_manage_sheet_elements(None)
+    mine = self_assessment(author=ME, submitted=True)
+    assert not any(f(inactive, mine) for f in (p.can_view_self_assessment, p.can_edit_self_assessment,
+                                               p.can_delete_self_assessment, p.can_reopen_self_assessment))
+    assert not p.can_fill_self_assessment(inactive, match(in_crew=True)) and not p.can_see_self_assessments(inactive)
+    assert not p.can_view_self_assessment(None, mine) and not p.can_view_submitted_self_assessments(None)
     assert not any(f(inactive, group("coach")) for f in (p.can_view_group, p.can_manage_group))
     assert not p.can_create_group(inactive) and not p.can_see_my_groups(None) and not p.can_view_group(None, group())
 
