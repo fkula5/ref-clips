@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.13.1](https://github.com/fkula5/ref-clips/compare/v1.13.0...v1.13.1) (2026-11-19)
+
+
+### Bug Fixes
+
+* **docker:** give fontconfig a writable cache directory ([#44](https://github.com/fkula5/ref-clips/issues/44)) ([67654fe](https://github.com/fkula5/ref-clips/commit/67654fe8c7b098ea65cd411e9cd1e9b4091205ce))
+
 ## [1.13.0](https://github.com/fkula5/ref-clips/compare/v1.12.1...v1.13.0) (2026-11-18)
 
 
