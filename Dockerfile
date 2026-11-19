@@ -14,11 +14,13 @@ ARG APP_GID=1000
 RUN groupadd --gid "$APP_GID" app \
     && useradd --uid "$APP_UID" --gid "$APP_GID" --no-create-home --shell /usr/sbin/nologin app
 
+# The app user has no home directory; without a writable XDG_CACHE_HOME fontconfig logs an error on every PDF.
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
     REFCLIPS_DATA_DIR=/data \
+    XDG_CACHE_HOME=/tmp/.cache \
     UVICORN_WS_MAX_SIZE=65536
 
 WORKDIR /srv/app
