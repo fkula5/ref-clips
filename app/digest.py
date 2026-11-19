@@ -229,13 +229,18 @@ def collect(db: Session, user: User, pref: EmailPreference | None, since: dateti
         select(Notification).where(Notification.recipient_id == user.id, Notification.kind.in_(kinds),
                                    Notification.created_at > since, Notification.created_at <= until)
         .options(selectinload(Notification.actor), selectinload(Notification.match),
-                 selectinload(Notification.group), selectinload(Notification.sheet))
+                 selectinload(Notification.group), selectinload(Notification.sheet),
+                 selectinload(Notification.self_assessment))
         .order_by(Notification.id))) if kinds else []
 
     group_notes = []
+    standalone_notes = []
     for note in notes:
         if note.kind == "group_added":
             group_notes.append(note)
+        elif note.kind == "self_assessment" and note.match is None:
+            if note.self_assessment is not None:
+                standalone_notes.append(note)
         elif note.match is None:
             continue
         elif note.kind in COMMENT_KINDS:
@@ -250,6 +255,8 @@ def collect(db: Session, user: User, pref: EmailPreference | None, since: dateti
     texts = _comment_texts(db, [n for b in blocks.values() for n in b.comments])
     sections = [_section(b, texts, base) for b in sorted(
         blocks.values(), key=lambda b: (b.match.date, b.match.id), reverse=True)]
+    if standalone_notes:
+        sections.append(Section("Mecze spoza systemu", None, [_standalone_entry(n, base) for n in standalone_notes]))
     if group_notes:
         sections.append(Section("Grupy", None, [_group_entry(n, base) for n in group_notes]))
     return Digest(sections, since, until)
@@ -289,6 +296,11 @@ def _section(b: _MatchBlock, texts: dict[int, str], base: str) -> Section:
     for note in b.self_assessments:
         entries.append(Entry(f"Wysłano samoocenę sędziego: {_actor_name(note)}", f"{base}{notify.target_url(note)}"))
     return Section(f"Mecz {match.title}", match_url, entries)
+
+
+def _standalone_entry(note: Notification, base: str) -> Entry:
+    return Entry(f"Wysłano samoocenę sędziego: {_actor_name(note)} ({note.self_assessment.title})",
+                 f"{base}{notify.target_url(note)}")
 
 
 def _group_entry(note: Notification, base: str) -> Entry:

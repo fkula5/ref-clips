@@ -56,7 +56,7 @@ def render_form(request: Request, db: Session, sa: SelfAssessment, *, values: di
                 status_code: int = 200):
     """After a failed save `values` is what the user typed; it is shown instead of the stored text."""
     return render(request, "self_assessment_form.html", status_code=status_code, sa=sa, match=sa.match,
-                  h=self_assessments.header(sa.match), questions=self_assessments.QUESTIONS,
+                  h=self_assessments.header(sa), questions=self_assessments.QUESTIONS,
                   rows=self_assessments.ordered(sa, order), values={**self_assessments.form_values(sa), **(values or {})},
                   errors=errors or [], error_notice=notice, unsaved=bool(errors) and not notice,
                   hints=self_assessments.clip_hint(sa), available=self_assessments.available_clips(db, sa),
@@ -68,7 +68,16 @@ def list_page(request: Request, db: Session = Depends(get_db),
               user: User = require(permissions.can_see_self_assessments)):
     submitted, pager, mine = self_assessments.listing(db, user, parse_page(request.query_params.get("page")))
     return render(request, "self_assessments.html", submitted=submitted, pager=pager, mine=mine,
-                  staff=permissions.can_view_submitted_self_assessments(user))
+                  staff=permissions.can_view_submitted_self_assessments(user),
+                  can_create_standalone=permissions.can_create_standalone_self_assessment(user))
+
+
+@router.post("/self-assessments/new")
+def open_standalone(db: Session = Depends(get_db),
+                    user: User = require(permissions.can_create_standalone_self_assessment)):
+    sa = self_assessments.create_standalone(db, user)
+    db.commit()
+    return flash.redirect_with_page_notice(f"/self-assessments/{sa.id}/edit", "Założono samoocenę jako szkic.")
 
 
 @router.post("/matches/{match_id}/self-assessments")
@@ -85,7 +94,7 @@ def open_sa(db: Session = Depends(get_db), match: Match = Depends(get_match),
 @router.get("/self-assessments/{self_assessment_id}")
 def show(request: Request, db: Session = Depends(get_db), sa: SelfAssessment = view_sa):
     mark_seen(request, db, self_assessment_id=sa.id)
-    return render(request, "self_assessment.html", sa=sa, match=sa.match, h=self_assessments.header(sa.match),
+    return render(request, "self_assessment.html", sa=sa, match=sa.match, h=self_assessments.header(sa),
                   questions=self_assessments.QUESTIONS)
 
 
@@ -109,7 +118,7 @@ def edit_form(request: Request, db: Session = Depends(get_db), sa: SelfAssessmen
 @router.post("/self-assessments/{self_assessment_id}/edit")
 def save(request: Request, db: Session = Depends(get_db), sa: SelfAssessment = edit_sa,
          body: tuple[dict[str, str], list[int]] = Depends(posted)):
-    """`action` is save, submit, or a row action: add:<clip id>, remove:<row id>, up:<row id>, down:<row id>."""
+    """`action` is save, submit, or a row action: add:<clip id>, manual, remove:<row id>, up:<row id>, down:<row id>."""
     fields, order = body
     action = fields.get("action", "save")
     try:
@@ -126,17 +135,17 @@ def save(request: Request, db: Session = Depends(get_db), sa: SelfAssessment = e
     db.commit()
     if submitted:
         return flash.redirect_with_page_notice(f"/self-assessments/{sa.id}", "Wysłano samoocenę. Nie można jej już edytować.")
-    if ":" in action:
+    if action != "save":
         return flash.redirect_with_page_notice(f"/self-assessments/{sa.id}/edit#klipy", "Zapisano szkic.")
     return flash.redirect_with_page_notice(f"/self-assessments/{sa.id}/edit", "Zapisano szkic.")
 
 
 @router.post("/self-assessments/{self_assessment_id}/delete")
 def delete(db: Session = Depends(get_db), sa: SelfAssessment = delete_sa):
-    match_id = sa.match_id
+    back = f"/matches/{sa.match_id}#samoocena" if sa.match_id else "/self-assessments"
     db.delete(sa)
     db.commit()
-    return flash.redirect_with_page_notice(f"/matches/{match_id}#samoocena", "Usunięto szkic samooceny.")
+    return flash.redirect_with_page_notice(back, "Usunięto szkic samooceny.")
 
 
 @router.post("/self-assessments/{self_assessment_id}/reopen")

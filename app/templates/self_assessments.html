@@ -5,8 +5,10 @@
 {% macro item(s, with_author) %}
   <li class="sheet-item" data-self-assessment="{{ s.id }}">
     <div>
-      <a href="{{ '/self-assessments/%d'|format(s.id) }}"><strong>{{ s.match.title }}</strong></a>
-      {% if s.match.level %}<span class="muted">{{ s.match.level }}</span>{% endif %}
+      <a href="{{ '/self-assessments/%d'|format(s.id) }}"><strong>{{ s.title }}</strong></a>
+      {% if s.is_standalone %}<span class="chip">spoza systemu</span>{% endif %}
+      {% set level = s.league if s.is_standalone else s.match.level %}
+      {% if level %}<span class="muted">{{ level }}</span>{% endif %}
       {% if with_author %}<span>· {{ s.author.name }}</span>{% endif %}
       {% if s.is_submitted %}<span class="badge ready">wysłana</span>{% else %}<span class="badge state-uploading">szkic</span>{% endif %}
       <span class="muted small-note">{% if s.is_submitted %}{{ s.submitted_at|local("%d.%m.%Y %H:%M") }}{% else %}zapisano {{ s.updated_at|local("%d.%m.%Y %H:%M") }}{% endif %}</span>
@@ -18,11 +20,17 @@
   </li>
 {% endmacro %}
 <h1>{{ 'Samooceny sędziów' if staff else 'Moje samooceny' }}</h1>
+{% if can_create_standalone %}
+<form method="post" action="/self-assessments/new" class="row">
+  {{ csrf_input() }}<button class="btn primary" id="sa-new-standalone">Nowa samoocena — mecz spoza systemu</button>
+  <span class="muted small-note">Dla meczu, którego nie ma w systemie: nagłówek i klipy wpisujesz sam(a).</span>
+</form>
+{% endif %}
 {% if mine or not staff %}
 <h2>Moje samooceny</h2>
 <ul class="card scoresheet-list" id="sa-mine">
   {% for s in mine %}{{ item(s, false) }}{% else %}
-  <li class="muted">Nie masz jeszcze samooceny. Zacznij ją na stronie meczu, w którym sędziowałeś(-aś).</li>
+  <li class="muted">Nie masz jeszcze samooceny. Zacznij ją na stronie meczu, w którym sędziowałeś(-aś){% if can_create_standalone %} albo utwórz samoocenę meczu spoza systemu{% endif %}.</li>
   {% endfor %}
 </ul>
 {% endif %}

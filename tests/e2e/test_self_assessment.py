@@ -83,3 +83,53 @@ def test_the_form_and_the_report_fit_a_phone(ui):
     expect(page.locator("#sa-draft-mark")).to_be_visible()
     assert page.viewport_size["width"] == MOBILE["width"]
     assert page.evaluate("document.scrollingElement.scrollWidth <= document.scrollingElement.clientWidth")
+
+
+def test_referee_fills_in_a_self_assessment_of_a_match_outside_the_system(ui):
+    referee = ui.page("referee")
+    referee.goto("/self-assessments")
+    referee.get_by_role("button", name="Nowa samoocena — mecz spoza systemu").click()
+    expect(referee.locator("#page-notice")).to_contain_text("Założono samoocenę jako szkic")
+    expect(referee.locator("#sa-picker")).to_have_count(0)
+
+    referee.locator("input[name=league]").fill("Liga Amatorska")
+    referee.locator("input[name=match_date]").fill("2026-11-07")
+    referee.locator("input[name=home_team]").fill("Śląsk")
+    referee.locator("input[name=away_team]").fill("Zagłębie")
+    referee.locator("input[name=main_referee]").fill("Jan Kowalski")
+
+    ui.allow(r"status of 42[2]")
+    referee.on("dialog", lambda d: d.accept())
+    for number in range(1, 4):
+        referee.get_by_role("button", name="Dodaj wiersz ręcznie").click()
+        expect(referee.locator(".sa-row")).to_have_count(number)
+    rows = referee.locator(".sa-row")
+    for i in range(3):
+        rows.nth(i).locator("input[name^=time_]").fill(f"Q{i + 1}, 2:0{i}")
+        rows.nth(i).locator("input[name^=name_]").fill(f"Faul {i + 1}")
+        if i < 2:
+            rows.nth(i).locator("textarea").fill(f"Opis {i + 1}")
+    referee.locator("textarea[name=opinion]").fill("Spokojny mecz.")
+    referee.locator("textarea[name=good]").fill("Współpraca.")
+    referee.locator("textarea[name=bad]").fill("Ustawienie.")
+
+    referee.get_by_role("button", name="Wyślij").click()
+    expect(referee.locator("#sa-errors")).to_contain_text("Klip 3: wpisz opis.")
+    expect(referee.locator("input[name=home_team]")).to_have_value("Śląsk")  # the draft was saved
+    referee.locator(".sa-row").nth(2).locator("textarea").fill("Opis 3")
+    referee.get_by_role("button", name="Wyślij").click()
+    expect(referee.locator("#page-notice")).to_contain_text("Wysłano samoocenę")
+    report = referee.locator("#sa-report")
+    expect(report).to_contain_text("Liga Amatorska")
+    expect(report).to_contain_text("07.11.2026")
+    expect(report).to_contain_text("Zagłębie")
+    expect(report.locator(".sa-block")).to_have_count(6)
+
+    coach = ui.page("coach")
+    coach.goto("/self-assessments")
+    expect(coach.locator("#sa-submitted")).to_contain_text("Śląsk – Zagłębie")
+    expect(coach.locator("#sa-submitted")).to_contain_text("spoza systemu")
+    coach.get_by_role("link", name="Otwórz").first.click()
+    with coach.expect_download() as download:
+        coach.get_by_role("link", name="Pobierz PDF").click()
+    assert download.value.suggested_filename == "samoocena_2026-11-07_Slask-Zaglebie.pdf"

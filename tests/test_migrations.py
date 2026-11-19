@@ -409,3 +409,40 @@ def test_email_digest_migration_is_additive_and_cascades(tmp_path):
     assert "email_preferences" not in tables and {"users", "match_scoresheets"} <= tables
     command.upgrade(cfg, "head")
     assert "email_preferences" in set(inspect(create_engine(url)).get_table_names())
+
+
+def test_standalone_self_assessment_migration_keeps_data_and_downgrade_drops_standalone_sheets(tmp_path):
+    from sqlalchemy import text
+
+    url = f"sqlite:///{tmp_path / 'm.db'}"
+    cfg = _config(url)
+    command.upgrade(cfg, "mvp0012")
+    engine = create_engine(url)
+    with engine.begin() as conn:
+        conn.execute(text("INSERT INTO users (id, email, name, is_active) VALUES (1, 'a@b.pl', 'A', 1)"))
+        conn.execute(text("INSERT INTO matches (id, date, level, team_a_name, team_a_color, team_b_name, team_b_color) "
+                          "VALUES (1, '2026-10-28', '', '', '', '', '')"))
+        conn.execute(text("INSERT INTO self_assessments (id, match_id, user_id, opinion) VALUES (1, 1, 1, 'Zostaje')"))
+        conn.execute(text("INSERT INTO self_assessment_clips (self_assessment_id, position, description) "
+                          "VALUES (1, 0, 'wiersz')"))
+        conn.execute(text("INSERT INTO notifications (recipient_id, kind, match_id, self_assessment_id) "
+                          "VALUES (1, 'self_assessment', 1, 1)"))
+    command.upgrade(cfg, "head")
+    with engine.begin() as conn:
+        assert conn.execute(text("SELECT opinion, league, match_date FROM self_assessments")).one() == ("Zostaje", "", None)
+        assert conn.execute(text("SELECT is_manual FROM self_assessment_clips")).scalar() == 0
+        assert conn.execute(text("SELECT COUNT(*) FROM notifications")).scalar() == 1
+        # several standalone sheets of one user are allowed (NULLs are distinct in a unique constraint)
+        for i in (2, 3):
+            conn.execute(text("INSERT INTO self_assessments (id, match_id, user_id, league) VALUES (:i, NULL, 1, 'L')"),
+                         {"i": i})
+        conn.execute(text("INSERT INTO self_assessment_clips (self_assessment_id, position, is_manual) VALUES (2, 0, 1)"))
+        conn.execute(text("INSERT INTO notifications (recipient_id, kind, self_assessment_id) "
+                          "VALUES (1, 'self_assessment', 2)"))
+    with engine.connect() as conn:
+        assert compare_metadata(MigrationContext.configure(conn), Base.metadata) == []
+    command.downgrade(cfg, "mvp0012")
+    with engine.connect() as conn:
+        assert conn.execute(text("SELECT id FROM self_assessments")).scalars().all() == [1]
+        assert conn.execute(text("SELECT COUNT(*) FROM self_assessment_clips")).scalar() == 1
+        assert conn.execute(text("SELECT self_assessment_id FROM notifications")).scalars().all() == [1]

@@ -388,6 +388,10 @@ ul.plain { list-style: none; margin: 0; padding: 0; }
 .sa-row textarea { font-family: inherit; min-height: 70px; resize: vertical; }
 .sa-row .btn.sa-insert { margin-top: 6px; }
 .sa-picker { list-style: none; margin: 8px 0; padding: 0 12px; background: var(--card); border: 1px solid var(--line); border-radius: 8px; }
+.sa-head-form { margin: 8px 0; padding: 4px 12px 8px; border: 1px solid var(--line); border-radius: 8px; }
+.sa-head-form label, .sa-row .grid2 label { display: block; margin: 6px 0; font-weight: 500; }
+.sa-head-form input, .sa-row .grid2 input { display: block; width: 100%; margin-top: 4px; font-weight: 400; }
+.sa-manual { margin: 8px 0 16px; }
 .sa-question { display: block; margin: 12px 0; }
 .sa-question textarea { display: block; margin-top: 4px; font-family: inherit; min-height: 110px; resize: vertical; }
 
