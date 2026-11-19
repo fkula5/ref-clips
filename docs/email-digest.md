@@ -13,7 +13,7 @@ Six events, each a switch on **Ustawienia powiadomień** (`/settings/notificatio
 | `comments_and_ratings` | `Notification` rows of kind comment/rating created in the window, read or not, so the recipients are the bell's; „2 komentarze, 1 ocena” with the first 12 words of each comment and links | the bell's recipients | coach, referee |
 | `sheet_published` | `Notification` rows of kind `sheet_published` | the crew | referee |
 | `group_added` | `Notification` rows of kind `group_added`: „Dodano Cię do grupy Y (szkoleniowiec: Z)” | the person added | coach, referee |
-| `self_assessment_submitted` | `Notification` rows of kind `self_assessment`: „Wysłano samoocenę sędziego: X”, one line per sheet under its match, with a link; switch label „Wysłane samooceny sędziów z moich grup” | coaches of the groups the author belongs to as a referee (the bell's recipients) | coach |
+| `self_assessment_submitted` | `Notification` rows of kind `self_assessment`: „Wysłano samoocenę sędziego: X”, one line per sheet under its match, with a link (a sheet for a match that is not in the system goes under „Mecze spoza systemu”, see below); switch label „Wysłane samooceny sędziów z moich grup” | coaches of the groups the author belongs to as a referee (the bell's recipients) | coach |
 
 Events 1-2 are computed when the digest is built and are not in the bell. Event 6 is shown, like 1-2, only to coaches and admins (`GROUP_EVENTS`). Defaults apply while the account has not touched a switch (the column is NULL), so they follow later role changes; the admin role gives nothing by itself, and a switch the page does not show (group events, including this one, for a plain referee) is never changed by saving. Nobody is told about their own actions. Accounts that are inactive or have no password get nothing.
 
@@ -41,5 +41,7 @@ Every mail has the footer links „Zmień ustawienia” (login needed) and „Wy
 ## Data
 
 Migration `mvp0011` adds one table, `email_preferences` (one row per account, created on first use): `digest_enabled` (default on), five nullable event switches, `unsubscribe_token`, `last_digest_until`. No existing table changes; downgrade drops it.
+
+A self-assessment of a match that is not in the system has no match to be grouped under, so its notifications form their own section „Mecze spoza systemu” (after the match sections, before „Grupy”): „Wysłano samoocenę sędziego: X (07.11.2026 · Śląsk – Zagłębie)”, with a link, using the header the author typed.
 
 Migration `mvp0012` adds the sixth switch, `email_preferences.self_assessment_submitted` (nullable, NULL = the role default), together with the self-assessment tables and the `self_assessment` notification kind.

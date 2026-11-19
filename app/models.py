@@ -468,7 +468,9 @@ class Sheet(Base):
 
 
 class SelfAssessment(Base):
-    """A referee's own assessment of one match (one per referee and match). Only the author sees a draft;
+    """A referee's own assessment of one match (one per referee and match), or a standalone one (`match_id`
+    NULL) for a match that is not in the system: then the author types the header into the `league`...
+    `assistant_referees` columns, which stay empty for a linked sheet. Only the author sees a draft;
     a submitted one is read-only for the author and visible to coaches and admins. `submitted_at` is kept
     when an admin returns the sheet to draft, so it shows when the sheet was first sent.
     """
@@ -479,8 +481,14 @@ class SelfAssessment(Base):
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    match_id: Mapped[int] = mapped_column(ForeignKey("matches.id", ondelete="CASCADE"))
+    match_id: Mapped[int | None] = mapped_column(ForeignKey("matches.id", ondelete="CASCADE"))
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    league: Mapped[str] = mapped_column(String(200), default="", server_default="")
+    match_date: Mapped[dt.date | None] = mapped_column(Date)
+    home_team: Mapped[str] = mapped_column(String(200), default="", server_default="")
+    away_team: Mapped[str] = mapped_column(String(200), default="", server_default="")
+    main_referee: Mapped[str] = mapped_column(String(200), default="", server_default="")
+    assistant_referees: Mapped[str] = mapped_column(String(200), default="", server_default="")
     opinion: Mapped[str] = mapped_column(Text, default="", server_default="")
     good: Mapped[str] = mapped_column(Text, default="", server_default="")
     bad: Mapped[str] = mapped_column(Text, default="", server_default="")
@@ -489,7 +497,7 @@ class SelfAssessment(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())  # set in code
     submitted_at: Mapped[datetime | None] = mapped_column(DateTime)
 
-    match: Mapped[Match] = relationship(back_populates="self_assessments")
+    match: Mapped[Match | None] = relationship(back_populates="self_assessments")
     author: Mapped[User] = relationship()
     rows: Mapped[list[SelfAssessmentClip]] = relationship(
         back_populates="self_assessment", cascade="all, delete-orphan", order_by="SelfAssessmentClip.position")
@@ -498,11 +506,30 @@ class SelfAssessment(Base):
     def is_submitted(self) -> bool:
         return self.status == "submitted"
 
+    @property
+    def is_standalone(self) -> bool:
+        return self.match_id is None
+
+    @property
+    def teams(self) -> str:
+        if self.match is not None:
+            return self.match.teams
+        return f"{self.home_team or 'A'} – {self.away_team or 'B'}"
+
+    @property
+    def title(self) -> str:
+        if self.match is not None:
+            return self.match.title
+        date_text = self.match_date.strftime("%d.%m.%Y") if self.match_date else "bez daty"
+        return f"{date_text} · {self.teams}"
+
 
 class SelfAssessmentClip(Base):
     """One row of the clips table. `time_label` and `name_label` are text snapshots, so the row stays
     readable after the clip is deleted (`clip_id` then becomes NULL). A clip appears at most once per sheet.
     `description` is the author's own text, copied from the clip when it was added; it never touches the clip.
+    A manual row (`is_manual`, for a clip not cut in the app) has no clip either, but its time and name are
+    typed by the author and are never refreshed from a clip; that is what tells it from a deleted clip's row.
     """
     __tablename__ = "self_assessment_clips"
     __table_args__ = (UniqueConstraint("self_assessment_id", "clip_id"),)
@@ -514,6 +541,7 @@ class SelfAssessmentClip(Base):
     description: Mapped[str] = mapped_column(Text, default="", server_default="")
     time_label: Mapped[str] = mapped_column(String(200), default="", server_default="")
     name_label: Mapped[str] = mapped_column(String(200), default="", server_default="")
+    is_manual: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
 
     self_assessment: Mapped[SelfAssessment] = relationship(back_populates="rows")
     clip: Mapped[Clip | None] = relationship()
@@ -603,7 +631,8 @@ class ShareLinkClip(Base):
 class Notification(Base):
     """Created in the transaction of the event. Deleting the target match, clip, sheet or group deletes its
     notifications (a link to it would lead nowhere); deleting a comment or rating leaves them. `match_id`
-    is set for every kind except `group_added` (which sets `group_id`), `clip_id` for clip kinds,
+    is set for every kind except `group_added` (which sets `group_id`) and the self-assessment of a match that
+    is not in the system, `clip_id` for clip kinds,
     `sheet_id` for sheets, `verdict` for ratings.
     """
     __tablename__ = "notifications"

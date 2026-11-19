@@ -6,7 +6,7 @@
   {{ NOTIFICATION_KINDS[n.kind] }}
   {%- if n.group %} „{{ n.group.name }}”{% else %}
   {%- if c %} {{ period_short(c) if period_for(c) else c.time_sec|clock }}{% endif %}
-  {{ ' ' if n.kind == 'match_comment' else ' w meczu ' }}{{ n.match.teams }}{% endif %}
+  {{ ' ' if n.kind == 'match_comment' else ' w meczu ' }}{{ n.match.teams if n.match else n.self_assessment.teams }}{% endif %}
 {%- endmacro %}
 {% block content %}
 <div class="row between">

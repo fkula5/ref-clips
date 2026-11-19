@@ -216,6 +216,9 @@ ROWS = [
          **{"brak ról": (False, False), "admin": (False, False), "coach": (False, False),
             "referee": (True, False), "admin+coach": (False, False), "admin+referee": (True, False),
             "coach+referee": (True, False)}),
+    _row("zakładanie samooceny spoza systemu", lambda u, _: p.can_create_standalone_self_assessment(u), [None],
+         **{"brak ról": (False,), "admin": (False,), "coach": (False,), "referee": (True,),
+            "admin+coach": (False,), "admin+referee": (True,), "coach+referee": (True,)}),
     # own draft / own submitted / foreign draft
     _row("edycja samooceny", lambda u, s: p.can_edit_self_assessment(u, s),
          [self_assessment(author=ME), self_assessment(author=ME, submitted=True), self_assessment()],
@@ -309,6 +312,7 @@ def test_inactive_user_and_anonymous_have_no_access():
     assert not any(f(inactive, mine) for f in (p.can_view_self_assessment, p.can_edit_self_assessment,
                                                p.can_delete_self_assessment, p.can_reopen_self_assessment))
     assert not p.can_fill_self_assessment(inactive, match(in_crew=True)) and not p.can_see_self_assessments(inactive)
+    assert not p.can_create_standalone_self_assessment(inactive) and not p.can_create_standalone_self_assessment(None)
     assert not p.can_view_self_assessment(None, mine) and not p.can_view_submitted_self_assessments(None)
     assert not any(f(inactive, group("coach")) for f in (p.can_view_group, p.can_manage_group))
     assert not p.can_create_group(inactive) and not p.can_see_my_groups(None) and not p.can_view_group(None, group())

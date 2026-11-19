@@ -1,8 +1,8 @@
 {% extends "base.html" %}
-{% block title %}Samoocena: {{ match.title }}{% endblock %}
+{% block title %}Samoocena: {{ sa.title }}{% endblock %}
 {% block content %}
 <div class="row between">
-  <p class="muted"><a href="/matches/{{ match.id }}#samoocena">&larr; {{ match.title }}</a></p>
+  <p class="muted"><a href="{{ '/matches/%d#samoocena'|format(match.id) if match else '/self-assessments' }}">&larr; {{ sa.title if match else 'Moje samooceny' }}</a></p>
   <div class="row">
     <a class="btn" id="sa-preview" href="/self-assessments/{{ sa.id }}">Podgląd arkusza</a>
   </div>
@@ -10,7 +10,7 @@
 <h1>Arkusz samooceny RC 2026/27</h1>
 <p class="muted">
   <span class="badge state-uploading">szkic</span> Widoczny tylko dla Ciebie, dopóki go nie wyślesz. Szkic może być niepełny.
-  Do wysłania potrzeba co najmniej {{ min_clips }} klipów z opisami i odpowiedzi na wszystkie trzy pytania.
+  Do wysłania potrzeba {% if not match %}uzupełnionego nagłówka (asystenci są opcjonalni), {% endif %}co najmniej {{ min_clips }} klipów z opisami i odpowiedzi na wszystkie trzy pytania.
   {% if sa.submitted_at %}<br>Wcześniej wysłana {{ sa.submitted_at|local("%d.%m.%Y %H:%M") }}, przywrócona do edycji przez administratora.{% endif %}
 </p>
 
@@ -18,24 +18,41 @@
 {% if errors %}<div class="banner error" role="alert" id="sa-errors"><strong>{{ 'Samoocena nie jest gotowa do wysłania.' if error_notice else 'Nie zapisano samooceny. Wpisany tekst został w formularzu.' }}</strong>
   <ul>{% for e in errors %}<li>{{ e }}</li>{% endfor %}</ul></div>{% endif %}
 
+{% if match %}
 <table class="sheet-head" id="sa-head">
   <tr><th scope="row">Liga</th><td>{{ h.level or '—' }}</td><th scope="row">Data meczu</th><td>{{ h.date }}</td></tr>
   <tr><th scope="row">Gospodarze</th><td>{{ h.team_a or '—' }}</td><th scope="row">Goście</th><td>{{ h.team_b or '—' }}</td></tr>
   <tr><th scope="row">Sędzia główny</th><td>{{ h.main_referee or '—' }}</td><th scope="row">Sędzia pomocniczy</th><td>{{ h.assistants or '—' }}</td></tr>
 </table>
+{% endif %}
 
 <form method="post" action="/self-assessments/{{ sa.id }}/edit" id="sa-form" class="sheet-form" data-unsaved="{{ 1 if unsaved else 0 }}">
   {{ csrf_input() }}
+  {% if not match %}
+  <fieldset class="sa-head-form" id="sa-head"><legend>Mecz spoza systemu</legend>
+    <div class="grid2">
+      <label>Liga <input name="league" maxlength="200" value="{{ values.league }}"></label>
+      <label>Data meczu <input type="date" name="match_date" value="{{ values.match_date }}"></label>
+      <label>Gospodarze <input name="home_team" maxlength="200" value="{{ values.home_team }}"></label>
+      <label>Goście <input name="away_team" maxlength="200" value="{{ values.away_team }}"></label>
+      <label>Sędzia główny <input name="main_referee" maxlength="200" value="{{ values.main_referee }}"></label>
+      <label>Sędzia pomocniczy <small class="muted">(opcjonalnie, dwa nazwiska po przecinku)</small>
+        <input name="assistant_referees" maxlength="200" value="{{ values.assistant_referees }}"></label>
+    </div>
+  </fieldset>
+  {% endif %}
   <h2 id="klipy">Klipy</h2>
-  <p class="muted small-note">Wybierz klipy z tego meczu. Czas i nazwa uzupełniają się same; opis jest wstępnie skopiowany z klipu, możesz go dowolnie zmienić — zmiana dotyczy tylko tej samooceny, nie samego klipu.</p>
+  <p class="muted small-note">{% if match %}Wybierz klipy z tego meczu. Czas i nazwa uzupełniają się same; opis jest wstępnie skopiowany z klipu, możesz go dowolnie zmienić — zmiana dotyczy tylko tej samooceny, nie samego klipu. Klip, którego nie wycięto w aplikacji, dodasz ręcznie.{% else %}Ten mecz nie jest w systemie, więc czas, nazwę i opis każdego klipu wpisujesz sam(a).{% endif %}</p>
   {% if not rows %}<p class="muted" id="sa-no-clips">Nie dodano jeszcze żadnego klipu.</p>{% endif %}
   <ol class="sa-rows" id="sa-rows">
   {% for row in rows %}
     <li class="card sa-row" data-row="{{ row.id }}">
       <input type="hidden" name="row" value="{{ row.id }}">
       <div class="row between">
-        <div><strong>Klip {{ loop.index }}</strong> <span class="chip">{{ row.name_label }}</span> <span class="muted">{{ row.time_label }}</span>
-          {% if row.clip_id %}<a class="small-note" href="/clips/{{ row.clip_id }}" target="_blank" rel="noopener">Odtwórz klip</a>
+        <div><strong>Klip {{ loop.index }}</strong>
+          {% if row.is_manual %}<span class="chip">wpisany ręcznie</span>
+          {% else %}<span class="chip">{{ row.name_label }}</span> <span class="muted">{{ row.time_label }}</span>{% endif %}
+          {% if row.is_manual %}{% elif row.clip_id %}<a class="small-note" href="/clips/{{ row.clip_id }}" target="_blank" rel="noopener">Odtwórz klip</a>
           {% else %}<span class="chip warn">klip został usunięty</span>{% endif %}</div>
         <div class="row">
           <button class="btn small" name="action" value="up:{{ row.id }}" aria-label="Przesuń klip {{ loop.index }} w górę" {{ 'disabled' if loop.first }}>↑</button>
@@ -43,6 +60,12 @@
           <button class="btn small danger" name="action" value="remove:{{ row.id }}">Usuń z arkusza</button>
         </div>
       </div>
+      {% if row.is_manual %}
+      <div class="grid2">
+        <label>Czas z nagrania <input name="time_{{ row.id }}" maxlength="200" value="{{ values['time_%d'|format(row.id)] }}" placeholder="np. 2. kwarta, 3:15" aria-label="Czas z nagrania, klip {{ loop.index }}"></label>
+        <label>Nazwa klipu <input name="name_{{ row.id }}" maxlength="200" value="{{ values['name_%d'|format(row.id)] }}" aria-label="Nazwa klipu, klip {{ loop.index }}"></label>
+      </div>
+      {% endif %}
       <label>Opis
         <textarea name="desc_{{ row.id }}" rows="3" aria-label="Opis klipu {{ loop.index }}">{{ values['desc_%d'|format(row.id)] }}</textarea></label>
       {% if hints.get(row.id) %}<button type="button" class="btn small sa-insert" data-target="desc_{{ row.id }}" data-text="{{ hints[row.id] }}">Wstaw opis z klipu</button>{% endif %}
@@ -50,6 +73,11 @@
   {% endfor %}
   </ol>
 
+  <div class="row sa-manual">
+    <button class="btn" name="action" value="manual" id="sa-add-manual">Dodaj wiersz ręcznie</button>
+  </div>
+
+  {% if match %}
   <h3>Dodaj klip z meczu</h3>
   {% if available %}
   <ul class="sa-picker" id="sa-picker">
@@ -63,6 +91,7 @@
   </ul>
   {% elif not rows %}<p class="muted" id="sa-picker-empty">Ten mecz nie ma jeszcze klipów. Klipy powstają ze znaczników zaznaczonych w odtwarzaczu.</p>
   {% else %}<p class="muted" id="sa-picker-empty">Wszystkie klipy meczu są już w arkuszu.</p>{% endif %}
+  {% endif %}
 
   <h2>Pytania</h2>
   {% for key, text in questions %}
@@ -73,7 +102,7 @@
   <div class="row sheet-actions">
     <button class="btn" name="action" value="save" id="sa-save">Zapisz szkic</button>
     <button class="btn primary" name="action" value="submit" id="sa-submit">Wyślij</button>
-    <a class="btn" href="/matches/{{ match.id }}#samoocena">Anuluj</a>
+    <a class="btn" href="{{ '/matches/%d#samoocena'|format(match.id) if match else '/self-assessments' }}">Anuluj</a>
   </div>
 </form>
 {% if perm.can_delete_self_assessment(user, sa) %}

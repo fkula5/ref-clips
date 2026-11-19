@@ -21,7 +21,7 @@ def _deny(url: str, *args, **kwargs):
 
 def render_html(sa: SelfAssessment) -> str:
     return env.get_template("self_assessment_pdf.html").render(
-        sa=sa, h=header(sa.match), questions=QUESTIONS, css=_css())
+        sa=sa, h=header(sa), questions=QUESTIONS, css=_css())
 
 
 def render_pdf(sa: SelfAssessment) -> bytes:

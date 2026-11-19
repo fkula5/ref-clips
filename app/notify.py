@@ -101,7 +101,7 @@ def page_of(db: Session, user_id: int, requested: int) -> tuple[list[Notificatio
     items = list(db.scalars(
         select(Notification).where(mine)
         .options(selectinload(Notification.actor), selectinload(Notification.match),
-                 selectinload(Notification.group),
+                 selectinload(Notification.group), selectinload(Notification.self_assessment),
                  selectinload(Notification.clip).selectinload(Clip.video).selectinload(Video.marks))
         .order_by(Notification.id.desc()).limit(size).offset(pager.offset)))
     return items, pager

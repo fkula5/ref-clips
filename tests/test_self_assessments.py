@@ -8,6 +8,7 @@ from types import SimpleNamespace
 import pytest
 from pypdf import PdfReader
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 
 from app import digest, notify, self_assessments
 from app.models import (Clip, EmailPreference, GroupMember, Notification, SelfAssessment, SelfAssessmentClip,
@@ -695,3 +696,326 @@ def test_a_three_clip_sheet_fits_on_one_a4_page_like_the_excel_original(w):
     assert len(reader.pages) == 1
     box = reader.pages[0].mediabox
     assert (round(float(box.width)), round(float(box.height))) == (595, 842)
+
+
+# ---------- standalone sheets (a match that is not in the system) ----------
+
+HEADER = {"league": "Liga Amatorska", "match_date": "2026-11-07", "home_team": "Śląsk", "away_team": "Zagłębie",
+          "main_referee": "Jan Kowalski", "assistant_referees": "Ewa Nowak, Piotr Wiśniewski"}
+
+
+def new_standalone(w, who="ref"):
+    r = post(w, who, "/self-assessments/new")
+    return int(re.search(r"/self-assessments/(\d+)/edit", r.headers["location"]).group(1))
+
+
+def add_manual_rows(w, sa_id, count=3, who="ref"):
+    for _ in range(count):
+        edit(w, who, sa_id, "manual")
+    fields = {}
+    for i, row in enumerate(sheet(w, sa_id).rows, start=1):
+        if row.is_manual and not row.description:
+            fields.update({f"time_{row.id}": f"Q{i}, 3:1{i}", f"name_{row.id}": f"Faul {i}",
+                           f"desc_{row.id}": f"Opis {i}"})
+    edit(w, who, sa_id, **fields)
+
+
+def complete_standalone(w, who="ref"):
+    sa_id = new_standalone(w, who)
+    add_manual_rows(w, sa_id, who=who)
+    edit(w, who, sa_id, **HEADER, **ANSWERS)
+    return sa_id
+
+
+def test_a_referee_creates_standalone_sheets_and_coach_or_admin_alone_cannot(w, make_client):
+    sa_id = new_standalone(w, "outsider")  # needs no place in any crew
+    sa = sheet(w, sa_id)
+    assert (sa.match_id, sa.user_id, sa.status, sa.is_standalone) == (None, w.u["outsider"].id, "draft", True)
+    assert w.c["outsider"].get(f"/self-assessments/{sa_id}/edit").status_code == 200
+    for who in ("coach", "admin"):
+        post(w, who, "/self-assessments/new", expect=(403,))
+    both, _ = make_client("coach", "referee")
+    assert both.post("/self-assessments/new", follow_redirects=False).status_code == 303
+    assert w.db.query(SelfAssessment).count() == 2
+
+
+def test_the_entry_point_is_on_the_list_page_for_referees_only(w):
+    assert 'id="sa-new-standalone"' in w.c["ref"].get("/self-assessments").text
+    assert 'id="sa-new-standalone"' in w.c["outsider"].get("/self-assessments").text
+    assert 'id="sa-new-standalone"' not in w.c["coach"].get("/self-assessments").text
+    assert 'id="sa-new-standalone"' not in w.c["admin"].get("/self-assessments").text
+
+
+def test_one_user_may_have_several_standalone_sheets_but_one_per_match(w):
+    first, second, third = (new_standalone(w) for _ in range(3))
+    assert len({first, second, third}) == 3
+    open_sheet(w)
+    assert w.db.query(SelfAssessment).filter_by(user_id=w.u["ref"].id).count() == 4
+    w.db.add(SelfAssessment(match_id=w.match.id, user_id=w.u["ref"].id))
+    with pytest.raises(IntegrityError):
+        w.db.flush()
+    w.db.rollback()
+
+
+def test_the_header_is_typed_and_stored_on_a_draft_that_may_be_incomplete(w):
+    sa_id = new_standalone(w)
+    edit(w, "ref", sa_id, league="  Liga   Amatorska ", home_team="Śląsk", match_date="2026-11-07")
+    sa = sheet(w, sa_id)
+    assert (sa.league, sa.home_team, sa.match_date.isoformat(), sa.away_team) == (
+        "Liga Amatorska", "Śląsk", "2026-11-07", "")
+    page = w.c["ref"].get(f"/self-assessments/{sa_id}/edit").text
+    assert 'name="league"' in page and 'value="Liga Amatorska"' in page and 'value="2026-11-07"' in page
+    assert 'id="sa-picker"' not in page and "Dodaj klip z meczu" not in page
+    edit(w, "ref", sa_id, match_date="")
+    assert sheet(w, sa_id).match_date is None
+
+
+def test_a_bad_date_or_too_long_header_is_refused_and_the_typed_text_stays(w):
+    sa_id = new_standalone(w)
+    r = edit(w, "ref", sa_id, expect=(422,), match_date="not-a-date", league="x" * 201)
+    assert "Data meczu: wpisz poprawną datę." in r.text and "Liga: najwyżej 200 znaków" in r.text
+    assert sheet(w, sa_id).league == ""
+
+
+@pytest.mark.parametrize("missing", ["league", "match_date", "home_team", "away_team", "main_referee"])
+def test_every_required_header_field_blocks_submitting(w, missing):
+    sa_id = complete_standalone(w)
+    edit(w, "ref", sa_id, **{missing: ""})
+    r = submit(w, sa_id, expect=(422,))
+    label = {"league": "Liga", "match_date": "Data meczu", "home_team": "Gospodarze", "away_team": "Goście",
+             "main_referee": "Sędzia główny"}[missing]
+    assert f"{label}: " in r.text and sheet(w, sa_id).status == "draft"
+
+
+def test_the_assistants_are_optional(w):
+    sa_id = complete_standalone(w)
+    edit(w, "ref", sa_id, assistant_referees="")
+    submit(w, sa_id)
+    assert sheet(w, sa_id).status == "submitted"
+
+
+def test_a_standalone_sheet_needs_three_rows_of_text(w):
+    sa_id = new_standalone(w)
+    edit(w, "ref", sa_id, **HEADER, **ANSWERS)
+    add_manual_rows(w, sa_id, count=2)
+    r = submit(w, sa_id, expect=(422,))
+    assert "Dodaj co najmniej 3 klipy — teraz jest ich 2." in r.text
+    add_manual_rows(w, sa_id, count=1)
+    submit(w, sa_id)
+    sa = sheet(w, sa_id)
+    assert sa.status == "submitted" and [r.name_label for r in sa.rows] == ["Faul 1", "Faul 2", "Faul 3"]
+
+
+@pytest.mark.parametrize("blank,message", [("time", "czas z nagrania"), ("name", "nazwa klipu"), ("desc", "opis")])
+def test_every_manual_row_needs_time_name_and_description(w, blank, message):
+    sa_id = complete_standalone(w)
+    row = sheet(w, sa_id).rows[1]
+    edit(w, "ref", sa_id, **{f"{blank}_{row.id}": " "})
+    r = submit(w, sa_id, expect=(422,))
+    assert f"Klip 2: wpisz {message}." in r.text
+    assert sheet(w, sa_id).status == "draft"
+
+
+def test_manual_rows_are_added_removed_and_moved_like_clip_rows(w):
+    sa_id = new_standalone(w)
+    add_manual_rows(w, sa_id)
+    first, second, third = [r.id for r in sheet(w, sa_id).rows]
+    edit(w, "ref", sa_id, f"down:{first}")
+    assert [r.id for r in sheet(w, sa_id).rows] == [second, first, third]
+    edit(w, "ref", sa_id, f"remove:{second}")
+    rows = sheet(w, sa_id).rows
+    assert [r.id for r in rows] == [first, third] and [r.position for r in rows] == [0, 1]
+    assert rows[0].name_label == "Faul 1" and rows[0].is_manual
+    edit(w, "ref", sa_id, "manual")
+    assert len(sheet(w, sa_id).rows) == 3
+
+
+def test_a_clip_cannot_be_added_to_a_standalone_sheet(w):
+    sa_id = new_standalone(w)
+    r = edit(w, "ref", sa_id, f"add:{w.clips[0].id}", expect=(422,))
+    assert "Tego klipu nie ma w tym meczu." in r.text and sheet(w, sa_id).rows == []
+
+
+def test_manual_rows_keep_typed_text_through_other_row_actions(w):
+    sa_id = new_standalone(w)
+    edit(w, "ref", sa_id, "manual")
+    row = sheet(w, sa_id).rows[0]
+    edit(w, "ref", sa_id, "manual", **{f"time_{row.id}": "Q2, 1:00", f"name_{row.id}": "Kroki"})
+    assert (sheet(w, sa_id).rows[0].time_label, sheet(w, sa_id).rows[0].name_label) == ("Q2, 1:00", "Kroki")
+
+
+def test_a_match_sheet_gets_manual_rows_too_and_they_count_toward_the_minimum(w):
+    sa_id = open_sheet(w)
+    page = w.c["ref"].get(f"/self-assessments/{sa_id}/edit").text
+    assert 'id="sa-add-manual"' in page and 'id="sa-picker"' in page and 'name="league"' not in page
+    edit(w, "ref", sa_id, **ANSWERS)
+    edit(w, "ref", sa_id, f"add:{w.clips[0].id}")
+    edit(w, "ref", sa_id, f"add:{w.clips[1].id}")
+    edit(w, "ref", sa_id, "manual")
+    sa = sheet(w, sa_id)
+    edit(w, "ref", sa_id, **{f"desc_{r.id}": "Opis" for r in sa.rows},
+         **{f"time_{sa.rows[2].id}": "Mecz wyjazdowy, 4:10", f"name_{sa.rows[2].id}": "Zasłona"})
+    assert [r.is_manual for r in sheet(w, sa_id).rows] == [False, False, True]
+    submit(w, sa_id)
+    assert sheet(w, sa_id).status == "submitted"
+
+
+def test_two_clips_and_no_manual_row_still_fail_the_minimum(w):
+    sa_id = open_sheet(w)
+    edit(w, "ref", sa_id, f"add:{w.clips[0].id}")
+    edit(w, "ref", sa_id, "manual")
+    r = submit(w, sa_id, expect=(422,))
+    assert "teraz jest ich 2" in r.text and "Klip 2: wpisz czas z nagrania." in r.text
+
+
+def test_a_manual_row_is_never_overwritten_by_the_snapshot_refresh(w):
+    sa_id = open_sheet(w)
+    edit(w, "ref", sa_id, f"add:{w.clips[0].id}")
+    edit(w, "ref", sa_id, "manual")
+    manual = sheet(w, sa_id).rows[1]
+    edit(w, "ref", sa_id, **{f"time_{manual.id}": "Turniej, 2:00", f"name_{manual.id}": "Własny klip"})
+    w.clips[0].category_id = category_named(w.db, "osobisty")  # the refresh now has something to change
+    w.db.commit()
+    for _ in range(2):
+        edit(w, "ref", sa_id)  # a plain save and a save that posts no time or name at all
+    rows = sheet(w, sa_id).rows
+    assert (rows[1].time_label, rows[1].name_label, rows[1].is_manual) == ("Turniej, 2:00", "Własny klip", True)
+    assert rows[0].name_label == w.clips[0].category_label and not rows[0].is_manual
+    edit(w, "ref", sa_id, "up:%d" % manual.id)
+    assert sheet(w, sa_id).rows[0].name_label == "Własny klip"
+
+
+def test_a_row_of_a_deleted_clip_is_not_manual_and_a_manual_row_is_not_marked_deleted(w):
+    sa_id = open_sheet(w)
+    edit(w, "ref", sa_id, f"add:{w.clips[0].id}")
+    edit(w, "ref", sa_id, "manual")
+    w.db.delete(w.db.get(Clip, w.clips[0].id))
+    w.db.commit()
+    gone, manual = sheet(w, sa_id).rows
+    assert (gone.clip_id, gone.is_manual, manual.clip_id, manual.is_manual) == (None, False, None, True)
+    page = w.c["ref"].get(f"/self-assessments/{sa_id}/edit").text
+    assert page.count("klip został usunięty") == 1 and page.count('name="time_') == 1
+    before = (gone.time_label, gone.name_label)
+    edit(w, "ref", sa_id, **{f"time_{gone.id}": "ignored", f"name_{gone.id}": "ignored"})
+    assert (sheet(w, sa_id).rows[0].time_label, sheet(w, sa_id).rows[0].name_label) == before
+
+
+def test_a_standalone_draft_is_private_and_a_submitted_one_is_open_to_coaches_and_admins(w):
+    sa_id = complete_standalone(w)
+    urls = (f"/self-assessments/{sa_id}", f"/self-assessments/{sa_id}/edit", f"/self-assessments/{sa_id}/pdf")
+    for who in ("ref2", "outsider", "coach", "coach2", "admin"):
+        for url in urls:
+            assert w.c[who].get(url).status_code == 404, (who, url)
+    submit(w, sa_id)
+    for who in ("ref", "coach", "coach2", "admin"):
+        assert w.c[who].get(urls[0]).status_code == 200, who
+        assert w.c[who].get(urls[2]).status_code == 200, who
+    for who in ("ref2", "outsider"):
+        assert w.c[who].get(urls[0]).status_code == 404 and w.c[who].get(urls[2]).status_code == 404
+    assert w.c["coach"].post(f"/self-assessments/{sa_id}/edit", data={"action": "save"}).status_code == 403
+    assert w.c["ref"].post(f"/self-assessments/{sa_id}/edit", data={"action": "save"}).status_code == 403
+
+
+def test_submitting_locks_a_standalone_sheet_and_an_admin_reopens_it(w):
+    sa_id = complete_standalone(w)
+    submit(w, sa_id)
+    edit(w, "ref", sa_id, expect=(403,), league="Zmiana")
+    assert sheet(w, sa_id).league == HEADER["league"]
+    post(w, "admin", f"/self-assessments/{sa_id}/reopen")
+    sa = sheet(w, sa_id)
+    assert sa.status == "draft" and sa.submitted_at is not None
+    edit(w, "ref", sa_id, league="Zmiana")
+    assert sheet(w, sa_id).league == "Zmiana"
+
+
+def test_the_author_deletes_a_standalone_draft_and_lands_on_the_list(w):
+    sa_id = new_standalone(w)
+    post(w, "ref2", f"/self-assessments/{sa_id}/delete", expect=(404,))
+    r = post(w, "ref", f"/self-assessments/{sa_id}/delete")
+    assert r.headers["location"] == "/self-assessments" and w.db.query(SelfAssessment).count() == 0
+
+
+def test_a_standalone_sheet_is_not_on_any_match_card_and_not_tied_to_a_match(w):
+    sa_id = complete_standalone(w)
+    submit(w, sa_id)
+    for who in ("ref", "coach", "admin"):
+        assert f'data-self-assessment="{sa_id}"' not in w.c[who].get(f"/matches/{w.match.id}").text
+    post(w, "admin", f"/matches/{w.match.id}/delete")
+    assert sheet(w, sa_id).status == "submitted"  # deleting a match leaves it alone
+    assert "samooceny sędziów" not in w.c["admin"].get(f"/matches/{w.other.id}/delete").text
+
+
+def test_the_list_page_shows_the_typed_teams_and_date_marked_as_outside_the_system(w):
+    sa_id = complete_standalone(w)
+    mine = w.c["ref"].get("/self-assessments").text
+    assert "07.11.2026 · Śląsk – Zagłębie" in mine and "spoza systemu" in mine and "Liga Amatorska" in mine
+    assert w.c["coach"].get("/self-assessments").text.count(f'data-self-assessment="{sa_id}"') == 0
+    submit(w, sa_id)
+    coach = w.c["coach"].get("/self-assessments").text
+    assert f'data-self-assessment="{sa_id}"' in coach and "Śląsk – Zagłębie" in coach and "spoza systemu" in coach
+    draft = new_standalone(w, "ref2")
+    assert "bez daty · A – B" in w.c["ref2"].get("/self-assessments").text and draft
+
+
+def test_the_report_shows_the_typed_header_and_rows(w):
+    sa_id = complete_standalone(w)
+    edit(w, "ref", sa_id, home_team="<b>Śląsk</b>")
+    html = w.c["ref"].get(f"/self-assessments/{sa_id}").text
+    for expected in ("Liga Amatorska", "07.11.2026", "Zagłębie", "Jan Kowalski", "Ewa Nowak, Piotr Wiśniewski",
+                     "Q1, 3:11", "Faul 2", "Opis 3", "&lt;b&gt;Śląsk&lt;/b&gt;"):
+        assert expected in html, expected
+    assert "<b>Śląsk</b>" not in html and html.count('class="sa-block"') == 6
+    assert "Odtwórz" not in html and "SZKIC" in html
+
+
+def test_the_pdf_has_the_typed_header_and_a_name_without_a_function(w):
+    sa_id = complete_standalone(w)
+    submit(w, sa_id)
+    r = w.c["coach"].get(f"/self-assessments/{sa_id}/pdf")
+    assert r.headers["content-disposition"] == 'attachment; filename="samoocena_2026-11-07_Slask-Zaglebie.pdf"'
+    text = pdf_text(r.content)
+    for expected in ("Liga Amatorska", "07.11.2026", "Zagłębie", "Jan Kowalski", "Ewa Nowak", "Faul 1", "Opis 2"):
+        assert expected in text, expected
+
+
+def test_the_file_name_of_an_unfinished_standalone_sheet_has_no_empty_parts(w):
+    sa_id = new_standalone(w)
+    assert self_assessments.pdf_filename(sheet(w, sa_id)) == "samoocena.pdf"
+    edit(w, "ref", sa_id, home_team="Śląsk")
+    assert self_assessments.pdf_filename(sheet(w, sa_id)) == "samoocena_Slask.pdf"
+
+
+def test_submitting_a_standalone_sheet_notifies_the_coaches_of_the_authors_groups(w):
+    sa_id = complete_standalone(w)
+    assert notes(w) == []
+    submit(w, sa_id)
+    [note] = notes(w)
+    assert (note.recipient_id, note.actor_id, note.match_id, note.self_assessment_id) == (
+        w.u["coach"].id, w.u["ref"].id, None, sa_id)
+    bell = w.c["coach"].get("/notifications").text
+    assert "wysłana samoocena" in bell and "Śląsk – Zagłębie" in bell and "Osoba ref" in bell
+    assert post(w, "coach", f"/notifications/{note.id}/open").headers["location"] == f"/self-assessments/{sa_id}"
+    assert notify.unread_count(w.db, w.u["coach"].id) == 0
+
+
+def test_the_digest_lists_a_standalone_sheet_under_matches_outside_the_system(w, mailbox):
+    linked = open_sheet(w)
+    complete(w, linked)
+    submit(w, linked)
+    sa_id = complete_standalone(w)
+    submit(w, sa_id)
+    text = digest_text(w, w.u["coach"])
+    assert "Mecze spoza systemu" in text
+    assert "Wysłano samoocenę sędziego: Osoba ref (07.11.2026 · Śląsk – Zagłębie)" in text
+    assert f"https://klipy.example.pl/self-assessments/{sa_id}" in text
+    assert text.index("Mecz 28.10.2026") < text.index("Mecze spoza systemu")  # its own block, after the matches
+    assert f"/self-assessments/{linked}" in text
+
+
+def test_the_digest_switch_also_hides_a_standalone_sheet(w, mailbox):
+    sa_id = complete_standalone(w)
+    submit(w, sa_id)
+    w.db.add(EmailPreference(user_id=w.u["coach"].id, digest_enabled=True, self_assessment_submitted=False))
+    w.db.commit()
+    text = digest_text(w, w.u["coach"])
+    assert text is None or "spoza systemu" not in text

@@ -188,6 +188,11 @@ def can_fill_self_assessment(user, match) -> bool:
     return can_view(user) and _has(user, REFEREE) and is_official(user, match)
 
 
+def can_create_standalone_self_assessment(user) -> bool:
+    """A referee may describe a match that is not in the system; coaches and admins only with the role too."""
+    return can_view(user) and _has(user, REFEREE)
+
+
 def can_edit_self_assessment(user, sa) -> bool:
     """The author, and only while it is a draft. Submitting needs the same right."""
     return can_view(user) and sa.user_id == user.id and sa.status == "draft"
