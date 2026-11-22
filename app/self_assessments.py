@@ -1,11 +1,14 @@
-"""Referee self-assessment ("Arkusz samooceny"). The header is read from the match. A clip row keeps text
-snapshots of the clip's time and name, taken when the clip is added and refreshed on every save of a
-draft, so a submitted sheet stays readable if the clip is later deleted. Posted fields that are missing
-are left untouched, so a stale form can never wipe stored text.
+"""Referee self-assessment ("Arkusz samooceny"). The header is read from the match, or typed by the author
+on a standalone sheet (a match that is not in the system, `match_id` NULL). A clip row keeps text snapshots
+of the clip's time and name, taken when the clip is added and refreshed on every save of a draft, so a
+submitted sheet stays readable if the clip is later deleted. A manual row has no clip and its time and
+name are the author's own text, never refreshed. Posted fields that are missing are left untouched, so a
+stale form can never wipe stored text.
 """
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import date
 
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
@@ -26,6 +29,11 @@ QUESTIONS = (
     ("bad", "Co było złe w tym meczu i co chciałbym zmienić w kolejnych meczach?"),
 )
 ASSISTANTS = ("U1", "U2")
+# Typed header of a standalone sheet: (field, label, required)
+HEADER_FIELDS = (
+    ("league", "Liga", True), ("home_team", "Gospodarze", True), ("away_team", "Goście", True),
+    ("main_referee", "Sędzia główny", True), ("assistant_referees", "Sędzia pomocniczy", False),
+)
 
 
 class SelfAssessmentError(Exception):
@@ -47,7 +55,14 @@ class Header:
     assistants: str
 
 
-def header(match: Match) -> Header:
+def header(sa: SelfAssessment) -> Header:
+    match = sa.match
+    if match is None:
+        return Header(
+            level=sa.league, date=sa.match_date.strftime("%d.%m.%Y") if sa.match_date else "",
+            team_a=sa.home_team, team_b=sa.away_team, main_referee=sa.main_referee,
+            assistants=sa.assistant_referees)
+
     def name(function: str) -> str:
         official = match.official(function)
         return official.display_name if official else ""
@@ -76,7 +91,9 @@ def match_clips(db: Session, match: Match) -> list[Clip]:
 
 
 def available_clips(db: Session, sa: SelfAssessment) -> list[tuple[Clip, str, str]]:
-    """The match's clips not yet on the sheet, with their labels."""
+    """The match's clips not yet on the sheet, with their labels; none for a standalone sheet."""
+    if sa.match is None:
+        return []
     used = {row.clip_id for row in sa.rows}
     return [(clip, *clip_labels(clip)) for clip in match_clips(db, sa.match) if clip.id not in used]
 
@@ -108,13 +125,35 @@ def get_or_create(db: Session, match: Match, user: User) -> tuple[SelfAssessment
     return sa, True
 
 
+def create_standalone(db: Session, user: User) -> SelfAssessment:
+    now = utcnow()
+    sa = SelfAssessment(match_id=None, user_id=user.id, created_at=now, updated_at=now)
+    db.add(sa)
+    db.flush()
+    return sa
+
+
 def desc_key(row: SelfAssessmentClip) -> str:
     return f"desc_{row.id}"
+
+
+def time_key(row: SelfAssessmentClip) -> str:
+    return f"time_{row.id}"
+
+
+def name_key(row: SelfAssessmentClip) -> str:
+    return f"name_{row.id}"
 
 
 def form_values(sa: SelfAssessment) -> dict[str, str]:
     values = {key: getattr(sa, key) for key, _ in QUESTIONS}
     values.update({desc_key(row): row.description for row in sa.rows})
+    for row in sa.rows:
+        if row.is_manual:
+            values[time_key(row)], values[name_key(row)] = row.time_label, row.name_label
+    if sa.is_standalone:
+        values.update({key: getattr(sa, key) for key, _, _ in HEADER_FIELDS})
+        values["match_date"] = sa.match_date.isoformat() if sa.match_date else ""
     return values
 
 
@@ -132,6 +171,16 @@ def _text(raw: str | None, label: str, errors: list[str]) -> str | None:
     text = raw.replace("\r\n", "\n").replace("\r", "\n").strip()
     if len(text) > config.TEXT_MAX_CHARS:
         errors.append(f"{label}: najwyżej {config.TEXT_MAX_CHARS} znaków (jest {len(text)}).")
+    return text
+
+
+def _line(raw: str | None, label: str, errors: list[str]) -> str | None:
+    """A one-line field (header, time, name): line breaks become spaces."""
+    if raw is None:
+        return None
+    text = " ".join(raw.split())
+    if len(text) > LABEL_MAX:
+        errors.append(f"{label}: najwyżej {LABEL_MAX} znaków (jest {len(text)}).")
     return text
 
 
@@ -153,9 +202,34 @@ def _apply(sa: SelfAssessment, fields: dict[str, str], order: list[int]) -> None
         value = _text(fields.get(desc_key(row)), f"Klip {position}, opis", errors)
         if value is not None:
             clean[desc_key(row)] = value
+        if row.is_manual:
+            for key, label in ((time_key(row), "czas z nagrania"), (name_key(row), "nazwa klipu")):
+                value = _line(fields.get(key), f"Klip {position}, {label}", errors)
+                if value is not None:
+                    clean[key] = value
+    match_date = sa.match_date
+    if sa.is_standalone:
+        for key, label, _ in HEADER_FIELDS:
+            value = _line(fields.get(key), label, errors)
+            if value is not None:
+                clean[key] = value
+        raw_date = fields.get("match_date")
+        if raw_date is not None:
+            try:
+                match_date = date.fromisoformat(raw_date.strip()) if raw_date.strip() else None
+            except ValueError:
+                errors.append("Data meczu: wpisz poprawną datę.")
     if errors:
         raise SelfAssessmentError(*errors)
     changed = False
+    if sa.is_standalone:
+        for key, _, _ in HEADER_FIELDS:
+            if key in clean and getattr(sa, key) != clean[key]:
+                setattr(sa, key, clean[key])
+                changed = True
+        if match_date != sa.match_date:
+            sa.match_date = match_date
+            changed = True
     for key, _ in QUESTIONS:
         if key in clean and getattr(sa, key) != clean[key]:
             setattr(sa, key, clean[key])
@@ -165,7 +239,12 @@ def _apply(sa: SelfAssessment, fields: dict[str, str], order: list[int]) -> None
         if desc_key(row) in clean and row.description != clean[desc_key(row)]:
             row.description = clean[desc_key(row)]
             changed = True
-        if row.clip is not None:
+        if row.is_manual:
+            for key, attr in ((time_key(row), "time_label"), (name_key(row), "name_label")):
+                if key in clean and getattr(row, attr) != clean[key]:
+                    setattr(row, attr, clean[key])
+                    changed = True
+        elif row.clip is not None:
             row.time_label, row.name_label = clip_labels(row.clip)
     if [r.id for r in rows] != [r.id for r in sa.rows]:
         changed = True
@@ -176,7 +255,7 @@ def _apply(sa: SelfAssessment, fields: dict[str, str], order: list[int]) -> None
 
 def _add(db: Session, sa: SelfAssessment, clip_id: int) -> None:
     clip = db.get(Clip, clip_id)
-    if clip is None or clip.match_id != sa.match_id:
+    if sa.match_id is None or clip is None or clip.match_id != sa.match_id:
         raise SelfAssessmentError("Tego klipu nie ma w tym meczu.")
     if any(row.clip_id == clip.id for row in sa.rows):
         raise SelfAssessmentError("Ten klip jest już w samoocenie.")
@@ -189,6 +268,11 @@ def _add(db: Session, sa: SelfAssessment, clip_id: int) -> None:
         db.flush()
     except IntegrityError:
         raise SelfAssessmentError("Ten klip jest już w samoocenie.") from None
+
+
+def _add_manual(sa: SelfAssessment) -> None:
+    sa.rows.append(SelfAssessmentClip(clip_id=None, is_manual=True, position=len(sa.rows)))
+    sa.updated_at = utcnow()
 
 
 def _row(sa: SelfAssessment, row_id: str) -> SelfAssessmentClip | None:
@@ -219,10 +303,21 @@ def _move(sa: SelfAssessment, row_id: str, step: int) -> None:
 def problems(sa: SelfAssessment) -> list[str]:
     """What stops the sheet from being submitted."""
     found = []
+    if sa.is_standalone:
+        for key, label, required in HEADER_FIELDS:
+            if required and not getattr(sa, key).strip():
+                found.append(f"{label}: wpisz wartość.")
+        if sa.match_date is None:
+            found.append("Data meczu: wybierz datę.")
     if len(sa.rows) < MIN_CLIPS:
         found.append(f"Dodaj co najmniej {MIN_CLIPS} klipy — teraz jest ich {len(sa.rows)}.")
     for number, row in enumerate(sa.rows, start=1):
-        if not row.description.strip():
+        if row.is_manual:
+            for text, label in ((row.time_label, "czas z nagrania"), (row.name_label, "nazwa klipu"),
+                                (row.description, "opis")):
+                if not text.strip():
+                    found.append(f"Klip {number}: wpisz {label}.")
+        elif not row.description.strip():
             found.append(f"Klip {number} ({row.name_label}): wpisz opis.")
     for number, (key, _) in enumerate(QUESTIONS, start=1):
         if not getattr(sa, key).strip():
@@ -231,7 +326,8 @@ def problems(sa: SelfAssessment) -> list[str]:
 
 
 def save(db: Session, sa: SelfAssessment, fields: dict[str, str], order: list[int], action: str = "save") -> bool:
-    """`action` is save, submit, add:<clip id>, remove:<row id>, up:<row id> or down:<row id>. A row action
+    """`action` is save, submit, add:<clip id>, manual (a new manual row), remove:<row id>, up:<row id> or
+    down:<row id>. A row action
     stores the typed text first, so nothing typed is lost. Returns whether the sheet was submitted.
     """
     _apply(sa, fields, order)
@@ -241,6 +337,8 @@ def save(db: Session, sa: SelfAssessment, fields: dict[str, str], order: list[in
             _add(db, sa, int(target))
         except ValueError:
             raise SelfAssessmentError("Tego klipu nie ma w tym meczu.") from None
+    elif verb == "manual":
+        _add_manual(sa)
     elif verb == "remove":
         _remove(sa, target)
     elif verb in ("up", "down"):
@@ -289,10 +387,13 @@ def listing(db: Session, user: User, requested: int) -> tuple[list[SelfAssessmen
 
 def pdf_filename(sa: SelfAssessment) -> str:
     """samoocena_date_teams_function.pdf, e.g. samoocena_2026-10-28_Legia-Wisla_CC.pdf (ASCII only). The
-    function, not the name, like the recording downloads; a referee no longer in the crew gets none.
+    function, not the name, like the recording downloads; a referee no longer in the crew gets none, and a
+    standalone sheet never has one.
     """
     match = sa.match
-    teams = "-".join(part for part in (slugify(name)[:40].strip("-") for name in (match.team_a_name, match.team_b_name))
-                     if part)
-    function = next((o.function for o in match.officials if o.user_id == sa.user_id), "")
-    return "_".join(part for part in ("samoocena", match.date.isoformat(), teams, function) if part) + ".pdf"
+    names = (match.team_a_name, match.team_b_name) if match else (sa.home_team, sa.away_team)
+    teams = "-".join(part for part in (slugify(name)[:40].strip("-") for name in names) if part)
+    day = match.date if match else sa.match_date
+    # A standalone sheet has no crew slot, so no function.
+    function = next((o.function for o in match.officials if o.user_id == sa.user_id), "") if match else ""
+    return "_".join(part for part in ("samoocena", day.isoformat() if day else "", teams, function) if part) + ".pdf"
