@@ -219,9 +219,6 @@ tr.no-activity td { background: var(--warn-wash); }
 .pc-wrap video { max-height: min(70vh, max(220px, calc(100vh - 345px))); }
 .pc-wrap video::-webkit-media-controls-fullscreen-button { display: none; }
 .pc-strip { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 8px 0; }
-/* Sticky so the controls stay reachable when fonts or a banner push the video past the fold. */
-.pc-wrap:not(.is-fs) .pc-strip { position: sticky; bottom: 0; z-index: 5; margin-bottom: 0; padding: 6px 0; background: var(--bg); }
-.card .pc-wrap:not(.is-fs) .pc-strip { background: var(--card); }
 .pc-btn { min-height: 44px; min-width: 44px; padding: 6px 10px; touch-action: manipulation; }
 @media (max-width: 480px) { .pc-btn { padding: 6px 8px; } }
 .pc-speed { display: flex; align-items: center; gap: 6px; }

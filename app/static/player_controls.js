@@ -145,6 +145,7 @@
       fsBtn.setAttribute("aria-label", label);
       fsBtn.setAttribute("aria-pressed", on ? "true" : "false");
       wake();
+      queueFit();
     }
 
     function sync() {
@@ -163,6 +164,23 @@
     ["pointerdown", "focusin"].forEach((name) => wrap.addEventListener(name, () => { active = instance; }));
     ["pointermove", "pointerdown", "touchstart", "focusin"].forEach((name) =>
       wrap.addEventListener(name, wake, { passive: true }));
+    // Fonts, wrapping and banners vary, so a CSS guess can push the strip below the fold.
+    // Size the video from the real layout so the whole strip fits in the viewport.
+    let fitQueued = false;
+    function fit() {
+      fitQueued = false;
+      if (inFullscreen()) { video.style.maxHeight = ""; return; }
+      const top = video.getBoundingClientRect().top + window.scrollY;
+      const below = strip.getBoundingClientRect().bottom - video.getBoundingClientRect().bottom + 8;
+      const max = Math.round(Math.min(window.innerHeight * 0.7, Math.max(220, window.innerHeight - top - below)));
+      if (video.style.maxHeight !== max + "px") video.style.maxHeight = max + "px";
+    }
+    function queueFit() { if (!fitQueued) { fitQueued = true; requestAnimationFrame(fit); } }
+    window.addEventListener("resize", queueFit);
+    video.addEventListener("loadedmetadata", queueFit);
+    if (window.ResizeObserver) new ResizeObserver(queueFit).observe(document.body);
+    queueFit();
+
     syncFullscreen();
     sync();
 
