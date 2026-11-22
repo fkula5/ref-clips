@@ -35,9 +35,9 @@
     </p>
 
     {% if preview.kind == 'file' %}
-      <video id="preview" src="{{ preview.src }}" controls preload="auto" playsinline></video>
+      <video id="preview" src="{{ preview.src }}" controls preload="auto" playsinline data-controls-strip data-fps="{{ current.video.fps or 25 }}"></video>
     {% elif preview.kind == 'draft' %}
-      <video id="preview" src="{{ preview.src }}" controls preload="auto" playsinline data-start="{{ preview.start }}" data-end="{{ preview.end }}"></video>
+      <video id="preview" src="{{ preview.src }}" controls preload="auto" playsinline data-controls-strip data-fps="{{ current.video.fps or 25 }}" data-start="{{ preview.start }}" data-end="{{ preview.end }}"></video>
       <p class="muted small-note" id="draft-note">Klip czeka na wycięcie — to podgląd z wersji roboczej ({{ preview.start|clock }}–{{ preview.end|clock }}); odtwarzanie zatrzyma się na końcu klipu.</p>
     {% endif %}
     {% if problem %}
@@ -113,4 +113,4 @@
 </div>
 {% endif %}
 {% endblock %}
-{% block scripts %}{% if current %}<script src="/static/clip.js"></script><script src="/static/describe.js"></script>{% endif %}{% endblock %}
+{% block scripts %}{% if current %}<script src="/static/player_controls.js"></script><script src="/static/clip.js"></script><script src="/static/describe.js"></script>{% endif %}{% endblock %}

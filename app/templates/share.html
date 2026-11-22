@@ -16,7 +16,7 @@
   <section class="card share-clip">
     <h2>{{ c.category or ('Klip ' ~ c.position) }}</h2>
     {% if c.level %}<p class="muted">{{ c.level }}</p>{% endif %}
-    <video controls preload="{{ 'auto' if view.single else 'metadata' }}" playsinline src="/s/{{ code }}/clips/{{ c.position }}/file"></video>
+    <video controls preload="{{ 'auto' if view.single else 'metadata' }}" playsinline data-controls-strip data-fps="{{ c.fps }}" src="/s/{{ code }}/clips/{{ c.position }}/file"></video>
   </section>
   {% endfor %}
   <div class="clip-actions">
@@ -28,5 +28,6 @@
   {% endif %}
   </div>
 </main>
+<script src="/static/player_controls.js"></script>
 </body>
 </html>

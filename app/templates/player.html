@@ -37,24 +37,17 @@
       <div id="mark-count" class="mark-count" title="Liczba znaczników w tym nagraniu"></div>
       <div id="watch-badge" class="mark-count watch-badge hidden"></div>
       <div id="flash" class="flash hidden"></div>
-      {% if perm.can_manage_clips(user, match) %}<button class="btn primary big fs-only" id="btn-mark-fs" type="button">Zaznacz (Z)</button>{% endif %}
       <div id="toast" class="toast hidden"></div>
     </div>
     <div class="row controls">
       <span id="clock" class="clock">0:00</span>
-      <label>Tempo
-        <select id="speed">
-          {% for s in [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2] %}<option value="{{ s }}" {{ 'selected' if s == 1 }}>{{ s }}×</option>{% endfor %}
-        </select>
-      </label>
       {% if perm.can_manage_clips(user, match) %}
-        <button class="btn primary big" id="btn-z" type="button" title="Dodaje znacznik w bieżącym czasie bez zatrzymywania odtwarzania">Zaznacz (Z)</button>
-        <button class="btn" id="btn-undo" type="button" title="Usuwa Twój ostatni nieopisany znacznik">Cofnij (Backspace)</button>
+        <button class="btn primary pc-btn" id="btn-z" type="button" title="Dodaje znacznik w bieżącym czasie bez zatrzymywania odtwarzania">Zaznacz (Z)</button>
+        <button class="btn pc-btn" id="btn-undo" type="button" title="Usuwa Twój ostatni nieopisany znacznik (Backspace)">Cofnij</button>
         <button class="btn" id="btn-m" type="button" title="Pauza i pole tekstowe: sędzia, kategoria, opis"><kbd>M</kbd> Znacznik z notatką</button>
       {% endif %}
       {% if perm.can_upload_to_match(user, match) %}<button class="btn" id="btn-q" type="button"><kbd>Q</kbd> Początek kwarty (<span id="next-period">—</span>)</button>{% endif %}
       <button class="btn" id="btn-watch" type="button" title="Tworzy pokój: wszyscy oglądają to samo nagranie w tym samym momencie">Oglądaj razem</button>
-      <button class="btn" id="btn-fs" type="button">Pełny ekran (F)</button>
       <button class="btn" id="btn-help" type="button">? Skróty</button>
     </div>
     <div id="watch-panel" class="card watch-panel hidden" aria-label="Oglądanie razem">
@@ -93,7 +86,7 @@
         <tr><td><kbd>←</kbd> <kbd>→</kbd></td><td>±1 s (z <kbd>Shift</kbd> ±5 s)</td></tr>
         <tr><td><kbd>,</kbd> <kbd>.</kbd></td><td>Klatka wstecz / naprzód</td></tr>
         <tr><td><kbd>[</kbd> <kbd>]</kbd></td><td>Wolniejsze / szybsze tempo (0,25×–2×)</td></tr>
-        <tr><td><kbd>F</kbd></td><td>Pełny ekran (znaczniki działają także w pełnym ekranie)</td></tr>
+        <tr><td><kbd>F</kbd></td><td>Pełny ekran (też przyciskiem „Pełny ekran” pod nagraniem; znaczniki i sterowanie działają w pełnym ekranie)</td></tr>
         <tr><td><kbd>?</kbd></td><td>Ta pomoc</td></tr>
       </table>
     </div>
@@ -126,4 +119,4 @@
 <script type="application/json" id="init-state">{{ state|tojson }}</script>
 {% endif %}
 {% endblock %}
-{% block scripts %}{% if state %}<script>window.CAN_MARK = {{ 'true' if perm.can_upload_to_match(user, match) else 'false' }};window.CAN_CLIP = {{ 'true' if perm.can_manage_clips(user, match) else 'false' }};window.START_AT = {{ start_at }};</script><script src="/static/player.js"></script><script src="/static/watch.js"></script>{% endif %}{% endblock %}
+{% block scripts %}{% if state %}<script>window.CAN_MARK = {{ 'true' if perm.can_upload_to_match(user, match) else 'false' }};window.CAN_CLIP = {{ 'true' if perm.can_manage_clips(user, match) else 'false' }};window.START_AT = {{ start_at }};</script><script src="/static/player_controls.js"></script><script src="/static/player.js"></script><script src="/static/watch.js"></script>{% endif %}{% endblock %}

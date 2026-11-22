@@ -25,7 +25,7 @@
 <div class="player-layout">
   <section id="clip-area">
     {% if c.status == 'cut' and c.clip_path %}
-      <video id="clip-video" src="/clips/{{ c.id }}/file?v={{ c.clip_version }}" controls preload="auto" playsinline></video>
+      <video id="clip-video" src="/clips/{{ c.id }}/file?v={{ c.clip_version }}" controls preload="auto" playsinline data-controls-strip data-fps="{{ c.video.fps or 25 }}"></video>
       <div class="clip-actions">
         <a class="btn primary" href="{{ base }}{{ c.id }}/download">Pobierz MP4</a>
         <span class="muted clip-filename" title="{{ set_filename(c, s) }}">{{ set_filename(c, s) }}</span>
@@ -62,3 +62,4 @@
   </aside>
 </div>
 {% endblock %}
+{% block scripts %}<script src="/static/player_controls.js"></script>{% endblock %}
