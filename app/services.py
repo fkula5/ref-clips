@@ -90,6 +90,17 @@ def people(db: Session) -> list[tuple[str, str]]:
     return sorted(found.items(), key=lambda kv: normalize(kv[1]))
 
 
+def person_officials(db: Session, person: str) -> list[tuple[int, int, str]]:
+    """(slot id, match id, function) of every crew slot that belongs to the person key, so a typed name
+    that equals an account's name counts for that account.
+    """
+    accounts = account_names(db)
+    return [(oid, match_id, function) for oid, match_id, function, user_id, name in db.execute(
+        select(MatchOfficial.id, MatchOfficial.match_id, MatchOfficial.function, MatchOfficial.user_id,
+               MatchOfficial.name))
+        if person_key(user_id, name, accounts) == person]
+
+
 def referee_candidates(db: Session) -> list[User]:
     users = db.scalars(select(User).where(User.is_active.is_(True)).order_by(User.name)).all()
     return [u for u in users if "referee" in u.roles]

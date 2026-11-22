@@ -2,13 +2,14 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass
+from datetime import date
 from urllib.parse import urlencode
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
 from app import config, feedback, groups, services
-from app.models import PERIODS, RATING_VERDICTS, Clip, MatchOfficial, PeriodMark, Rating, Video
+from app.models import PERIODS, RATING_VERDICTS, Clip, Match, MatchOfficial, PeriodMark, Rating, Video
 from app.pagination import Page, paginate, parse_page
 
 TEAM = "team"
@@ -85,8 +86,13 @@ def _period_of_clip():
 
 
 def _filtered(db: Session, *, match_id=None, video_id=None, person=None, category_id=None, period=None,
-              described=None, rating=None, group_id=None, ids=None):
+              described=None, rating=None, group_id=None, ids=None, since: date | None = None):
+    """`since` (match date) is for internal callers such as the referee profile; the list's address has no
+    date filter.
+    """
     stmt = select(Clip)
+    if since:
+        stmt = stmt.where(Clip.match_id.in_(select(Match.id).where(Match.date >= since)))
     if match_id:
         stmt = stmt.where(Clip.match_id == match_id)
     if video_id:
@@ -114,11 +120,7 @@ def _filtered(db: Session, *, match_id=None, video_id=None, person=None, categor
     if person == TEAM:
         stmt = stmt.where(Clip.whole_team.is_(True))
     elif person:
-        accounts = services.account_names(db)
-        official_ids = [oid for oid, user_id, name in db.execute(
-            select(MatchOfficial.id, MatchOfficial.user_id, MatchOfficial.name))
-            if services.person_key(user_id, name, accounts) == person]
-        stmt = stmt.where(Clip.official_id.in_(official_ids))
+        stmt = stmt.where(Clip.official_id.in_([oid for oid, _, _ in services.person_officials(db, person)]))
     return stmt
 
 
@@ -131,6 +133,15 @@ def _listing(stmt, *, with_comments: bool = False):
 
 def query_clips(db: Session, *, with_comments=False, **filters) -> list[Clip]:
     return list(db.scalars(_listing(_filtered(db, **filters), with_comments=with_comments)))
+
+
+def recent_clips(db: Session, limit: int, **filters) -> list[Clip]:
+    """Newest markers first (the listing order is by match, which suits a table, not "latest")."""
+    stmt = (_filtered(db, **filters)
+            .options(selectinload(Clip.video).selectinload(Video.marks),
+                     selectinload(Clip.official).selectinload(MatchOfficial.user), selectinload(Clip.match))
+            .order_by(Clip.created_at.desc(), Clip.id.desc()).limit(limit))
+    return list(db.scalars(stmt))
 
 
 def _arguments(filters: ClipFilters, match_id: int | None) -> dict:

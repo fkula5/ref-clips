@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_people_macros.html" import official_name %}
 {% from "_pager.html" import pagination %}
 {% block title %}Mecze{% endblock %}
 {% block content %}
@@ -50,7 +51,7 @@
       <td data-label="Mecz" class="main-cell"><a href="/matches/{{ m.id }}">{{ m.team_a_name or m.team_a_color }} – {{ m.team_b_name or m.team_b_color }}</a>
         {% if row.has_scoresheet %}<span class="scoresheet-mark" role="img" aria-label="Protokół" title="Protokół"><svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" focusable="false"><path d="M3.5 1.5h6l3 3v10h-9z M9.5 1.5v3h3 M5.5 8h5 M5.5 10.5h5 M5.5 5.5h2" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round" stroke-linecap="round"/></svg></span>{% endif %}</td>
       <td data-label="Liga">{{ m.level or '—' }}</td>
-      <td data-label="Obsada">{% for o in m.officials %}<span class="chip">{{ o.function }} {{ o.display_name }}</span>{% endfor %}</td>
+      <td data-label="Obsada">{% for o in m.officials %}<span class="chip">{{ o.function }} {{ official_name(o) }}</span>{% endfor %}</td>
       <td data-label="Stan"><span class="badge state-{{ row.state.code }}">{{ row.state.label }}</span>
         {% if row.state.detail %}<small class="muted">{{ row.state.detail }}</small>{% endif %}
         {% if row.expiry %}<div class="expiry-note warn-text">{{ row.expiry }}</div>{% endif %}</td>

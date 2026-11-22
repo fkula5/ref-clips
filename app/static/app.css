@@ -400,3 +400,9 @@ ul.plain { list-style: none; margin: 0; padding: 0; }
 .sa-table td.sa-title h1 { text-wrap: initial; }
 @media screen and (max-width: 720px) { .sa-sheet { padding: 8px 0; } }
 @media print { .sa-sheet { overflow: visible; } }
+
+/* Referee profile */
+.table-scroll { overflow-x: auto; }
+.profile-feed .body { white-space: pre-wrap; overflow-wrap: anywhere; margin: 4px 0; }
+.profile-feed .card { margin: 8px 0; }
+.profile-categories .total-row td { font-weight: 600; border-top: 2px solid var(--line); }

@@ -1,0 +1,10 @@
+{# A referee's name as a link to the profile. Only accounts with the referee role have a profile; a typed
+   name (a referee without an account) stays plain text. Do not use this where names are hidden on purpose
+   (training sets without names, public share pages). #}
+{% macro account_link(account) -%}
+  {%- if account is not none and 'referee' in account.roles -%}<a href="/referees/{{ account.id }}">{{ account.name }}</a>{%- else -%}{{ account.name if account is not none }}{%- endif -%}
+{%- endmacro %}
+
+{% macro official_name(official) -%}
+  {%- if official.user is not none -%}{{ account_link(official.user) }}{%- else -%}{{ official.display_name }}{%- endif -%}
+{%- endmacro %}

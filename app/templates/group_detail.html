@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_people_macros.html" import account_link %}
 {% block title %}{{ g.name }}{% endblock %}
 {% macro member_picker(role, path, label, options) %}
   <form method="post" action="/groups/{{ g.id }}/{{ path }}" class="card form row member-add">
@@ -61,7 +62,7 @@
   <tbody>
   {% for r in rows %}
     <tr class="{{ 'no-activity' if not r.total }}">
-      <td data-label="Sędzia" class="main-cell">{{ r.user.name }}{% if not r.total %} <span class="chip warn">brak aktywności</span>{% endif %}</td>
+      <td data-label="Sędzia" class="main-cell">{{ account_link(r.user) }}{% if not r.total %} <span class="chip warn">brak aktywności</span>{% endif %}</td>
       <td data-label="Nagrania">{{ r.recordings }}</td>
       <td data-label="Znaczniki">{{ r.markers }}</td>
       <td data-label="Opisane klipy">{{ r.described }}</td>

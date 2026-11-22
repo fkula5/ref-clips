@@ -254,6 +254,12 @@ ROWS = [
          **{"brak ról": (True, False, False), "admin": (True, True, True), "coach": (True, False, False),
             "referee": (True, False, False), "admin+coach": (True, True, True), "admin+referee": (True, True, True),
             "coach+referee": (True, False, False)}),
+    _row("profil sędziego", lambda u, _: p.can_view_referee_profile(u), [None],
+         **{"brak ról": (True,), "admin": (True,), "coach": (True,), "referee": (True,),
+            "admin+coach": (True,), "admin+referee": (True,), "coach+referee": (True,)}),
+    _row("własny profil sędziego", lambda u, _: p.has_own_referee_profile(u), [None],
+         **{"brak ról": (False,), "admin": (False,), "coach": (False,), "referee": (True,),
+            "admin+coach": (False,), "admin+referee": (True,), "coach+referee": (True,)}),
     # training sets: any coach or admin edits any set
     _row("edycja zestawu", lambda u, _: p.can_edit_set(u), [None],
          **{"brak ról": (False,), "admin": (True,), "coach": (True,), "referee": (False,),
@@ -316,6 +322,8 @@ def test_inactive_user_and_anonymous_have_no_access():
     assert not p.can_view_self_assessment(None, mine) and not p.can_view_submitted_self_assessments(None)
     assert not any(f(inactive, group("coach")) for f in (p.can_view_group, p.can_manage_group))
     assert not p.can_create_group(inactive) and not p.can_see_my_groups(None) and not p.can_view_group(None, group())
+    assert not p.can_view_referee_profile(inactive) and not p.can_view_referee_profile(None)
+    assert not p.has_own_referee_profile(user(["referee"], active=False))
 
 
 @pytest.fixture()

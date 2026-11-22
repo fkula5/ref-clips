@@ -1,0 +1,149 @@
+{% extends "base.html" %}
+{% from "_clips_macros.html" import clips_table with context %}
+{% from "_pager.html" import pagination %}
+{% block title %}Profil: {{ p.person.name }}{% endblock %}
+
+{% macro count_link(n, href) %}{% if n %}<a href="{{ href }}">{{ n }}</a>{% else %}<span class="muted">0</span>{% endif %}{% endmacro %}
+{% macro verdict_cells(tally, extra) %}
+  {% for v, label in verdicts.items() %}
+  <td data-label="{{ label }}">{{ count_link(tally.verdicts[v], clips_link(key, rating=v, **extra)) }}</td>
+  {% endfor %}
+{% endmacro %}
+
+{% block content %}
+<div class="row between">
+  <h1>{{ p.person.name }}</h1>
+  {% if not p.person.is_active %}<span class="chip warn" id="profile-inactive">konto nieaktywne</span>{% endif %}
+</div>
+{% if not p.person.is_active %}<p class="muted small-note">Konto jest wyłączone, więc widać tylko historię: mecze, klipy i oceny sprzed wyłączenia.</p>{% endif %}
+{% if p.groups %}
+<p class="row" id="profile-groups"><span class="muted">Grupy:</span>
+  {% for g in p.groups %}<a class="chip" href="/groups/{{ g.id }}">{{ g.name }}</a>{% endfor %}</p>
+{% endif %}
+
+<form method="get" action="/referees/{{ p.person.id }}" class="card row filters" data-clean-params
+      hx-get="/referees/{{ p.person.id }}" hx-target="#profile-body" hx-select="#profile-body" hx-swap="outerHTML"
+      hx-trigger="change, submit" hx-push-url="true">
+  <label>Okres
+    <select name="range">
+      {% for value, label in periods.items() %}<option value="{{ value }}" {{ 'selected' if value == p.period }}>{{ label }}</option>{% endfor %}
+    </select></label>
+  <button class="btn">Pokaż</button>
+</form>
+
+<div id="profile-body">
+<section class="card" id="profile-summary" aria-label="Podsumowanie">
+  <p class="muted small-note">{{ periods[p.period] }}{% if p.since %} (mecze od {{ p.since|local("%d.%m.%Y") }}){% endif %}</p>
+  <div class="row summary">
+    <span class="chip">Mecze: <strong>{{ p.match_count }}</strong></span>
+    <span class="chip">Klipy: <strong>{{ p.total.clips }}</strong></span>
+    <span class="chip">Ocenione: <strong>{{ p.total.rated }}</strong></span>
+    {% for v, label in verdicts.items() %}<span class="verdict {{ v }}">{{ label }}: {{ p.total.verdicts[v] }}</span>{% endfor %}
+  </div>
+</section>
+
+<h2 id="mecze">Mecze</h2>
+{% if not p.matches %}
+  <p class="muted">Brak meczów w wybranym okresie.</p>
+{% else %}
+<div class="table-scroll">
+<table class="responsive profile-matches">
+  <thead><tr><th>Data</th><th>Mecz</th><th>Liga</th><th title="Funkcja w obsadzie">Funkcja</th>
+    <th title="Klipy z udziałem tego sędziego">Klipy</th><th title="Klipy z co najmniej jedną oceną szkoleniowca">Ocenione</th>
+    {% for v, label in verdicts.items() %}<th title="Klipy z co najmniej jedną oceną: {{ label }}">{{ label }}</th>{% endfor %}</tr></thead>
+  <tbody>
+  {% for r in p.matches %}
+    {% set m = r.match %}{% set scope = {'match_id': m.id} %}
+    <tr>
+      <td data-label="Data">{{ m.date|local("%d.%m.%Y") }}</td>
+      <td data-label="Mecz" class="main-cell"><a href="/matches/{{ m.id }}">{{ m.team_a_name or m.team_a_color }} – {{ m.team_b_name or m.team_b_color }}</a></td>
+      <td data-label="Liga">{{ m.level or '—' }}</td>
+      <td data-label="Funkcja"><span class="chip">{{ r.function }}</span></td>
+      <td data-label="Klipy">{{ count_link(r.tally.clips, clips_link(key, match_id=m.id)) }}</td>
+      <td data-label="Ocenione">{{ count_link(r.tally.rated, clips_link(key, match_id=m.id, rating='any')) }}</td>
+      {{ verdict_cells(r.tally, scope) }}
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{{ pagination(p.pager, "Mecze", page_href, "/referees/" ~ p.person.id, fragment="#mecze") }}
+{% endif %}
+
+<h2 id="kategorie">Oceny według kategorii</h2>
+{% if not p.categories %}
+  <p class="muted">Brak opisanych klipów w wybranym okresie.</p>
+{% else %}
+<div class="table-scroll">
+<table class="responsive profile-categories">
+  <thead><tr><th>Kategoria</th><th>Klipy</th>
+    {% for v, label in verdicts.items() %}<th title="Klipy z co najmniej jedną oceną: {{ label }}">{{ label }}</th>{% endfor %}
+    <th>Bez ocen</th></tr></thead>
+  <tbody>
+  {% for r in p.categories %}
+    {% set scope = {'category_id': r.category.id} %}
+    <tr>
+      <td data-label="Kategoria" class="main-cell">{{ r.category.name }}</td>
+      <td data-label="Klipy">{{ count_link(r.tally.clips, clips_link(key, category_id=r.category.id)) }}</td>
+      {{ verdict_cells(r.tally, scope) }}
+      <td data-label="Bez ocen">{{ count_link(r.tally.unrated, clips_link(key, category_id=r.category.id, rating='none')) }}</td>
+    </tr>
+  {% endfor %}
+    <tr class="total-row">
+      <td data-label="Kategoria" class="main-cell">Razem</td>
+      <td data-label="Klipy">{{ count_link(p.categorised.clips, clips_link(key)) }}</td>
+      {{ verdict_cells(p.categorised, {}) }}
+      <td data-label="Bez ocen">{{ count_link(p.categorised.unrated, clips_link(key, rating='none')) }}</td>
+    </tr>
+  </tbody>
+</table>
+</div>
+{% endif %}
+<p class="muted small-note" id="profile-notes">
+  Klipy wybierają ludzie (zawodnicy, szkoleniowcy, sami sędziowie), więc te liczby nie są miarą skuteczności sędziego.
+  Klip z ocenami dwóch szkoleniowców o różnych werdyktach liczy się pod każdym z nich.
+  {% if p.uncategorised %}Klipy bez kategorii ({{ p.uncategorised }}) są poza tabelą.{% endif %}
+  {% if p.since %}Liczby dotyczą wybranego okresu (według daty meczu), a lista klipów nie ma filtra dat, więc po kliknięciu zobaczysz klipy z całego czasu.{% endif %}
+</p>
+
+<h2 id="klipy">Ostatnie klipy</h2>
+{% if not p.clips %}
+  <p class="muted">Brak klipów w wybranym okresie.</p>
+{% else %}
+  {{ clips_table(p.clips, nav, true, p.clip_stats) }}
+  <p><a class="btn" href="{{ clips_link(key) }}">Wszystkie klipy sędziego</a></p>
+{% endif %}
+
+<h2 id="oceny">Ostatnie oceny szkoleniowców</h2>
+{% if not p.ratings %}
+  <p class="muted">Brak ocen w wybranym okresie.</p>
+{% else %}
+<ul class="plain profile-feed" id="profile-ratings">
+  {% for r in p.ratings %}
+  <li class="card">
+    <div class="row"><span class="verdict {{ r.verdict }}">{{ RATING_VERDICTS[r.verdict] }}</span> <strong>{{ r.coach.name }}</strong>
+      <span class="muted small-note">{{ r.created_at|local("%d.%m.%Y %H:%M") }}</span></div>
+    {% if r.comment %}<div class="body">{{ r.comment|truncate(160, true, '…') }}</div>{% endif %}
+    <div class="small-note"><a href="/clips/{{ r.clip_id }}#rating-{{ r.id }}">{{ r.clip.category_label or 'Klip' }} · {{ r.clip.match.title }}</a></div>
+  </li>
+  {% endfor %}
+</ul>
+{% endif %}
+
+<h2 id="komentarze">Ostatnie komentarze do klipów</h2>
+{% if not p.comments %}
+  <p class="muted">Brak komentarzy w wybranym okresie.</p>
+{% else %}
+<ul class="plain profile-feed" id="profile-comments">
+  {% for cm in p.comments %}
+  <li class="card">
+    <div class="row"><strong>{{ cm.author.name }}</strong>
+      <span class="muted small-note">{{ cm.created_at|local("%d.%m.%Y %H:%M") if cm.created_at }}</span></div>
+    <div class="body">{{ cm.body|truncate(160, true, '…') }}</div>
+    <div class="small-note"><a href="/clips/{{ cm.clip_id }}#comment-{{ cm.id }}">{{ cm.clip.category_label or 'Klip' }} · {{ cm.clip.match.title }}</a></div>
+  </li>
+  {% endfor %}
+</ul>
+{% endif %}
+</div>
+{% endblock %}

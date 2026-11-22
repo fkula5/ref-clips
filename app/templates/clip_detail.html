@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_people_macros.html" import official_name %}
 {% block title %}Klip {{ c.time_sec|clock }}{% endblock %}
 {% block content %}
 <div class="row between">
@@ -50,7 +51,7 @@
       <p class="muted">{{ period_label(c) }}<br><small>czas nagrania – nie zegar meczowy</small></p>
       {% if not c.is_described %}<p><span class="chip warn">nieopisany</span></p>{% endif %}
       <dl class="facts">
-        <dt>Sędzia</dt><dd>{{ c.official_label or '—' }}</dd>
+        <dt>Sędzia</dt><dd>{% if c.official and not c.whole_team %}{{ c.official.function }} · {{ official_name(c.official) }}{% else %}{{ c.official_label or '—' }}{% endif %}</dd>
         <dt>Kategoria</dt><dd>{{ c.category_label or '—' }}</dd>
         <dt>Opis</dt><dd>{{ c.description or '—' }}</dd>
         <dt>Znacznik dodał(a)</dt><dd>{{ c.author.name if c.author else '—' }}, {{ c.created_at|local("%d.%m.%Y %H:%M") if c.created_at }}</dd>
