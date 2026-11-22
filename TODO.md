@@ -167,6 +167,18 @@ From a simulated coach's review of the app ("virtual product owner"). These are 
 - [ ] The count in the top bar is read with its own short database session on every page; if that ever shows up in profiling, cache it per request.
 - [ ] Not checked in Safari or on a real phone (Chromium at 390 px only).
 
+## Notes from the player audit (2026-11-22)
+
+The match player had its own „Pełny ekran (F)” button, but it sat below the fold on a 1366×768 screen, the native full screen button was dimmed and did nothing (`controlsList="nofullscreen"`), and in full screen only „Zaznacz” was left. Fixed with the shared strip in `app/static/player_controls.js`. Left over:
+
+- [ ] Firefox ignores `controlsList="nofullscreen"`, so its native full screen button still opens the bare `<video>` (no strip, no markers). A `fullscreenchange` handler could swap it for the container.
+- [ ] The fixed-position full screen fallback (Safari on an iPhone) is tested only with `requestFullscreen` removed in Chromium, not on a real iPhone; the address bar stays visible there. No orientation lock in either full screen.
+- [ ] The strip's frame step assumes the stored `fps` of the recording; a variable frame rate source drifts by a frame now and then (`requestVideoFrameCallback` would give the real frame time).
+- [ ] Header controls from `base.html` are below 40 px on a phone („Menu” 36 px, „Wyloguj” 22 px high); not touched to keep the shared layout calm.
+- [ ] The `.btn` height (38 px) is the app-wide default; only the player areas got 44 px targets on touch screens. Forms, filters and tables elsewhere still have 27–38 px buttons.
+- [ ] Following a „Oglądaj razem” room in full screen there is no „Odłącz” button (it is below the video); a follower has to leave full screen to detach.
+- [ ] Native video controls of the match player stay small (browser-drawn); the strip covers play, seeking, frame step and speed, but the volume and the scrubber are still native.
+
 ## Plan (set 2026-11-09)
 
 1. `v1.0.1` fixes: times in Polish time, aborting a hung ffmpeg, description from the `M` marker without repetitions, a stable `Z` key test.
