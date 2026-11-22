@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.14.0](https://github.com/fkula5/ref-clips/compare/v1.13.0...v1.14.0) (2026-11-22)
+
+
+### Features
+
+* **self-assessment:** standalone sheets for matches outside the system and manual rows ([#47](https://github.com/fkula5/ref-clips/issues/47)) ([4eb0932](https://github.com/fkula5/ref-clips/commit/4eb09321b40e80e349f470314616d96d9c07442d))
+
+
+### Bug Fixes
+
+* **docker:** give fontconfig a writable cache directory ([#44](https://github.com/fkula5/ref-clips/issues/44)) ([67654fe](https://github.com/fkula5/ref-clips/commit/67654fe8c7b098ea65cd411e9cd1e9b4091205ce))
+
 ## [1.13.0](https://github.com/fkula5/ref-clips/compare/v1.12.1...v1.13.0) (2026-11-18)
 
 
