@@ -33,6 +33,6 @@ def referee_profile_page(request: Request, user_id: int, db: Session = Depends(g
     key = referee_profile.person_key(person)
     return render(
         request, "referee_profile.html", p=profile, key=key, periods=referee_profile.PERIODS,
-        verdicts=RATING_VERDICTS, clips_link=referee_profile.clips_link,
+        verdicts=RATING_VERDICTS, clips_link=lambda person, **kw: referee_profile.clips_link(person, **{"since": profile.since, **kw}),
         page_href=lambda n: _address(person, period, n).partition("?")[2],
         nav=clip_list.ClipFilters(person=key).query(scope=False))

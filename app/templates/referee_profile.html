@@ -91,9 +91,9 @@
   {% endfor %}
     <tr class="total-row">
       <td data-label="Kategoria" class="main-cell">Razem</td>
-      <td data-label="Klipy">{{ count_link(p.categorised.clips, clips_link(key)) }}</td>
-      {{ verdict_cells(p.categorised, {}) }}
-      <td data-label="Bez ocen">{{ count_link(p.categorised.unrated, clips_link(key, rating='none')) }}</td>
+      <td data-label="Klipy">{{ count_link(p.total.clips, clips_link(key)) }}</td>
+      {{ verdict_cells(p.total, {}) }}
+      <td data-label="Bez ocen">{{ count_link(p.total.unrated, clips_link(key, rating='none')) }}</td>
     </tr>
   </tbody>
 </table>
@@ -102,8 +102,7 @@
 <p class="muted small-note" id="profile-notes">
   Klipy wybierają ludzie (zawodnicy, szkoleniowcy, sami sędziowie), więc te liczby nie są miarą skuteczności sędziego.
   Klip z ocenami dwóch szkoleniowców o różnych werdyktach liczy się pod każdym z nich.
-  {% if p.uncategorised %}Klipy bez kategorii ({{ p.uncategorised }}) są poza tabelą.{% endif %}
-  {% if p.since %}Liczby dotyczą wybranego okresu (według daty meczu), a lista klipów nie ma filtra dat, więc po kliknięciu zobaczysz klipy z całego czasu.{% endif %}
+  {% if p.uncategorised %}Klipy bez kategorii ({{ p.uncategorised }}) liczą się tylko w wierszu „Razem”.{% endif %}
 </p>
 
 <h2 id="klipy">Ostatnie klipy</h2>
@@ -111,7 +110,7 @@
   <p class="muted">Brak klipów w wybranym okresie.</p>
 {% else %}
   {{ clips_table(p.clips, nav, true, p.clip_stats) }}
-  <p><a class="btn" href="{{ clips_link(key) }}">Wszystkie klipy sędziego</a></p>
+  <p><a class="btn" href="{{ clips_link(key, since=none) }}">Wszystkie klipy sędziego</a></p>
 {% endif %}
 
 <h2 id="oceny">Ostatnie oceny szkoleniowców</h2>

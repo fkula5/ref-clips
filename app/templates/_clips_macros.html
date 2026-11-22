@@ -34,6 +34,10 @@
   <label>Oceny
     <select name="rating"><option value="">Wszystkie</option>
       {% for value, label in RATING_CHOICES %}<option value="{{ value }}" {{ 'selected' if f.rating == value }}>{{ label }}</option>{% endfor %}</select></label>
+  {% if matches is not none %}
+  <label>Mecze od
+    <input type="date" name="since" value="{{ f.since.isoformat() if f.since }}"></label>
+  {% endif %}
   <label>Opis
     <select name="described"><option value="">Wszystkie</option>
       <option value="1" {{ 'selected' if f.described == '1' }}>opisane</option>

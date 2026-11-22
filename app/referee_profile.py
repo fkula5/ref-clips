@@ -43,10 +43,11 @@ def person_key(user: User) -> str:
     return f"u{user.id}"
 
 
-def clips_link(person: str, **params) -> str:
-    """Address in the clip list; the list has no date filter, so a period is never part of it."""
+def clips_link(person: str, since: date | None = None, **params) -> str:
+    """Address in the clip list; `since` makes it show the same period as the profile's numbers."""
     wanted = ("match_id", "category_id", "rating")
-    pairs = [("person", person), *((k, str(params[k])) for k in wanted if params.get(k))]
+    pairs = [("person", person), *((k, str(params[k])) for k in wanted if params.get(k)),
+             *([("since", since.isoformat())] if since else [])]
     return "/clips?" + urlencode(pairs)
 
 

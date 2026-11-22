@@ -12,6 +12,8 @@
 {{ share_bar(shareable) }}
 
 <div id="clips-list" {% if pending %}hx-get="/clips{{ '?' ~ query if query }}" hx-trigger="every 3s" hx-select="#clips-list" hx-swap="outerHTML"{% endif %}>
+{% if f.since %}<p id="since-chip"><span class="chip">Mecze od {{ f.since|local("%d.%m.%Y") }}</span>
+  <a class="small-note" href="/clips{{ '?' ~ f.query_without_since if f.query_without_since }}">usuń</a></p>{% endif %}
 {% if not clips %}
   <p class="muted">Brak klipów dla wybranych filtrów.</p>
 {% else %}

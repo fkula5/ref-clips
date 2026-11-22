@@ -159,25 +159,36 @@ def test_category_table_counts_clips_by_verdict_and_links_to_the_clip_list(w):
     assert "/clips?person=" + key + f"&amp;category_id={kroki}&amp;rating=debatable" not in table  # zero: no link
 
 
-def test_every_number_in_the_tables_matches_the_list_it_links_to(w):
-    clips = [w.clip("m1"), w.clip("m1", category="osobisty"), w.clip("m2", "U1", category="3 s"), w.clip("m3")]
-    for i, row in enumerate(clips):
+@pytest.mark.parametrize("period", ["30", "90", "season", "all"])
+def test_every_number_in_the_tables_matches_the_list_it_links_to(w, period):
+    clips = [w.clip("m1"), w.clip("m1", category="osobisty"), w.clip("m2", "U1", category="3 s"), w.clip("m3"),
+             w.clip("m1", category=None)]
+    for i, row in enumerate(clips[:4]):
         w.rate(row, "coach", ("correct", "incorrect", "debatable", "correct")[i])
-    page = profile(w, range="all").text
+    w.rate(clips[1], "coach2", "debatable")
+    page = profile(w, range=period).text
     links = re.findall(r'<a href="(/clips\?[^"]+)">(\d+)</a>', section(page, "mecze") + section(page, "kategorie"))
-    assert len(links) > 10
+    assert len(links) > 5
     for href, number in links:
         href = href.replace("&amp;", "&")
+        query = parse_qs(urlsplit(href).query)
+        assert query["person"] == [f"u{w.u['ref'].id}"]
+        assert ("since" in query) is (period != "all")
         assert len(clip_ids(w.c["coach"].get(href).text)) == int(number), href
-        assert parse_qs(urlsplit(href).query)["person"] == [f"u{w.u['ref'].id}"]
 
 
-def test_note_says_the_numbers_are_not_an_efficiency_score_and_links_ignore_the_period(w):
+def test_profile_links_carry_the_start_of_the_period(w):
     w.clip("m1")
+    since = referee_profile.period_start("30").isoformat()
     page = profile(w, range="30").text
-    assert "nie są miarą skuteczności" in page and "nie ma filtra dat" in page
-    assert "nie ma filtra dat" not in profile(w, range="all").text
-    assert "date" not in " ".join(re.findall(r'href="(/clips\?[^"]+)"', page))
+    assert f"since={since}" in section(page, "mecze")
+    assert "since=" not in profile(w, range="all").text
+
+
+def test_note_says_the_numbers_are_not_an_efficiency_score(w):
+    w.clip("m1")
+    page = profile(w).text
+    assert "nie są miarą skuteczności" in page and "nie ma filtra dat" not in page
 
 
 def test_match_table_has_one_row_per_match_newest_first_with_crew_function(w):
