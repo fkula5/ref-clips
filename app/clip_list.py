@@ -1,14 +1,15 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
+from datetime import date
 from urllib.parse import urlencode
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
 from app import config, feedback, groups, services
-from app.models import PERIODS, RATING_VERDICTS, Clip, MatchOfficial, PeriodMark, Rating, Video
+from app.models import PERIODS, RATING_VERDICTS, Clip, Match, MatchOfficial, PeriodMark, Rating, Video
 from app.pagination import Page, paginate, parse_page
 
 TEAM = "team"
@@ -36,13 +37,15 @@ class ClipFilters:
     described: str = ""
     rating: str = ""
     group_id: int | None = None
+    since: date | None = None  # match date, from
     page: int = 1
 
     def pairs(self, *, scope: bool) -> list[tuple[str, str]]:
         pairs = [("person", self.person),
                  ("category_id", str(self.category_id) if self.category_id else ""),
                  ("period", self.period), ("described", self.described), ("rating", self.rating),
-                 ("group", str(self.group_id) if self.group_id else "")]
+                 ("group", str(self.group_id) if self.group_id else ""),
+                 ("since", self.since.isoformat() if self.since else "")]
         if scope:
             pairs = [("match_id", str(self.match_id) if self.match_id else ""),
                      ("video_id", str(self.video_id) if self.video_id else ""), *pairs]
@@ -55,12 +58,23 @@ class ClipFilters:
             pairs.append(("page", str(page)))
         return urlencode(pairs)
 
+    @property
+    def query_without_since(self) -> str:
+        return replace(self, since=None, page=1).query()
+
     def page_query(self, page: int, scope: bool = True) -> str:
         return self.query(scope=scope, page=page)
 
     @property
     def active(self) -> bool:
         return bool(self.pairs(scope=False))
+
+
+def _date(raw: str | None) -> date | None:
+    try:
+        return date.fromisoformat((raw or "").strip())
+    except ValueError:
+        return None
 
 
 def parse_filters(params: Mapping[str, str]) -> ClipFilters:
@@ -74,7 +88,8 @@ def parse_filters(params: Mapping[str, str]) -> ClipFilters:
         period=period if period in PERIODS or period == NO_PERIOD else "",
         described=described if described in (DESCRIBED_YES, DESCRIBED_NO) else "",
         rating=rating if rating in (RATING_ANY, RATING_NONE, *RATING_VERDICTS) else "",
-        group_id=_int(params.get("group")), page=parse_page(params.get("page")))
+        group_id=_int(params.get("group")), since=_date(params.get("since")),
+        page=parse_page(params.get("page")))
 
 
 def _period_of_clip():
@@ -85,8 +100,10 @@ def _period_of_clip():
 
 
 def _filtered(db: Session, *, match_id=None, video_id=None, person=None, category_id=None, period=None,
-              described=None, rating=None, group_id=None, ids=None):
+              described=None, rating=None, group_id=None, ids=None, since: date | None = None):
     stmt = select(Clip)
+    if since:
+        stmt = stmt.where(Clip.match_id.in_(select(Match.id).where(Match.date >= since)))
     if match_id:
         stmt = stmt.where(Clip.match_id == match_id)
     if video_id:
@@ -114,11 +131,7 @@ def _filtered(db: Session, *, match_id=None, video_id=None, person=None, categor
     if person == TEAM:
         stmt = stmt.where(Clip.whole_team.is_(True))
     elif person:
-        accounts = services.account_names(db)
-        official_ids = [oid for oid, user_id, name in db.execute(
-            select(MatchOfficial.id, MatchOfficial.user_id, MatchOfficial.name))
-            if services.person_key(user_id, name, accounts) == person]
-        stmt = stmt.where(Clip.official_id.in_(official_ids))
+        stmt = stmt.where(Clip.official_id.in_([oid for oid, _, _ in services.person_officials(db, person)]))
     return stmt
 
 
@@ -133,11 +146,20 @@ def query_clips(db: Session, *, with_comments=False, **filters) -> list[Clip]:
     return list(db.scalars(_listing(_filtered(db, **filters), with_comments=with_comments)))
 
 
+def recent_clips(db: Session, limit: int, **filters) -> list[Clip]:
+    """Newest markers first (the listing order is by match, which suits a table, not "latest")."""
+    stmt = (_filtered(db, **filters)
+            .options(selectinload(Clip.video).selectinload(Video.marks),
+                     selectinload(Clip.official).selectinload(MatchOfficial.user), selectinload(Clip.match))
+            .order_by(Clip.created_at.desc(), Clip.id.desc()).limit(limit))
+    return list(db.scalars(stmt))
+
+
 def _arguments(filters: ClipFilters, match_id: int | None) -> dict:
     return dict(match_id=match_id or filters.match_id, video_id=filters.video_id,
                 person=filters.person or None, category_id=filters.category_id,
                 period=filters.period or None, described=filters.described or None,
-                rating=filters.rating or None, group_id=filters.group_id)
+                rating=filters.rating or None, group_id=filters.group_id, since=filters.since)
 
 
 def select_clips(db: Session, filters: ClipFilters, *, match_id: int | None = None) -> list[Clip]:

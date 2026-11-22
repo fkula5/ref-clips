@@ -215,6 +215,7 @@ Roles (several at once, permissions add up):
 | Managing accounts and roles, retention and disk | yes | no | no |
 | Managing the category dictionary and the assessment sheet elements | yes | yes | no |
 | Viewing all matches and clips, commenting | yes | yes | yes |
+| Opening a referee's profile (matches, clips, ratings and comments; no sheets or self-assessments) | yes | yes | yes |
 | Uploading matches and crew, creating and describing clips | every match | every match | only matches in which they are in the crew (by account) |
 | Downloading a recording (the 720p working copy) | every match | every match | only matches in which they are in the crew (by account) |
 | Rating a clip | no (unless they also have the coach role) | yes, own | no |

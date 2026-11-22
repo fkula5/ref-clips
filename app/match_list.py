@@ -82,10 +82,7 @@ class MatchPage:
 
 
 def _person_match_ids(db: Session, person: str) -> list[int]:
-    accounts = services.account_names(db)
-    return [match_id for match_id, user_id, name in db.execute(
-        select(MatchOfficial.match_id, MatchOfficial.user_id, MatchOfficial.name))
-        if services.person_key(user_id, name, accounts) == person]
+    return [match_id for _, match_id, _ in services.person_officials(db, person)]
 
 
 def list_matches(db: Session, filters: MatchFilters, user_id: int,

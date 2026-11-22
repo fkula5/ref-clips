@@ -197,7 +197,7 @@ def test_page_highlights_referees_without_activity_in_the_chosen_period(w, db, m
 
     def flagged(days):
         page = w.c["coach"].get(f"/groups/{w.g.id}?days={days}").text
-        return re.findall(r'(Osoba r\d)\s*<span class="chip warn">brak aktywności', page)
+        return re.findall(r'(Osoba r\d)(?:</a>)?\s*<span class="chip warn">brak aktywności', page)
 
     assert flagged(14) == ["Osoba r1", "Osoba r2"] and flagged(90) == ["Osoba r1"]
     assert flagged("bogus") == flagged(14) and "ostatnie 14 dni" in w.c["coach"].get(f"/groups/{w.g.id}?days=5").text

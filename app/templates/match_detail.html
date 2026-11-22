@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_people_macros.html" import official_name %}
 {% from "_content_picker.html" import content_picker %}
 {% from "_clips_macros.html" import clip_filters, clips_table, share_bar with context %}
 {% from "_pager.html" import pagination %}
@@ -24,7 +25,7 @@
     <dt>Obsada</dt>
     <dd>
       {% for o in match.officials %}
-        <span class="chip official"><strong>{{ o.function }}</strong> {{ o.display_name }}
+        <span class="chip official"><strong>{{ o.function }}</strong> {{ official_name(o) }}
           {% if o.user_id %}<small class="has-account" title="Ma konto w aplikacji">konto</small>{% else %}<small class="muted" title="Sędzia bez konta">bez konta</small>{% endif %}
           {% if o.user_id == user.id %}<small class="me">to Ty</small>{% endif %}</span>
       {% else %}<span class="muted">brak</span>{% endfor %}

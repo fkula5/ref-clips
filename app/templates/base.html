@@ -31,6 +31,7 @@
       </nav>
       <div id="site-account" class="account">
         <span>{{ user.name }}</span>
+        {% if perm.has_own_referee_profile(user) %}<a href="/referees/{{ user.id }}">Mój profil</a>{% endif %}
         <a href="/settings/notifications">Ustawienia powiadomień</a>
         <form method="post" action="/logout" class="inline">{{ csrf_input() }}<button class="linklike">Wyloguj</button></form>
       </div>
