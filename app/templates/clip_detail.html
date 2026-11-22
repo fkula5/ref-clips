@@ -23,7 +23,7 @@
 <div class="player-layout">
   <section id="clip-area" {% if busy %}hx-get="/clips/{{ c.id }}{{ nav_q }}" hx-trigger="every 3s" hx-select="#clip-area" hx-select-oob="#clip-status" hx-swap="outerHTML"{% endif %}>
     {% if c.status == 'cut' and c.clip_path %}
-      <video id="clip-video" src="/clips/{{ c.id }}/file?v={{ c.clip_version }}" controls preload="auto" playsinline></video>
+      <video id="clip-video" src="/clips/{{ c.id }}/file?v={{ c.clip_version }}" controls preload="auto" playsinline data-controls-strip data-fps="{{ c.video.fps or 25 }}"></video>
       <div class="clip-actions">
         <a class="btn primary" href="/clips/{{ c.id }}/download">Pobierz MP4</a>
         <span class="muted clip-filename" title="{{ filename }}">{{ filename }}</span>
@@ -87,4 +87,4 @@
 <form method="post" action="/clips/{{ c.id }}/delete" onsubmit="return confirm('Usunąć klip?')">{{ csrf_input() }}<button class="btn danger small">Usuń klip</button></form>
 {% endif %}
 {% endblock %}
-{% block scripts %}<script src="/static/share.js"></script><script src="/static/clip.js"></script><script src="/static/feedback.js"></script>{% endblock %}
+{% block scripts %}<script src="/static/player_controls.js"></script><script src="/static/share.js"></script><script src="/static/clip.js"></script><script src="/static/feedback.js"></script>{% endblock %}

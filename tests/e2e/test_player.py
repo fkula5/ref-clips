@@ -8,10 +8,10 @@ VIDEO = "document.getElementById('player')"
 ROWS = "#decisions li:has(a.t)"  # decision rows (without the "no markers" row)
 
 
-def open_player(ui, role="admin", *, content="Q1,Q2", mobile=False):
+def open_player(ui, role="admin", *, content="Q1,Q2", mobile=False, **page_options):
     match_id = ui.server.make_match()
     video_id = ui.server.make_ready_video(match_id, content=content)
-    page = ui.page(role, mobile=mobile)
+    page = ui.page(role, mobile=mobile, **page_options)
     page.goto(f"/videos/{video_id}")
     wait_metadata(page)
     return page, match_id, video_id
@@ -245,7 +245,7 @@ def test_fullscreen_with_the_f_key(ui):
     page.keyboard.press("f")
     # the video container (not <video> itself) goes fullscreen, so markers and the flash stay visible
     page.wait_for_function("document.fullscreenElement && document.fullscreenElement.id === 'video-wrap'")
-    expect(page.locator("#btn-mark-fs")).to_be_visible()
+    expect(page.locator("#btn-z")).to_be_visible()
     page.keyboard.press("z")
     expect(page.locator("#flash")).to_be_visible()
     expect(page.locator("#mark-count")).to_have_text("Znaczniki: 1")
@@ -271,7 +271,7 @@ def test_referee_outside_the_crew_sees_the_recording_but_cannot_mark(ui):
     wait_metadata(page)
     page.evaluate(f"{VIDEO}.play()")
     page.wait_for_function(f"{VIDEO}.currentTime > 0.3")
-    for button in ("#btn-z", "#btn-undo", "#btn-m", "#btn-q", "#btn-mark-fs", "#quick-form"):
+    for button in ("#btn-z", "#btn-undo", "#btn-m", "#btn-q", "#quick-form"):
         expect(page.locator(button)).to_have_count(0)
     expect(page.get_by_role("button", name=re.compile("Ustaw (ponownie )?tutaj"))).to_have_count(0)
     expect(page.locator("#periods .period-row")).to_have_count(2)

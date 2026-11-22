@@ -3,7 +3,6 @@
   const video = document.getElementById("player");
   const wrap = document.getElementById("video-wrap");
   const $ = (id) => document.getElementById(id);
-  const SPEEDS = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2];
   const CAN_MARK = !!window.CAN_MARK;
   const CAN_CLIP = !!window.CAN_CLIP;
   const DEBOUNCE_MS = 1000;  // as on the server
@@ -16,6 +15,13 @@
     refresh: async () => { applyState(await api("GET", `/api/videos/${state.video_id}/state`)); render(); },
   };
   const allowed = () => hooks.canControl() || (hooks.denied(), false);
+  // Strip with play, seek, frame step, speed, full screen; Z and undo live in it too, so they stay in full screen.
+  const controls = window.PlayerControls.attach(video, {
+    wrap, fps, speedId: "speed", after: $("timeline"),
+    canControl: () => hooks.canControl(), denied: () => hooks.denied(),
+    extra: [$("btn-z"), $("btn-undo")].filter(Boolean),
+  });
+  hooks.syncControls = () => controls.sync();
   let lastMarkAt = -Infinity;
   let highlightId = null;
 
@@ -74,12 +80,6 @@
   function seek(t) {
     if (!allowed()) return;
     video.currentTime = Math.min(Math.max(0, t), video.duration || t);
-  }
-
-  function setSpeed(rate) {
-    if (!allowed()) { $("speed").value = String(video.playbackRate); return; }
-    video.playbackRate = rate;
-    $("speed").value = String(rate);
   }
 
   function renderPeriods() {
@@ -288,24 +288,9 @@
     } catch (err) { toast(err.message, true); }
   });
 
-  function toggleFullscreen() {
-    const current = document.fullscreenElement || document.webkitFullscreenElement;
-    if (current) { (document.exitFullscreen || document.webkitExitFullscreen).call(document); return; }
-    const request = wrap.requestFullscreen || wrap.webkitRequestFullscreen;
-    if (request) request.call(wrap);
-    else toast("Ta przeglądarka nie obsługuje pełnego ekranu dla odtwarzacza", true);
-  }
-
   function toggleHelp(show) {
     const help = $("help");
     help.classList.toggle("hidden", show === undefined ? !help.classList.contains("hidden") : !show);
-  }
-
-  function stepFrame(dir) {
-    if (!allowed()) return;
-    video.pause();
-    const frame = Math.round(video.currentTime * fps);
-    video.currentTime = (frame + dir) / fps + 0.0005;
   }
 
   document.addEventListener("keydown", (e) => {
@@ -317,32 +302,24 @@
     if (e.ctrlKey || e.metaKey || e.altKey) return;
     switch (e.key) {
       case " ": e.preventDefault(); if (!allowed()) break; if (video.paused) { video.play().catch(() => {}); } else { video.pause(); } break;
-      case ",": case "<": e.preventDefault(); stepFrame(-1); break;
-      case ".": case ">": e.preventDefault(); stepFrame(1); break;
-      case "[": setSpeed(SPEEDS[Math.max(0, SPEEDS.indexOf(video.playbackRate) - 1)] ?? 1); break;
-      case "]": setSpeed(SPEEDS[Math.min(SPEEDS.length - 1, SPEEDS.indexOf(video.playbackRate) + 1)] ?? 1); break;
       case "z": case "Z": e.preventDefault(); if (!e.repeat) addMarker(); break;
       case "Backspace": e.preventDefault(); if (!e.repeat) undoMarker(); break;
       case "m": case "M": e.preventDefault(); openQuick(); break;
       case "q": case "Q": e.preventDefault(); if (!e.repeat) addMark(); break;
-      case "f": case "F": e.preventDefault(); toggleFullscreen(); break;
       case "?": e.preventDefault(); toggleHelp(); break;
       case "Escape": toggleHelp(false); break;
     }
   });
 
-  $("speed").addEventListener("change", (e) => { setSpeed(parseFloat(e.target.value)); e.target.blur(); });
   // After a button click focus returns to the page, so Space and Z do not "click" it again.
   document.addEventListener("click", (e) => {
     const button = e.target.closest && e.target.closest("button");
     if (button) button.blur();
   });
   if ($("btn-z")) $("btn-z").addEventListener("click", addMarker);
-  if ($("btn-mark-fs")) $("btn-mark-fs").addEventListener("click", addMarker);
   if ($("btn-undo")) $("btn-undo").addEventListener("click", undoMarker);
   if ($("btn-m")) $("btn-m").addEventListener("click", openQuick);
   if ($("btn-q")) $("btn-q").addEventListener("click", () => addMark());
-  $("btn-fs").addEventListener("click", toggleFullscreen);
   $("btn-help").addEventListener("click", () => toggleHelp());
   $("help-close").addEventListener("click", () => toggleHelp(false));
   $("timeline").addEventListener("click", (e) => {

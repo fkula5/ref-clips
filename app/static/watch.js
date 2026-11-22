@@ -200,6 +200,7 @@
     $("watch-panel").classList.toggle("hidden", !active);
     document.body.classList.toggle("watch-follow", mode === "following");
     $("speed").disabled = mode === "following";
+    if (P.syncControls) P.syncControls();
     $("timeline").classList.toggle("locked", mode === "following");
     const badge = $("watch-badge");
     badge.classList.toggle("hidden", !active || status === "closed");

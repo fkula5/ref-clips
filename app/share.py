@@ -146,6 +146,7 @@ class SharedClip:
     level: str
     category: str
     filename: str  # without the referee's name
+    fps: float = 25.0
 
 
 @dataclass
@@ -168,11 +169,13 @@ def open_link(db: Session, code: str, now: datetime | None = None) -> SharedView
     if not CODE_FORMAT.match(code):
         return None
     link = db.scalar(select(ShareLink).where(ShareLink.token_hash == hash_token(code)).options(
-        selectinload(ShareLink.items).selectinload(ShareLinkClip.clip).selectinload(Clip.match)))
+        selectinload(ShareLink.items).selectinload(ShareLinkClip.clip).selectinload(Clip.match),
+        selectinload(ShareLink.items).selectinload(ShareLinkClip.clip).selectinload(Clip.video)))
     if link is None or link.revoked_at is not None or link.expires_at <= (now or utcnow()):
         return None
     clips = [SharedClip(item.position, item.clip, item.clip.match.level.strip(), item.clip.category_label.strip(),
-                        services.clip_filename(item.clip, with_referee=False))
+                        services.clip_filename(item.clip, with_referee=False),
+                        item.clip.video.fps or 25.0)
              for item in link.items if has_file(item.clip)]
     return SharedView(link, clips) if clips else None
 
