@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.15.0](https://github.com/fkula5/ref-clips/compare/v1.14.0...v1.15.0) (2026-11-22)
+
+
+### Features
+
+* **profile:** referee profile page and a match-date filter on the clip list ([#50](https://github.com/fkula5/ref-clips/issues/50)) ([2f41dcc](https://github.com/fkula5/ref-clips/commit/2f41dcc1bb4e49a41362cc48c64c8ddb1bcde068))
+
+
+### Bug Fixes
+
+* **player:** touch-friendly controls strip and a clickable full screen on every player ([#49](https://github.com/fkula5/ref-clips/issues/49)) ([cb3a52b](https://github.com/fkula5/ref-clips/commit/cb3a52b23e922f1b2d6dd4ad96a0858cfa97f278))
+
 ## [1.14.0](https://github.com/fkula5/ref-clips/compare/v1.13.0...v1.14.0) (2026-11-22)
 
 
