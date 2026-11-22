@@ -46,7 +46,7 @@ def test_fullscreen_button_is_on_screen_and_works_by_click(ui):
     expect(strip_button(page, "Pełny ekran")).to_have_attribute("aria-pressed", "false")
 
 
-def test_controls_stay_usable_in_fullscreen_and_hide_while_playing(ui):
+def test_controls_stay_usable_in_fullscreen_and_hide_when_idle_playing_or_paused(ui):
     page, _, video_id = open_player(ui, viewport=LAPTOP)
     page.get_by_role("button", name="Pełny ekran").click()
     page.wait_for_function(FS_WRAP)
@@ -56,15 +56,40 @@ def test_controls_stay_usable_in_fullscreen_and_hide_while_playing(ui):
     wait_time(page, 20.04, 0.02)
     page.locator("#speed").select_option("0.5")
     assert page.evaluate(f"{VIDEO}.playbackRate") == 0.5
-    strip_button(page, "Odtwórz").click()
-    page.wait_for_function(f"!{VIDEO}.paused")
+    # paused and idle: the top of the frame is free
     expect(page.locator(".pc-wrap")).to_have_class(re.compile(r"pc-idle"), timeout=10_000)
     expect(page.locator(".pc-strip")).to_be_hidden()
     page.mouse.move(400, 300)
     page.mouse.move(420, 320)
     expect(page.locator(".pc-strip")).to_be_visible()
+    strip_button(page, "Odtwórz").click()
+    page.wait_for_function(f"!{VIDEO}.paused")
+    expect(page.locator(".pc-wrap")).to_have_class(re.compile(r"pc-idle"), timeout=10_000)
+    page.keyboard.press("Shift")
+    expect(page.locator(".pc-strip")).to_be_visible()
     strip_button(page, "Pauza").click()
     page.wait_for_function(f"{VIDEO}.paused")
+
+
+def test_fullscreen_strip_stays_while_a_control_has_focus(ui):
+    page, _, _ = open_player(ui, viewport=LAPTOP)
+    page.get_by_role("button", name="Pełny ekran").click()
+    page.wait_for_function(FS_WRAP)
+    page.locator("#speed").focus()
+    page.wait_for_timeout(4500)
+    expect(page.locator(".pc-strip")).to_be_visible()
+    page.locator("#speed").blur()
+    expect(page.locator(".pc-wrap")).to_have_class(re.compile(r"pc-idle"), timeout=10_000)
+
+
+def test_touch_tap_brings_the_idle_strip_back(ui):
+    page, _, _ = open_player(ui, mobile=True)
+    strip_button(page, "Pełny ekran").tap()
+    page.wait_for_function(FS_WRAP)
+    expect(page.locator(".pc-wrap")).to_have_class(re.compile(r"pc-idle"), timeout=10_000)
+    expect(page.locator(".pc-strip")).to_be_hidden()
+    page.touchscreen.tap(200, 500)
+    expect(page.locator(".pc-strip")).to_be_visible()
 
 
 def test_touch_only_user_can_step_a_frame_seek_slow_down_and_play(ui):

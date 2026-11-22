@@ -124,10 +124,16 @@
     }
 
     let idleTimer = null;
+    // Paused frames are analysed too, so the strip hides in both states. A focused control (an open
+    // <select> keeps focus) keeps it up.
+    function hideIfIdle() {
+      if (strip.contains(document.activeElement)) { idleTimer = setTimeout(hideIfIdle, IDLE_MS); return; }
+      wrap.classList.add("pc-idle");
+    }
     function wake() {
       wrap.classList.remove("pc-idle");
       clearTimeout(idleTimer);
-      if (inFullscreen() && !video.paused) idleTimer = setTimeout(() => wrap.classList.add("pc-idle"), IDLE_MS);
+      if (inFullscreen()) idleTimer = setTimeout(hideIfIdle, IDLE_MS);
     }
 
     function syncFullscreen() {
@@ -152,7 +158,7 @@
       if (document.activeElement !== speed) speed.value = String(video.playbackRate);
     }
 
-    ["play", "pause", "ended", "ratechange"].forEach((name) => video.addEventListener(name, () => { sync(); wake(); }));
+    ["play", "pause", "ended", "ratechange"].forEach((name) => video.addEventListener(name, sync));
     video.addEventListener("play", () => { active = instance; });
     ["pointerdown", "focusin"].forEach((name) => wrap.addEventListener(name, () => { active = instance; }));
     ["pointermove", "pointerdown", "touchstart", "focusin"].forEach((name) =>
