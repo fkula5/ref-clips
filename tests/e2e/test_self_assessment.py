@@ -104,8 +104,8 @@ def test_referee_fills_in_a_self_assessment_of_a_match_outside_the_system(ui):
         referee.get_by_role("button", name="Dodaj wiersz ręcznie").click()
         expect(referee.locator(".sa-row")).to_have_count(number)
     rows = referee.locator(".sa-row")
+    expect(rows.locator("input[name^=time_]")).to_have_count(0)  # the report leaves the time column empty
     for i in range(3):
-        rows.nth(i).locator("input[name^=time_]").fill(f"Q{i + 1}, 2:0{i}")
         rows.nth(i).locator("input[name^=name_]").fill(f"Faul {i + 1}")
         if i < 2:
             rows.nth(i).locator("textarea").fill(f"Opis {i + 1}")

@@ -1,8 +1,9 @@
 """Referee self-assessment ("Arkusz samooceny"). The header is read from the match, or typed by the author
 on a standalone sheet (a match that is not in the system, `match_id` NULL). A clip row keeps text snapshots
 of the clip's time and name, taken when the clip is added and refreshed on every save of a draft, so a
-submitted sheet stays readable if the clip is later deleted. A manual row has no clip and its time and
-name are the author's own text, never refreshed. Posted fields that are missing are left untouched, so a
+submitted sheet stays readable if the clip is later deleted; the time only identifies the clip in the form,
+the report leaves its column empty. A manual row has no clip and its name is the author's own text, never
+refreshed. Posted fields that are missing are left untouched, so a
 stale form can never wipe stored text.
 """
 from __future__ import annotations
@@ -137,10 +138,6 @@ def desc_key(row: SelfAssessmentClip) -> str:
     return f"desc_{row.id}"
 
 
-def time_key(row: SelfAssessmentClip) -> str:
-    return f"time_{row.id}"
-
-
 def name_key(row: SelfAssessmentClip) -> str:
     return f"name_{row.id}"
 
@@ -150,7 +147,7 @@ def form_values(sa: SelfAssessment) -> dict[str, str]:
     values.update({desc_key(row): row.description for row in sa.rows})
     for row in sa.rows:
         if row.is_manual:
-            values[time_key(row)], values[name_key(row)] = row.time_label, row.name_label
+            values[name_key(row)] = row.name_label
     if sa.is_standalone:
         values.update({key: getattr(sa, key) for key, _, _ in HEADER_FIELDS})
         values["match_date"] = sa.match_date.isoformat() if sa.match_date else ""
@@ -203,10 +200,9 @@ def _apply(sa: SelfAssessment, fields: dict[str, str], order: list[int]) -> None
         if value is not None:
             clean[desc_key(row)] = value
         if row.is_manual:
-            for key, label in ((time_key(row), "czas z nagrania"), (name_key(row), "nazwa klipu")):
-                value = _line(fields.get(key), f"Klip {position}, {label}", errors)
-                if value is not None:
-                    clean[key] = value
+            value = _line(fields.get(name_key(row)), f"Klip {position}, nazwa klipu", errors)
+            if value is not None:
+                clean[name_key(row)] = value
     match_date = sa.match_date
     if sa.is_standalone:
         for key, label, _ in HEADER_FIELDS:
@@ -240,10 +236,9 @@ def _apply(sa: SelfAssessment, fields: dict[str, str], order: list[int]) -> None
             row.description = clean[desc_key(row)]
             changed = True
         if row.is_manual:
-            for key, attr in ((time_key(row), "time_label"), (name_key(row), "name_label")):
-                if key in clean and getattr(row, attr) != clean[key]:
-                    setattr(row, attr, clean[key])
-                    changed = True
+            if name_key(row) in clean and row.name_label != clean[name_key(row)]:
+                row.name_label = clean[name_key(row)]
+                changed = True
         elif row.clip is not None:
             row.time_label, row.name_label = clip_labels(row.clip)
     if [r.id for r in rows] != [r.id for r in sa.rows]:
@@ -313,8 +308,7 @@ def problems(sa: SelfAssessment) -> list[str]:
         found.append(f"Dodaj co najmniej {MIN_CLIPS} klipy — teraz jest ich {len(sa.rows)}.")
     for number, row in enumerate(sa.rows, start=1):
         if row.is_manual:
-            for text, label in ((row.time_label, "czas z nagrania"), (row.name_label, "nazwa klipu"),
-                                (row.description, "opis")):
+            for text, label in ((row.name_label, "nazwę klipu"), (row.description, "opis")):
                 if not text.strip():
                     found.append(f"Klip {number}: wpisz {label}.")
         elif not row.description.strip():
