@@ -203,9 +203,8 @@ tr.no-activity td { background: var(--warn-wash); }
 .watch-people { list-style: none; margin: 8px 0; padding: 0; }
 .watch-people li { display: flex; align-items: center; gap: 4px 8px; flex-wrap: wrap; padding: 4px 0; border-bottom: 1px solid var(--line); }
 .watch-people .who-name { overflow-wrap: anywhere; }
-.watch-follow #speed, .timeline.locked { cursor: not-allowed; }
+.timeline.locked { cursor: not-allowed; }
 .timeline.locked { opacity: .6; }
-.watch-follow video::-webkit-media-controls-play-button, .watch-follow video::-webkit-media-controls-timeline { display: none; }
 .flash { position: absolute; top: 14%; left: 50%; transform: translateX(-50%); background: var(--flash-bg); color: var(--on-accent); font: 600 22px system-ui, sans-serif; padding: 10px 24px; border-radius: 10px; pointer-events: none; animation: flash-pop 1.2s ease-out forwards; z-index: 5; white-space: nowrap; }
 .flash.error { background: var(--flash-error-bg); }
 @keyframes flash-pop { 0% { opacity: 0; transform: translateX(-50%) scale(.85); } 12% { opacity: 1; transform: translateX(-50%) scale(1.05); } 70% { opacity: 1; } 100% { opacity: 0; } }
@@ -214,27 +213,55 @@ tr.no-activity td { background: var(--warn-wash); }
   .flash { animation: none; }
   *, ::before, ::after { transition-duration: .01ms !important; scroll-behavior: auto !important; }
 }
-/* Shared playback controls (player_controls.js). `.is-fs` marks real and fixed-position full screen alike. */
-.pc-wrap { position: relative; }
-.pc-wrap video { max-height: min(70vh, max(220px, calc(100vh - 345px))); }
-.pc-wrap video::-webkit-media-controls-fullscreen-button { display: none; }
-.pc-strip { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 8px 0; }
-.pc-btn { min-height: 44px; min-width: 44px; padding: 6px 10px; touch-action: manipulation; }
-@media (max-width: 480px) { .pc-btn { padding: 6px 8px; } }
-.pc-speed { display: flex; align-items: center; gap: 6px; }
-.pc-select { min-height: 44px; }
-.pc-fs-btn { margin-left: auto; }
-.pc-extra { flex: 0 0 100%; display: flex; flex-wrap: wrap; gap: 6px; }
-.pc-strip .btn[aria-disabled=true] { opacity: .6; }
-html.pc-lock { overflow: hidden; }
-.pc-wrap.is-fs { background: var(--video-bg); display: flex; flex-direction: column; justify-content: center; padding: 0; }
-.pc-wrap.pc-pseudo-fs { position: fixed; inset: 0; z-index: 1000; width: 100%; height: 100%; }
-.pc-wrap.is-fs video { flex: 1 1 auto; min-height: 0; height: 100%; max-height: none; border-radius: 0; }
-.pc-wrap.is-fs .pc-strip { position: absolute; top: 44px; left: 50%; transform: translateX(-50%); width: calc(100% - 16px); max-width: 820px; justify-content: center; margin: 0; padding: 6px; background: var(--scrim); border-radius: 10px; z-index: 6; }
-.pc-wrap.is-fs .pc-speed { color: var(--on-chrome); }
-.pc-wrap.is-fs .pc-extra { justify-content: center; }
-.pc-wrap.is-fs :focus-visible { outline-color: var(--focus-on-dark); }
-.pc-wrap.is-fs.pc-idle .pc-strip { visibility: hidden; }
+/* Video.js player (player_controls.js). The control bar overlays the picture and hides when idle; the base stylesheet is
+   the vendored video-js.min.css. Sizes come from the font size: 3em is the bar height and the touch target. */
+.pc-player.video-js { width: 100%; height: auto; aspect-ratio: var(--pc-ar, 16 / 9); max-height: min(70vh, max(220px, calc(100vh - 345px)));
+  font: 14px/1 system-ui, "Segoe UI", sans-serif; background: var(--video-bg); border-radius: 6px; }
+.pc-player video.vjs-tech { max-height: none; border-radius: inherit; background: transparent; }
+.pc-player.vjs-fullscreen { aspect-ratio: auto; max-height: none; border-radius: 0; }
+.pc-player :focus-visible { outline: 2px solid var(--focus-on-dark); outline-offset: -2px; }
+.pc-player .vjs-control-bar { display: flex; flex-wrap: wrap; align-items: center; height: auto; padding: 0 6px; background: var(--scrim); border-radius: 0 0 6px 6px; }
+.pc-player.vjs-fullscreen .vjs-control-bar { border-radius: 0; }
+.pc-player.pc-fs-moved .vjs-control-bar { bottom: 10px; }
+.pc-player .vjs-control-bar .vjs-button { width: 3em; height: 3em; }
+.pc-player .vjs-control-bar .vjs-button:hover, .pc-player .vjs-control-bar .vjs-button:focus-visible { background: rgba(255, 255, 255, .16); }
+.pc-player .pc-btn-vjs { width: auto; min-width: 3em; padding: 0 .8em; }
+.pc-player .pc-btn-vjs .vjs-icon-placeholder { display: block; position: static; font: 600 .95em/3em system-ui, sans-serif; white-space: nowrap; }
+.pc-player .vjs-current-time, .pc-player .vjs-duration, .pc-player .vjs-time-divider { display: block; min-width: 0; padding: 0 .25em; line-height: 3em; font-variant-numeric: tabular-nums; }
+.pc-player .vjs-time-divider { padding: 0; }
+.pc-player .vjs-progress-control { order: 0; flex: 1 1 5em; min-width: 3em; height: 3em; }
+.pc-player .vjs-progress-holder { background: rgba(255, 255, 255, .25); }
+.pc-player .vjs-progress-holder::before { content: ""; position: absolute; inset: -1em 0; }
+.pc-player .vjs-load-progress, .pc-player .vjs-load-progress div { background: rgba(255, 255, 255, .25); }
+.pc-player .vjs-play-progress, .pc-player .vjs-volume-level { background: var(--focus-on-dark); }
+.pc-player .vjs-play-progress::before { color: var(--focus-on-dark); }
+.pc-player .vjs-playback-rate { width: auto; min-width: 3.4em; }
+.pc-player .vjs-playback-rate .vjs-playback-rate-value { position: static; display: block; width: auto; height: auto; padding: 0 .3em; font-size: 1em; line-height: 3em; pointer-events: none; }
+.pc-player .vjs-playback-rate .vjs-icon-placeholder { display: none; }
+.pc-player .vjs-menu li { font-size: 1em; line-height: 1; padding: .9em 0; }
+.pc-player .vjs-menu-button-popup .vjs-menu { margin-bottom: 3em; }
+.pc-player .vjs-control-bar .btn { min-height: 3em; margin: 0 .2em; padding: 0 .8em; border-color: rgba(255, 255, 255, .4); background: transparent; color: var(--on-chrome); }
+.pc-player .vjs-control-bar .btn:hover { background: rgba(255, 255, 255, .16); }
+.pc-player .vjs-control-bar .btn.primary { background: var(--accent); border-color: var(--accent); }
+.pc-player > .timeline { position: absolute; left: 0; right: 0; bottom: 0; height: 10px; margin: 0; border-radius: 0; background: rgba(255, 255, 255, .25); z-index: 1; }
+.pc-player .toast { z-index: 10; }
+.pc-player.vjs-fullscreen .toast { bottom: 6em; }
+.video-js.pc-player.vjs-user-inactive:not(.vjs-scrubbing) .vjs-control-bar { opacity: 0; visibility: hidden; pointer-events: none; transition: opacity .3s, visibility 0s .3s; }
+.pc-player.pc-locked .pc-ctl, .pc-player.pc-locked .vjs-play-control, .pc-player.pc-locked .vjs-playback-rate, .pc-player.pc-locked .vjs-progress-control { opacity: .5; cursor: not-allowed; }
+.pc-player.pc-locked .vjs-playback-rate .vjs-menu { display: none !important; }
+@media (pointer: coarse) { .pc-player .vjs-volume-panel { display: none; } }
+/* Narrow: times and seek bar get their own row above the buttons; the least important buttons make room. */
+@media (max-width: 599px) {
+  .pc-player .vjs-control-bar { padding: 0; }
+  .pc-player .vjs-current-time, .pc-player .vjs-duration { flex: 0 0 3.8em; width: 3.8em; padding: 0; text-align: center; line-height: 2.2em; }
+  .pc-player .vjs-current-time { order: -3; }
+  .pc-player .vjs-progress-control { order: -2; flex: 1 1 calc(100% - 7.6em); min-width: 0; height: 2.2em; }
+  .pc-player .vjs-duration { order: -1; }
+  .pc-player .vjs-time-divider, .pc-player .pc-minor, .pc-player .vjs-volume-panel { display: none; }
+  .pc-player .vjs-playback-rate { margin-left: auto; }
+  .pc-player .pc-btn-vjs { padding: 0 .5em; }
+  .pc-player .vjs-control-bar > .btn { order: 2; flex: 1 1 40%; margin: .2em .4em .4em; }
+}
 @media (pointer: coarse) {
   .shortcuts { display: none; }
   .controls .btn, .clip-actions .btn, #btn-play, .clip-nav .btn, .period-row .btn.small, .dec-list .btn.small { min-height: 44px; }

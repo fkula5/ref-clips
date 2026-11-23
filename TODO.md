@@ -169,15 +169,13 @@ From a simulated coach's review of the app ("virtual product owner"). These are 
 
 ## Notes from the player audit (2026-11-22)
 
-The match player had its own „Pełny ekran (F)” button, but it sat below the fold on a 1366×768 screen, the native full screen button was dimmed and did nothing (`controlsList="nofullscreen"`), and in full screen only „Zaznacz” was left. Fixed with the shared strip in `app/static/player_controls.js`. Left over:
+The match player had its own „Pełny ekran (F)” button below the fold on a 1366×768 screen and a dimmed native one. Replaced by the shared Video.js control bar (`app/static/player_controls.js`, Video.js 8.24.1 vendored in `app/static/vendor/`): one bar at the bottom of every player, hiding when idle, in full screen too. Left over:
 
-- [ ] Firefox ignores `controlsList="nofullscreen"`, so its native full screen button still opens the bare `<video>` (no strip, no markers). A `fullscreenchange` handler could swap it for the container.
-- [ ] The fixed-position full screen fallback (Safari on an iPhone) is tested only with `requestFullscreen` removed in Chromium, not on a real iPhone; the address bar stays visible there. No orientation lock in either full screen.
-- [ ] The strip's frame step assumes the stored `fps` of the recording; a variable frame rate source drifts by a frame now and then (`requestVideoFrameCallback` would give the real frame time).
+- [ ] The full-window fallback (Video.js `preferFullWindow`, Safari on an iPhone) is tested only with the full screen API removed in Chromium, not on a real iPhone; the address bar stays visible there. No orientation lock in either full screen.
+- [ ] The frame step assumes the stored `fps` of the recording; a variable frame rate source drifts by a frame now and then (`requestVideoFrameCallback` would give the real frame time).
 - [ ] Header controls from `base.html` are below 40 px on a phone („Menu” 36 px, „Wyloguj” 22 px high); not touched to keep the shared layout calm.
 - [ ] The `.btn` height (38 px) is the app-wide default; only the player areas got 44 px targets on touch screens. Forms, filters and tables elsewhere still have 27–38 px buttons.
 - [ ] Following a „Oglądaj razem” room in full screen there is no „Odłącz” button (it is below the video); a follower has to leave full screen to detach.
-- [ ] Native video controls of the match player stay small (browser-drawn); the strip covers play, seeking, frame step and speed, but the volume and the scrubber are still native.
 
 ## Plan (set 2026-11-09)
 

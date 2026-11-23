@@ -366,18 +366,21 @@ Publicly only the video, the league and the decision category are visible — no
    | `Backspace` | undo your last undescribed marker (also deletes the clip file) |
    | `M` | marker with a note: pause and a text field (referee, category, description as in the notes) |
    | `Q` | set the start of the next missing quarter at the current time |
-   | `F` (the „Pełny ekran” button under the picture) | full screen (the video container — the control strip, markers, the flash and the „Zaznacz” button also work in full screen) |
+   | `F` (the „Pełny ekran” button in the control bar) | full screen (the Video.js player element — the control bar, markers, the flash and the „Zaznacz” / „Cofnij” buttons also work in full screen) |
    | Space | start / pause |
    | ← / → | ±1 s (with Shift ±5 s) |
    | `,` / `.` | frame back / forward |
    | `[` / `]` | slower / faster speed (0.25×–2×, also the selection list) |
    | `?` | help with shortcuts |
 
-   Everything above also has a button, so a phone or tablet needs no keyboard: the strip under the picture has
-   „Odtwórz/Pauza”, „−5 s”, „−1 s”, „−1 kl.”, „+1 kl.” („frame”), „+1 s”, „+5 s”, the „Tempo” list, „Pełny ekran”, and — for those who may mark —
-   „Zaznacz (Z)” and „Cofnij”. The same strip (without the marker buttons) and the keys `,` `.` `[` `]` `F` work on the clip page,
-   the describing screen, the training set clip view and the public share page. In „Oglądaj razem” a follower's playback buttons are dimmed
-   (a tap explains who leads) while „Pełny ekran” and „Zaznacz” keep working.
+   Everything above also has a button, so a phone or tablet needs no keyboard: the one control bar at the bottom of the picture
+   ([Video.js](https://videojs.com) 8.24.1, vendored in `app/static/vendor/videojs-8.24.1/`, no CDN) has
+   „Odtwórz/Pauza”, „−5 s”, „−1 s”, „−1 kl.”, „+1 kl.” („frame”), „+1 s”, „+5 s”, volume, time, the seek bar, the „Tempo” menu and „Pełny ekran”.
+   The bar hides after 3 s of inactivity (playing or paused, also in full screen) and returns on pointer, tap or key; it stays while a control
+   has keyboard focus. On a narrow screen the seek bar gets its own row and „−1 s”, „+1 s” and the volume give way (the keys still work).
+   Under the picture the match player keeps „Zaznacz (Z)” and „Cofnij”; in full screen they move into the bar. The same bar and the keys
+   `,` `.` `[` `]` `F` work on the clip page, the describing screen, the training set clip view and the public share page. In „Oglądaj razem”
+   a follower's playback controls (play, seek bar, tempo, steps) are dimmed (a tap explains who leads) while „Pełny ekran” and „Zaznacz” keep working.
 
    **Markers** are shown in the list next to the player: the time in the recording (clicking seeks),
    the quarter and the time since its start or „kwarta nieustalona” („quarter undetermined”), the cutting state, described/undescribed and
@@ -392,9 +395,9 @@ Publicly only the video, the league and the decision category are visible — no
    match crew (`can_download_recording`; the server answers 403 to others), only while the full recording exists (409 after retention
    or before the conversion ends). The file name is `data_druzyny_nagranie.mp4`, e.g. `2026-10-28_Legia-Wisla_Calosc.mp4`
    (ASCII only, no referee names; the teams are left out when unnamed; without a label the content stands in, e.g. `kwarta-Q3`).
-   Note: in browsers without `requestFullscreen` on the container (e.g. Safari on an iPhone) „Pełny ekran” stretches the container over the
-   whole viewport instead (the address bar stays), so the strip and the flash remain visible. The native full screen button of the video is hidden
-   (`controlsList="nofullscreen"`; Firefox ignores it and would show the bare video).
+   Note: in browsers without element full screen (Safari on an iPhone) „Pełny ekran” stretches the player over the whole viewport instead
+   (Video.js `preferFullWindow`, the address bar stays), so the bar, the markers and the flash remain visible. The browser's own controls are off
+   while Video.js is active, so there is one set of controls and no bare-video full screen.
 
    **Quarter starts.** The „Początki kwart” („Quarter starts”) panel lists the quarters from the file declaration: the whole match
    Q1–Q4 (required) and OT1–OT3 (optional), several quarters — only the declared ones, one quarter —

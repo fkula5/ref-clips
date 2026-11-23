@@ -1,7 +1,6 @@
 (function () {
   const state = JSON.parse(document.getElementById("init-state").textContent);
   const video = document.getElementById("player");
-  const wrap = document.getElementById("video-wrap");
   const $ = (id) => document.getElementById(id);
   const CAN_MARK = !!window.CAN_MARK;
   const CAN_CLIP = !!window.CAN_CLIP;
@@ -15,11 +14,13 @@
     refresh: async () => { applyState(await api("GET", `/api/videos/${state.video_id}/state`)); render(); },
   };
   const allowed = () => hooks.canControl() || (hooks.denied(), false);
-  // Strip with play, seek, frame step, speed, full screen; Z and undo live in it too, so they stay in full screen.
+  // The overlays move into the Video.js element, so they show in full screen; the marker bar and Z/undo follow when it opens.
   const controls = window.PlayerControls.attach(video, {
-    wrap, fps, speedId: "speed", after: $("timeline"),
+    fps, keep: $("player-controls"),
     canControl: () => hooks.canControl(), denied: () => hooks.denied(),
-    extra: [$("btn-z"), $("btn-undo")].filter(Boolean),
+    overlays: [$("mark-count"), $("watch-badge"), $("flash"), $("toast")],
+    fsOverlays: [$("timeline")],
+    fsButtons: [$("btn-z"), $("btn-undo")].filter(Boolean),
   });
   hooks.syncControls = () => controls.sync();
   let lastMarkAt = -Infinity;
