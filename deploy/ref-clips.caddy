@@ -59,12 +59,17 @@
 	# /ws/watch/<id>) lets a logged-in user into the room and the unsubscribe token (/unsubscribe/<token>)
 	# switches off someone's e-mail, so none stays in logs, in the request URL or in Referer; the rest of
 	# the path stays (/s/[ukryty]/zip). Cookies and Authorization are replaced by Caddy with REDACTED anyway.
+	# Location: the app redirects within /s/<code>/..., so the code is also in the response headers.
+	# This filter covers the access log only; reverse_proxy warnings and this site's error log go to the
+	# edge's default logger, which needs the same filter (vps-edge conf/Caddyfile, `log default`).
+	# deploy/check-log-leaks.sh verifies both streams on the server.
 	log {
 		output stdout
 		format filter {
 			wrap json
 			request>uri regexp (/(?:set-password|s|watch|ws/watch|unsubscribe)/)[^/?#\s"]+ $1[ukryty]
 			request>headers>Referer regexp (/(?:set-password|s|watch|ws/watch|unsubscribe)/)[^/?#\s"]+ $1[ukryty]
+			resp_headers>Location regexp (/(?:set-password|s|watch|ws/watch|unsubscribe)/)[^/?#\s"]+ $1[ukryty]
 		}
 	}
 

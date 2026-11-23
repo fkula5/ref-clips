@@ -256,3 +256,63 @@ def test_bad_env_value_changes_nothing(edge):
     r = edge.run(env_text='REFCLIPS_SITE=refclips.pl\nREFCLIPS_REDIRECT_HOSTS="www.x.pl evil{"\n')
     assert r.returncode == 1
     assert edge.site_file.read_text() == "# stary\n" and edge.leftovers() == [] and "reload:" not in edge.calls()
+
+
+# --- log filter and check-log-leaks.sh -----------------------------------------------------------------
+
+SECRET_PATHS = "(/(?:set-password|s|watch|ws/watch|unsubscribe)/)"
+
+
+def test_log_filter_covers_uri_referer_and_location_with_one_pattern():
+    filters = dict(re.findall(r"^\t+(\S+) regexp (\S+) \S+$", TEMPLATE.read_text(), re.M))
+    assert set(filters) == {"request>uri", "request>headers>Referer", "resp_headers>Location"}
+    assert all(p.startswith(SECRET_PATHS) for p in filters.values()) and len(set(filters.values())) == 1
+
+
+LEAKS = DEPLOY / "check-log-leaks.sh"
+CODE = "Zq8Xk2"
+LOGS_STUB = r"""#!/usr/bin/env bash
+[ -f "$STUB/fail" ] && exit 1
+cat "$STUB/out"; cat "$STUB/err" >&2
+"""
+
+
+def line(logger, uri):
+    return f'{{"level":"info","logger":"{logger}","request":{{"uri":"{uri}"}}}}\n'
+
+
+@pytest.fixture()
+def leaks(tmp_path):
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    (bin_dir / "docker").write_text(LOGS_STUB)
+    (bin_dir / "docker").chmod(0o755)
+
+    def run(out="", err="", fail=False):
+        (tmp_path / "out").write_text(out)
+        (tmp_path / "err").write_text(err)
+        if fail:
+            (tmp_path / "fail").write_text("")
+        env = {"PATH": f"{bin_dir}:{os.environ['PATH']}", "STUB": str(tmp_path)}
+        return subprocess.run(["bash", str(LEAKS)], env=env, capture_output=True, text=True)
+
+    return run
+
+
+def test_redacted_logs_pass(leaks):
+    r = leaks(out=line("http.log.access.log0", "/s/[ukryty]/zip") + line("http.log.access.log0", "/clips/3/file"),
+              err=line("http.handlers.reverse_proxy", "/watch/[ukryty]"))
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "stdout: 0" in r.stdout and "stderr: 0" in r.stdout
+
+
+@pytest.mark.parametrize("uri", [f"/s/{CODE}/clips/1/file", f"/set-password/{CODE}", f"/ws/watch/{CODE}", f"/unsubscribe/{CODE}?x=1"])
+def test_a_token_on_stderr_alone_is_caught_without_printing_it(leaks, uri):
+    r = leaks(out=line("http.log.access.log0", "/s/[ukryty]"), err=line("http.handlers.reverse_proxy", uri))
+    assert r.returncode == 1
+    assert "stdout: 0" in r.stdout and "stderr: 1" in r.stdout and "http.handlers.reverse_proxy" in r.stdout
+    assert CODE not in r.stdout + r.stderr
+
+
+def test_docker_failure_is_a_usage_error(leaks):
+    assert leaks(fail=True).returncode == 2
