@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.16.0](https://github.com/fkula5/ref-clips/compare/v1.15.0...v1.16.0) (2026-11-23)
+
+
+### Features
+
+* **player:** replace the custom controls strip with Video.js ([#54](https://github.com/fkula5/ref-clips/issues/54)) ([91499a0](https://github.com/fkula5/ref-clips/commit/91499a00ee3917dd5a21aeb6c44ae29a8f15adf0))
+
+
+### Bug Fixes
+
+* **deploy:** mask share codes in Location and check both edge log streams ([#52](https://github.com/fkula5/ref-clips/issues/52)) ([1b8e97c](https://github.com/fkula5/ref-clips/commit/1b8e97c7422a1b17b941a51368d2e20f075231c8))
+* **self-assessment:** leave the recording time column of the report empty ([#55](https://github.com/fkula5/ref-clips/issues/55)) ([dac78d2](https://github.com/fkula5/ref-clips/commit/dac78d28f1f3e806e89dceb3273a5064320ef5f5))
+
 ## [1.15.0](https://github.com/fkula5/ref-clips/compare/v1.14.0...v1.15.0) (2026-11-22)
 
 
