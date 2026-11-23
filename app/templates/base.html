@@ -6,11 +6,11 @@
   <meta name="csrf-token" content="{{ csrf_token }}">
   <title>{% block title %}ref-clips{% endblock %} · ref-clips</title>
   {% block head %}{% endblock %}
-  <link rel="stylesheet" href="/static/app.css">
-  <script src="/static/vendor/htmx-2.0.4.min.js"></script>
-  <script src="/static/nav.js"></script>
-  <script src="/static/filters.js"></script>
-  <script src="/static/video_keys.js"></script>
+  <link rel="stylesheet" href="{{ asset('app.css') }}">
+  <script src="{{ asset('vendor/htmx-2.0.4.min.js') }}"></script>
+  <script src="{{ asset('nav.js') }}"></script>
+  <script src="{{ asset('filters.js') }}"></script>
+  <script src="{{ asset('video_keys.js') }}"></script>
 </head>
 <body hx-headers='{{ {"X-CSRF-Token": csrf_token}|tojson }}'>
   <header class="top">

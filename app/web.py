@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+from functools import lru_cache
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -21,6 +23,7 @@ from app.textutil import format_clock, normalize
 from app.timeutil import local as local_time
 
 BASE = Path(__file__).parent
+STATIC_DIR = BASE / "static"
 templates = Jinja2Templates(directory=str(BASE / "templates"))
 env = templates.env
 env.filters["clock"] = format_clock
@@ -64,6 +67,13 @@ def csrf_input(context) -> Markup:
         escape(context.get("csrf_token", "")))
 
 
+@lru_cache(maxsize=None)
+def asset(path: str) -> str:
+    """Static URL with a content hash, so a release never runs with a browser's cached old CSS/JS."""
+    digest = hashlib.sha256((STATIC_DIR / path).read_bytes()).hexdigest()[:12]
+    return f"/static/{path}?v={digest}"
+
+
 def unread_count(user) -> int:
     """The top bar is on every page, so it counts with its own short session instead of every route."""
     with SessionLocal() as db:
@@ -75,6 +85,7 @@ env.globals.update(
     unread_count=unread_count, bell_label=notify.bell_label, NOTIFICATION_KINDS=m.NOTIFICATION_KINDS,
     ffmpeg_ok=vid.ffmpeg_available,
     app_version=config.VERSION,
+    asset=asset,
     ffmpeg_message=config.FFMPEG_MISSING_MESSAGE,
     csrf_input=csrf_input,
     perm=permissions,
