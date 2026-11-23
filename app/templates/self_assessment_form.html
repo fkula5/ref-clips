@@ -42,7 +42,7 @@
   </fieldset>
   {% endif %}
   <h2 id="klipy">Klipy</h2>
-  <p class="muted small-note">{% if match %}Wybierz klipy z tego meczu. Czas i nazwa uzupełniają się same; opis jest wstępnie skopiowany z klipu, możesz go dowolnie zmienić — zmiana dotyczy tylko tej samooceny, nie samego klipu. Klip, którego nie wycięto w aplikacji, dodasz ręcznie.{% else %}Ten mecz nie jest w systemie, więc czas, nazwę i opis każdego klipu wpisujesz sam(a).{% endif %}</p>
+  <p class="muted small-note">{% if match %}Wybierz klipy z tego meczu. Nazwa uzupełnia się sama; opis jest wstępnie skopiowany z klipu, możesz go dowolnie zmienić — zmiana dotyczy tylko tej samooceny, nie samego klipu. Klip, którego nie wycięto w aplikacji, dodasz ręcznie.{% else %}Ten mecz nie jest w systemie, więc nazwę i opis każdego klipu wpisujesz sam(a).{% endif %}</p>
   {% if not rows %}<p class="muted" id="sa-no-clips">Nie dodano jeszcze żadnego klipu.</p>{% endif %}
   <ol class="sa-rows" id="sa-rows">
   {% for row in rows %}
@@ -62,7 +62,6 @@
       </div>
       {% if row.is_manual %}
       <div class="grid2">
-        <label>Czas z nagrania <input name="time_{{ row.id }}" maxlength="200" value="{{ values['time_%d'|format(row.id)] }}" placeholder="np. 2. kwarta, 3:15" aria-label="Czas z nagrania, klip {{ loop.index }}"></label>
         <label>Nazwa klipu <input name="name_{{ row.id }}" maxlength="200" value="{{ values['name_%d'|format(row.id)] }}" aria-label="Nazwa klipu, klip {{ loop.index }}"></label>
       </div>
       {% endif %}

@@ -410,14 +410,14 @@ def test_the_snapshot_keeps_a_submitted_sheet_readable_after_a_clip_is_deleted(w
     sa_id = open_sheet(w)
     complete(w, sa_id)
     submit(w, sa_id)
-    before = [(r.time_label, r.name_label, r.description) for r in sheet(w, sa_id).rows]
+    before = [(r.name_label, r.description) for r in sheet(w, sa_id).rows]
     w.db.delete(w.db.get(Clip, w.clips[0].id))
     w.db.commit()
     rows = sheet(w, sa_id).rows
     assert len(rows) == 3 and rows[0].clip_id is None
-    assert [(r.time_label, r.name_label, r.description) for r in rows] == before
+    assert [(r.name_label, r.description) for r in rows] == before
     page = w.c["coach"].get(f"/self-assessments/{sa_id}")
-    assert page.status_code == 200 and before[0][0] in page.text and before[0][2] in page.text
+    assert page.status_code == 200 and before[0][0] in page.text and before[0][1] in page.text
 
 
 def test_a_draft_row_of_a_deleted_clip_is_marked_and_still_counts(w):
@@ -522,9 +522,9 @@ def test_the_pdf_is_a_real_pdf_with_polish_text_and_a_sanitised_file_name(w):
     assert r.headers["content-disposition"] == 'attachment; filename="samoocena_2026-10-28_Legia-Wisla_CC.pdf"'
     text = pdf_text(r.content)
     for expected in ("ARKUSZ SAMOOCENY RC 2026/27", "Sędzia główny", "Goście", "Zażółć gęślą jaźń",
-                     "ogólne opinię", "Całość, 0:20 (Q1 · 0:20)", "kroki", "Czas z nagrania"):
+                     "ogólne opinię", "kroki", "Czas z nagrania"):
         assert expected in text, expected
-    assert "SZKIC" not in text
+    assert "SZKIC" not in text and "0:20" not in text  # the recording time column is left empty
 
 
 def test_a_draft_pdf_carries_the_draft_marker(w):
@@ -806,8 +806,8 @@ def test_a_standalone_sheet_needs_three_rows_of_text(w):
     assert sa.status == "submitted" and [r.name_label for r in sa.rows] == ["Faul 1", "Faul 2", "Faul 3"]
 
 
-@pytest.mark.parametrize("blank,message", [("time", "czas z nagrania"), ("name", "nazwa klipu"), ("desc", "opis")])
-def test_every_manual_row_needs_time_name_and_description(w, blank, message):
+@pytest.mark.parametrize("blank,message", [("name", "nazwę klipu"), ("desc", "opis")])
+def test_every_manual_row_needs_a_name_and_a_description(w, blank, message):
     sa_id = complete_standalone(w)
     row = sheet(w, sa_id).rows[1]
     edit(w, "ref", sa_id, **{f"{blank}_{row.id}": " "})
@@ -841,7 +841,7 @@ def test_manual_rows_keep_typed_text_through_other_row_actions(w):
     edit(w, "ref", sa_id, "manual")
     row = sheet(w, sa_id).rows[0]
     edit(w, "ref", sa_id, "manual", **{f"time_{row.id}": "Q2, 1:00", f"name_{row.id}": "Kroki"})
-    assert (sheet(w, sa_id).rows[0].time_label, sheet(w, sa_id).rows[0].name_label) == ("Q2, 1:00", "Kroki")
+    assert (sheet(w, sa_id).rows[0].time_label, sheet(w, sa_id).rows[0].name_label) == ("", "Kroki")
 
 
 def test_a_match_sheet_gets_manual_rows_too_and_they_count_toward_the_minimum(w):
@@ -865,7 +865,8 @@ def test_two_clips_and_no_manual_row_still_fail_the_minimum(w):
     edit(w, "ref", sa_id, f"add:{w.clips[0].id}")
     edit(w, "ref", sa_id, "manual")
     r = submit(w, sa_id, expect=(422,))
-    assert "teraz jest ich 2" in r.text and "Klip 2: wpisz czas z nagrania." in r.text
+    assert "teraz jest ich 2" in r.text and "Klip 2: wpisz nazwę klipu." in r.text
+    assert "czas z nagrania" not in r.text
 
 
 def test_a_manual_row_is_never_overwritten_by_the_snapshot_refresh(w):
@@ -879,7 +880,7 @@ def test_a_manual_row_is_never_overwritten_by_the_snapshot_refresh(w):
     for _ in range(2):
         edit(w, "ref", sa_id)  # a plain save and a save that posts no time or name at all
     rows = sheet(w, sa_id).rows
-    assert (rows[1].time_label, rows[1].name_label, rows[1].is_manual) == ("Turniej, 2:00", "Własny klip", True)
+    assert (rows[1].time_label, rows[1].name_label, rows[1].is_manual) == ("", "Własny klip", True)
     assert rows[0].name_label == w.clips[0].category_label and not rows[0].is_manual
     edit(w, "ref", sa_id, "up:%d" % manual.id)
     assert sheet(w, sa_id).rows[0].name_label == "Własny klip"
@@ -894,7 +895,8 @@ def test_a_row_of_a_deleted_clip_is_not_manual_and_a_manual_row_is_not_marked_de
     gone, manual = sheet(w, sa_id).rows
     assert (gone.clip_id, gone.is_manual, manual.clip_id, manual.is_manual) == (None, False, None, True)
     page = w.c["ref"].get(f"/self-assessments/{sa_id}/edit").text
-    assert page.count("klip został usunięty") == 1 and page.count('name="time_') == 1
+    assert page.count("klip został usunięty") == 1 and page.count('name="time_') == 0
+    assert page.count('name="name_') == 1
     before = (gone.time_label, gone.name_label)
     edit(w, "ref", sa_id, **{f"time_{gone.id}": "ignored", f"name_{gone.id}": "ignored"})
     assert (sheet(w, sa_id).rows[0].time_label, sheet(w, sa_id).rows[0].name_label) == before
@@ -962,8 +964,9 @@ def test_the_report_shows_the_typed_header_and_rows(w):
     edit(w, "ref", sa_id, home_team="<b>Śląsk</b>")
     html = w.c["ref"].get(f"/self-assessments/{sa_id}").text
     for expected in ("Liga Amatorska", "07.11.2026", "Zagłębie", "Jan Kowalski", "Ewa Nowak, Piotr Wiśniewski",
-                     "Q1, 3:11", "Faul 2", "Opis 3", "&lt;b&gt;Śląsk&lt;/b&gt;"):
+                     "Faul 2", "Opis 3", "&lt;b&gt;Śląsk&lt;/b&gt;"):
         assert expected in html, expected
+    assert "Q1, 3:11" not in html
     assert "<b>Śląsk</b>" not in html and html.count('class="sa-block"') == 6
     assert "Odtwórz" not in html and "SZKIC" in html
 
