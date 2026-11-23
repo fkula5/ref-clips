@@ -6,6 +6,16 @@ from tests.e2e.support import press_together
 
 VIDEO = "document.getElementById('player')"
 ROWS = "#decisions li:has(a.t)"  # decision rows (without the "no markers" row)
+FS_PLAYER = "document.fullscreenElement && document.fullscreenElement.classList.contains('video-js')"
+
+
+def rate_label(page: Page):
+    return page.locator(".vjs-playback-rate .vjs-playback-rate-value").first
+
+
+def choose_rate(page: Page, rate: str) -> None:
+    page.locator("button.vjs-playback-rate").click()
+    page.get_by_role("menuitemradio", name=f"{rate}x", exact=True).click()
 
 
 def open_player(ui, role="admin", *, content="Q1,Q2", mobile=False, **page_options):
@@ -148,21 +158,21 @@ def test_frame_step_speed_and_help(ui):
     wait_time(page, 20.04, 0.02)
     assert page.evaluate(f"{VIDEO}.paused") is True
 
-    speed = page.locator("#speed")
-    expect(speed).to_have_value("1")
+    speed = rate_label(page)
+    expect(speed).to_have_text("1x")
     page.keyboard.press("[")
-    expect(speed).to_have_value("0.75")
+    expect(speed).to_have_text("0.75x")
     assert page.evaluate(f"{VIDEO}.playbackRate") == 0.75
     page.keyboard.press("]")
     page.keyboard.press("]")
-    expect(speed).to_have_value("1.25")
+    expect(speed).to_have_text("1.25x")
     assert page.evaluate(f"{VIDEO}.playbackRate") == 1.25
     for _ in range(6):
         page.keyboard.press("]")
-    expect(speed).to_have_value("2")
+    expect(speed).to_have_text("2x")
     for _ in range(8):
         page.keyboard.press("[")
-    expect(speed).to_have_value("0.25")
+    expect(speed).to_have_text("0.25x")
 
     page.keyboard.press(" ")
     page.wait_for_function(f"!{VIDEO}.paused")
@@ -199,7 +209,7 @@ def test_shortcuts_do_not_work_while_typing_and_m_creates_a_marker_with_a_note(u
     assert ui.server.clips_of(video_id) == []
     assert ui.server.marks_of(video_id) == {}
     expect(page.locator("#help")).to_be_hidden()
-    expect(page.locator("#speed")).to_have_value("1")
+    expect(rate_label(page)).to_have_text("1x")
 
     page.locator("#quick-text").fill("Roman kroki")
     page.keyboard.press("Enter")
@@ -243,8 +253,8 @@ def test_clicking_a_time_in_the_list_and_on_the_timeline_seeks(ui):
 def test_fullscreen_with_the_f_key(ui):
     page, _, _ = open_player(ui)
     page.keyboard.press("f")
-    # the video container (not <video> itself) goes fullscreen, so markers and the flash stay visible
-    page.wait_for_function("document.fullscreenElement && document.fullscreenElement.id === 'video-wrap'")
+    # the Video.js element (not <video> itself) goes fullscreen, so markers and the flash stay visible
+    page.wait_for_function(FS_PLAYER)
     expect(page.locator("#btn-z")).to_be_visible()
     page.keyboard.press("z")
     expect(page.locator("#flash")).to_be_visible()
@@ -313,13 +323,13 @@ def test_player_on_a_phone_fits_the_screen(ui):
 
 
 def test_arrow_keys_after_clicking_the_player_slider(ui):
-    """A clicked browser slider took over the arrow keys (1% of the movie); they must stay 1 s and 5 s
-    with Shift.
+    """A clicked slider (here the Video.js seek bar) took over the arrow keys (5% of the movie); they must stay
+    1 s and 5 s with Shift.
     """
     page, _, _ = open_player(ui)
     page.evaluate(f"{VIDEO}.pause()")
-    box = page.locator("#player").bounding_box()
-    y = box["y"] + box["height"] - 20
+    box = page.locator(".vjs-progress-holder").bounding_box()
+    y = box["y"] + box["height"] / 2
     page.mouse.move(box["x"] + box["width"] * 0.3, y)
     page.mouse.down()
     page.mouse.move(box["x"] + box["width"] * 0.7, y, steps=5)

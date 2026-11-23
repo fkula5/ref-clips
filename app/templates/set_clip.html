@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% block title %}{{ s.name }} · {{ index + 1 }}/{{ items|length }}{% endblock %}
+{% block head %}{% include "_videojs_head.html" %}{% endblock %}
 {% block content %}
 {% set c = item.clip %}
 {% set base = "/sets/" ~ s.id ~ "/clips/" %}
@@ -62,4 +63,4 @@
   </aside>
 </div>
 {% endblock %}
-{% block scripts %}<script src="/static/player_controls.js"></script>{% endblock %}
+{% block scripts %}{% include "_videojs_scripts.html" %}{% endblock %}

@@ -70,7 +70,6 @@
     if (mode !== "following" || !lead) return;
     if (Math.abs(video.playbackRate - lead.rate) > 1e-6) {
       video.playbackRate = lead.rate;
-      $("speed").value = String(lead.rate);
     }
     const now = performance.now();
     let want = lead.playing ? lead.t + ((now - lead.at) / 1000) * lead.rate : lead.t;
@@ -199,7 +198,6 @@
     $("btn-watch").classList.toggle("hidden", active);
     $("watch-panel").classList.toggle("hidden", !active);
     document.body.classList.toggle("watch-follow", mode === "following");
-    $("speed").disabled = mode === "following";
     if (P.syncControls) P.syncControls();
     $("timeline").classList.toggle("locked", mode === "following");
     const badge = $("watch-badge");

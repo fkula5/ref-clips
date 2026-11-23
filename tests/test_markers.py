@@ -227,8 +227,7 @@ def test_marker_on_video_that_is_not_ready_is_refused(client, db):
 def test_player_page_state_and_shortcuts_help(client, db):
     video = make_ready_video(db, make_match(db))
     page = client.get(f"/videos/{video.id}").text
-    for text in ('id="btn-z"', "Zaznacz (Z)", 'id="help"', "Początki kwart", 'id="marks-banner"',
-                 'controlsList="nofullscreen"', "Cofnij"):
+    for text in ('id="btn-z"', "Zaznacz (Z)", 'id="help"', "Początki kwart", 'id="marks-banner"', "Cofnij"):
         assert text in page, text
     state = init_state(page)
     assert state["missing_periods"] == ["Q1", "Q2", "Q3", "Q4"] and state["next_period"] == "Q1"

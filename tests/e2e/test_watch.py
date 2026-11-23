@@ -1,6 +1,6 @@
 from playwright.sync_api import expect
 
-from tests.e2e.test_player import ROWS, VIDEO, open_player, seek_to, wait_metadata
+from tests.e2e.test_player import ROWS, VIDEO, choose_rate, open_player, seek_to, wait_metadata
 
 INSTALL_SOCKET_LOG = """
 window.__sockets = [];
@@ -26,14 +26,14 @@ def test_two_viewers_follow_the_leader_mark_together_and_hand_over_control(ui):
     follower.goto(link)
     wait_metadata(follower)
     expect(follower.locator("#watch-leader")).to_have_text("Steruje: Adam Admin")
-    expect(follower.locator("#speed")).to_be_disabled()
+    expect(follower.locator("button.vjs-playback-rate")).to_have_attribute("aria-disabled", "true")
     expect(leader.locator("#watch-people li")).to_have_count(2)
 
     seek_to(leader, 20)
     leader.evaluate(f"{VIDEO}.play()")
     follower.wait_for_function(f"{VIDEO}.currentTime > 20.3 && !{VIDEO}.paused")
     assert abs(position(follower) - position(leader)) < 1.0
-    leader.select_option("#speed", "0.5")
+    choose_rate(leader, "0.5")
     follower.wait_for_function(f"{VIDEO}.playbackRate === 0.5")
     leader.evaluate(f"{VIDEO}.pause()")
     follower.wait_for_function(f"{VIDEO}.paused && Math.abs({VIDEO}.currentTime - {position(leader)}) < 0.05")
@@ -57,7 +57,7 @@ def test_two_viewers_follow_the_leader_mark_together_and_hand_over_control(ui):
 
     leader.get_by_role("button", name="Przekaż sterowanie").click()
     expect(follower.locator("#watch-leader")).to_have_text("Ty sterujesz")
-    expect(follower.locator("#speed")).to_be_enabled()
+    expect(follower.locator("button.vjs-playback-rate")).to_have_attribute("aria-disabled", "false")
     expect(leader.locator("#watch-leader")).to_have_text("Steruje: Cezary Trener")
     seek_to(follower, 10)
     leader.wait_for_function(f"Math.abs({VIDEO}.currentTime - 10) < 0.2")

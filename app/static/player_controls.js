@@ -1,24 +1,40 @@
-// Shared playback controls for every <video> in the app: a touch-sized strip (play, seek, frame step,
-// speed, full screen) plus the keys `,` `.` `[` `]` `F`. Full screen goes to the wrapper, not to the bare
-// <video>, so the strip and anything the page keeps in the wrapper (markers, toasts) stay usable.
+// One Video.js control bar for every <video> in the app, plus the keys `,` `.` `[` `]` `F`.
 // Videos opt in with `data-controls-strip` (optional `data-fps`); the match player calls attach() itself.
+// Full screen goes to the Video.js player element, so everything moved into it (markers, flash, toast)
+// stays visible. Video.js's own hotkeys stay off: the page and this file own the keyboard.
 (function () {
+  const videojs = window.videojs;
   const SPEEDS = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2];
   const IDLE_MS = 3000;
   const instances = [];
   let active = null;
 
-  const fsElement = () => document.fullscreenElement || document.webkitFullscreenElement || null;
+  window.VIDEOJS_NO_DYNAMIC_STYLE = true;
+  videojs.addLanguage("pl", {
+    "Pause": "Pauza",
+    "Exit Fullscreen": "Zamknij pełny ekran",
+    "Playback Rate": "Tempo",
+  });
 
-  function button(label, text, extraClass) {
-    const el = document.createElement("button");
-    el.type = "button";
-    el.className = "btn pc-btn" + (extraClass ? " " + extraClass : "");
-    el.setAttribute("aria-label", label);
-    el.title = label;
-    el.textContent = text;
-    return el;
+  // Video.js swallows every other key pressed on a focused control; the page's shortcuts must still work there.
+  videojs.getComponent("Component").prototype.handleKeyDown = function () {};
+
+  // A text button for the control bar: the label is visible, the full name is the accessible one.
+  class PcButton extends videojs.getComponent("Button") {
+    constructor(player, options) {
+      super(player, options);
+      this.addClass("pc-ctl");
+      if (options.className) this.addClass(options.className);
+      this.el().setAttribute("aria-label", options.label);
+      this.el().querySelector(".vjs-icon-placeholder").textContent = options.text;
+    }
+    buildCSSClass() { return "pc-btn-vjs " + super.buildCSSClass(); }
+    handleClick() { this.options_.onClick(); }
   }
+  videojs.registerComponent("PcButton", PcButton);
+
+  // Anything that drives playback; a watch-together follower may not touch it.
+  const DRIVERS = ".vjs-play-control, .vjs-progress-control, .vjs-playback-rate, .pc-ctl";
 
   function attach(video, options) {
     if (video.dataset.pcReady) return null;
@@ -29,32 +45,19 @@
     const denied = opts.denied || (() => {});
     const allowed = () => canControl() || (denied(), false);
 
-    let wrap = opts.wrap;
-    if (!wrap) {
-      wrap = document.createElement("div");
-      video.replaceWith(wrap);
-      wrap.appendChild(video);
-    }
-    wrap.classList.add("pc-wrap");
-    // The native full screen would show the bare <video> without our strip; ours takes over.
-    video.setAttribute("controlsList", "nofullscreen");
+    // Video.js reuses a parent marked data-vjs-player as its element; without it the iPhone gets a
+    // cloned <video> and every other script would hold a dead reference.
+    const box = document.createElement("div");
+    box.dataset.vjsPlayer = "";
+    video.replaceWith(box);
+    box.appendChild(video);
+    // Video.js copies the tag's id to its element and renames the tag; the page keeps the id on the <video>.
+    const videoId = video.id;
+    video.removeAttribute("id");
+    video.classList.add("video-js");
 
-    const strip = document.createElement("div");
-    strip.className = "pc-strip";
-    strip.setAttribute("role", "group");
-    strip.setAttribute("aria-label", "Sterowanie odtwarzaniem");
-
-    const needsControl = [];
-    const control = (el, handler) => {
-      el.dataset.needsControl = "1";
-      needsControl.push(el);
-      el.addEventListener("click", () => { if (allowed()) handler(); });
-      return el;
-    };
-
-    const playBtn = control(button("Odtwórz", "Odtwórz", "pc-play"), () => {
-      if (video.paused) video.play().catch(() => {}); else video.pause();
-    });
+    const step = (name, label, text, onClick, className) =>
+      ({ name, componentClass: "PcButton", controlText: label, label, text, onClick, className });
     const seekBy = (delta) => {
       video.currentTime = Math.min(Math.max(0, video.currentTime + delta), video.duration || Infinity);
     };
@@ -63,142 +66,159 @@
       const frame = Math.round(video.currentTime * fps);
       video.currentTime = Math.max(0, (frame + dir) / fps + 0.0005);
     };
-    strip.append(playBtn);
-    [["Wstecz o 5 sekund", "−5 s", -5], ["Wstecz o sekundę", "−1 s", -1]].forEach(([label, text, delta]) =>
-      strip.append(control(button(label, text), () => seekBy(delta))));
-    strip.append(control(button("Klatka wstecz", "−1 kl."), () => stepFrame(-1)));
-    strip.append(control(button("Klatka naprzód", "+1 kl."), () => stepFrame(1)));
-    [["Naprzód o sekundę", "+1 s", 1], ["Naprzód o 5 sekund", "+5 s", 5]].forEach(([label, text, delta]) =>
-      strip.append(control(button(label, text), () => seekBy(delta))));
 
-    const speedLabel = document.createElement("label");
-    speedLabel.className = "pc-speed";
-    speedLabel.append("Tempo ");
-    const speed = document.createElement("select");
-    if (opts.speedId) speed.id = opts.speedId;
-    speed.className = "pc-select";
-    SPEEDS.forEach((rate) => {
-      const option = document.createElement("option");
-      option.value = String(rate);
-      option.textContent = `${rate}×`;
-      speed.appendChild(option);
+    const player = videojs(video, {
+      language: "pl",
+      controls: true,
+      preload: video.getAttribute("preload") || "auto",
+      playsinline: true,
+      preferFullWindow: true,
+      inactivityTimeout: IDLE_MS,
+      playbackRates: SPEEDS,
+      userActions: {
+        hotkeys: false,
+        doubleClick: false,
+        click: () => { if (allowed()) { if (video.paused) video.play().catch(() => {}); else video.pause(); } },
+      },
+      children: ["mediaLoader", "controlBar", "errorDisplay"],
+      controlBar: {
+        children: [
+          "playToggle",
+          step("pcBack5", "Wstecz o 5 sekund", "−5 s", () => seekBy(-5)),
+          step("pcBack1", "Wstecz o sekundę", "−1 s", () => seekBy(-1), "pc-minor"),
+          step("pcFrameBack", "Klatka wstecz", "−1 kl.", () => stepFrame(-1)),
+          step("pcFrameFwd", "Klatka naprzód", "+1 kl.", () => stepFrame(1)),
+          step("pcFwd1", "Naprzód o sekundę", "+1 s", () => seekBy(1), "pc-minor"),
+          step("pcFwd5", "Naprzód o 5 sekund", "+5 s", () => seekBy(5)),
+          "volumePanel",
+          "currentTimeDisplay", "timeDivider", "durationDisplay",
+          "progressControl",
+          "playbackRateMenuButton",
+          "fullscreenToggle",
+        ],
+        volumePanel: { inline: true },
+      },
     });
-    speed.value = String(video.playbackRate);
-    speed.addEventListener("change", () => { setSpeed(parseFloat(speed.value)); speed.blur(); });
-    speedLabel.appendChild(speed);
-    strip.append(speedLabel);
+    const el = player.el();
+    const bar = player.getChild("controlBar").el();
+    video.id = videoId;
+    video.removeAttribute("controls");
+    el.classList.add("pc-player");
+    (opts.overlays || []).forEach((node) => el.appendChild(node));
 
-    const fsBtn = button("Pełny ekran", "Pełny ekran", "pc-fs-btn");
-    fsBtn.addEventListener("click", () => toggleFullscreen());
-    strip.append(fsBtn);
-    if (opts.extra && opts.extra.length) {
-      const row = document.createElement("div");
-      row.className = "pc-extra";
-      opts.extra.forEach((el) => row.append(el));
-      strip.append(row);
-    }
-    (opts.after || video).insertAdjacentElement("afterend", strip);
+    // A follower's taps on the playback controls only explain who leads. Captured at the player so
+    // Video.js's own handlers on the controls never run.
+    ["click", "mousedown", "pointerdown", "touchstart", "keydown"].forEach((type) => el.addEventListener(type, (event) => {
+      if (canControl()) return;
+      const target = event.target.closest && event.target.closest(DRIVERS);
+      if (!target || !el.contains(target)) return;
+      if (event.type === "keydown" && ["Tab", "Shift", "Escape"].includes(event.key)) return;
+      event.stopImmediatePropagation();
+      if (event.type === "click" || event.type === "keydown") { event.preventDefault(); denied(); }
+    }, true));
 
     function setSpeed(rate) {
-      if (!allowed()) { speed.value = String(video.playbackRate); return; }
+      if (!allowed()) return;
       video.playbackRate = rate;
     }
 
-    // Safari on iPhone has no element full screen: fall back to a fixed, viewport-sized wrapper.
-    function inFullscreen() { return fsElement() === wrap || wrap.classList.contains("pc-pseudo-fs"); }
-    function pseudo(on) {
-      wrap.classList.toggle("pc-pseudo-fs", on);
-      document.documentElement.classList.toggle("pc-lock", on);
-      syncFullscreen();
-    }
     function toggleFullscreen() {
-      if (inFullscreen()) {
-        if (fsElement() === wrap) (document.exitFullscreen || document.webkitExitFullscreen).call(document);
-        else pseudo(false);
-        return;
+      if (player.isFullscreen()) { player.exitFullscreen(); return; }
+      const request = player.requestFullscreen();
+      if (request && request.catch) request.catch(() => player.enterFullWindow());
+    }
+
+    // The marker bar and the extra buttons live in the page until full screen, where the page is out of reach.
+    const moved = [];
+    function relocate(node, into, before) {
+      if (!node) return;
+      const mark = document.createComment("");
+      node.replaceWith(mark);
+      moved.push({ node, mark });
+      into.insertBefore(node, before || null);
+    }
+    function onFullscreen() {
+      const on = player.isFullscreen();
+      if (on) {
+        (opts.fsOverlays || []).forEach((node) => relocate(node, el));
+        (opts.fsButtons || []).forEach((node) => relocate(node, bar, bar.querySelector(".vjs-playback-rate")));
+      } else {
+        moved.splice(0).forEach(({ node, mark }) => mark.replaceWith(node));
       }
-      const request = wrap.requestFullscreen || wrap.webkitRequestFullscreen;
-      if (!request) { pseudo(true); return; }
-      const result = request.call(wrap);
-      if (result && result.catch) result.catch(() => pseudo(true));
-    }
-
-    let idleTimer = null;
-    // Paused frames are analysed too, so the strip hides in both states. A focused control (an open
-    // <select> keeps focus) keeps it up.
-    function hideIfIdle() {
-      if (strip.contains(document.activeElement)) { idleTimer = setTimeout(hideIfIdle, IDLE_MS); return; }
-      wrap.classList.add("pc-idle");
-    }
-    function wake() {
-      wrap.classList.remove("pc-idle");
-      clearTimeout(idleTimer);
-      if (inFullscreen()) idleTimer = setTimeout(hideIfIdle, IDLE_MS);
-    }
-
-    function syncFullscreen() {
-      const on = inFullscreen();
-      wrap.classList.toggle("is-fs", on);
-      const label = on ? "Zamknij pełny ekran" : "Pełny ekran";
-      fsBtn.textContent = label;
-      fsBtn.title = label;
-      fsBtn.setAttribute("aria-label", label);
-      fsBtn.setAttribute("aria-pressed", on ? "true" : "false");
+      el.classList.toggle("pc-fs-moved", on && !!(opts.fsOverlays && opts.fsOverlays.length));
       wake();
-      queueFit();
+      fit();
     }
+    player.on("fullscreenchange", onFullscreen);
+
+    // Video.js only starts watching for activity at the first play (pinned 8.24.1, so the private method is stable);
+    // the bar has to hide while paused as well, and the video is paused when the page opens.
+    const watchActivity = player.listenForUserActivity_.bind(player);
+    player.listenForUserActivity_ = () => {};
+    watchActivity();
+    // Paused frames are analysed too, so the bar hides in both states. It stays up until the first interaction,
+    // while a control has keyboard focus and while a menu is open.
+    let touched = false;
+    ["pointermove", "pointerdown", "touchstart", "keydown", "focusin"].forEach((name) =>
+      el.addEventListener(name, () => { touched = true; }, { capture: true, passive: true }));
+    player.on("userinactive", () => {
+      const focused = bar.contains(document.activeElement) && document.activeElement.matches(":focus-visible");
+      if (touched && !focused && !bar.querySelector(".vjs-lock-showing")) return;
+      player.userActive(true);
+      if (touched) setTimeout(() => player.reportUserActivity(), IDLE_MS);
+    });
+    function wake() { touched = true; player.reportUserActivity(); }
 
     function sync() {
       const locked = !canControl();
-      needsControl.forEach((el) => el.setAttribute("aria-disabled", locked ? "true" : "false"));
-      strip.classList.toggle("is-locked", locked);
-      const label = video.paused ? "Odtwórz" : "Pauza";
-      playBtn.textContent = label;
-      playBtn.title = label;
-      playBtn.setAttribute("aria-label", label);
-      if (document.activeElement !== speed) speed.value = String(video.playbackRate);
+      el.classList.toggle("pc-locked", locked);
+      el.querySelectorAll(DRIVERS).forEach((node) => node.setAttribute("aria-disabled", locked ? "true" : "false"));
     }
 
-    ["play", "pause", "ended", "ratechange"].forEach((name) => video.addEventListener(name, sync));
+    ["pointerdown", "focusin"].forEach((name) => el.addEventListener(name, () => { active = instance; }));
     video.addEventListener("play", () => { active = instance; });
-    ["pointerdown", "focusin"].forEach((name) => wrap.addEventListener(name, () => { active = instance; }));
-    ["pointermove", "pointerdown", "touchstart", "focusin"].forEach((name) =>
-      wrap.addEventListener(name, wake, { passive: true }));
-    // Fonts, wrapping and banners vary, so a CSS guess can push the strip below the fold.
-    // Size the video from the real layout so the whole strip fits in the viewport.
+
+    // Fonts, wrapping and banners vary, so a CSS guess can push the page below the fold. Size the
+    // player from the real layout so it, and whatever `opts.keep` points at, fit in the viewport.
     let fitQueued = false;
     function fit() {
       fitQueued = false;
-      if (inFullscreen()) { video.style.maxHeight = ""; return; }
-      const top = video.getBoundingClientRect().top + window.scrollY;
-      const below = strip.getBoundingClientRect().bottom - video.getBoundingClientRect().bottom + 8;
+      if (player.isFullscreen()) { el.style.maxHeight = ""; return; }
+      const rect = el.getBoundingClientRect();
+      const top = rect.top + window.scrollY;
+      const below = (opts.keep ? opts.keep.getBoundingClientRect().bottom - rect.bottom : 0) + 8;
       const max = Math.round(Math.min(window.innerHeight * 0.7, Math.max(220, window.innerHeight - top - below)));
-      if (video.style.maxHeight !== max + "px") video.style.maxHeight = max + "px";
+      if (el.style.maxHeight !== max + "px") el.style.maxHeight = max + "px";
     }
     function queueFit() { if (!fitQueued) { fitQueued = true; requestAnimationFrame(fit); } }
+    function ratio() {
+      if (video.videoWidth) el.style.setProperty("--pc-ar", `${video.videoWidth} / ${video.videoHeight}`);
+      queueFit();
+    }
     window.addEventListener("resize", queueFit);
-    video.addEventListener("loadedmetadata", queueFit);
+    video.addEventListener("loadedmetadata", ratio);
     if (window.ResizeObserver) new ResizeObserver(queueFit).observe(document.body);
-    queueFit();
+    ratio();
 
-    syncFullscreen();
     sync();
-
-    const instance = { video, wrap, strip, sync, syncFullscreen, toggleFullscreen, stepFrame, seekBy, setSpeed, allowed, pseudo, wake };
+    const instance = { video, player, el, sync, toggleFullscreen, stepFrame, seekBy, setSpeed, allowed, wake };
     instances.push(instance);
     if (!active) active = instance;
     return instance;
   }
 
-  ["fullscreenchange", "webkitfullscreenchange"].forEach((name) =>
-    document.addEventListener(name, () => instances.forEach((i) => i.syncFullscreen())));
+  function prune() {
+    instances.filter((i) => !document.contains(i.el)).forEach((gone) => {
+      instances.splice(instances.indexOf(gone), 1);
+      if (active === gone) active = null;
+      try { gone.player.dispose(); } catch (e) { /* already gone with its DOM */ }
+    });
+  }
 
   document.addEventListener("keydown", (event) => {
     if (event.ctrlKey || event.metaKey || event.altKey) return;
     const tag = (event.target.tagName || "").toLowerCase();
     if (tag === "input" || tag === "textarea" || tag === "select" || event.target.isContentEditable) return;
-    const open = instances.find((i) => i.wrap.classList.contains("pc-pseudo-fs"));
-    if (event.key === "Escape" && open) { open.pseudo(false); return; }
     const target = active || instances[0];
     if (!target || !document.contains(target.video)) return;
     target.wake();
@@ -217,6 +237,7 @@
   });
 
   function autoAttach() {
+    prune();
     document.querySelectorAll("video[data-controls-strip]").forEach((video) => attach(video));
   }
   document.addEventListener("htmx:afterSettle", autoAttach);

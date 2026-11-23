@@ -1,4 +1,4 @@
-"""Every page with a video loads the shared controls strip (player_controls.js) and marks its <video>."""
+"""Every page with a video loads Video.js and the shared player script (player_controls.js) and marks its <video>."""
 import re
 from datetime import datetime
 
@@ -11,6 +11,7 @@ from tests.helpers import category_named, make_match, make_ready_video, mark_per
 
 MARKER = "data-controls-strip"
 SCRIPT = '<script src="/static/player_controls.js"></script>'
+VENDOR = "/static/vendor/videojs-8.24.1/"
 
 
 @pytest.fixture()
@@ -43,10 +44,11 @@ def video_tags(html):
 
 def test_match_player_has_a_clickable_fullscreen_and_no_keyboard_only_markup(world):
     page = world["client"].get(f"/videos/{world['video'].id}").text
-    assert page.index("/static/player_controls.js") < page.index("/static/player.js")
-    # the strip is built by player_controls.js; the old template-only controls are gone
+    assert page.index(VENDOR + "video.min.js") < page.index("/static/player_controls.js") < page.index("/static/player.js")
+    assert VENDOR + "video-js.min.css" in page and VENDOR + "pl.js" in page
+    # the control bar is built by Video.js; the old template-only controls and the native full screen block are gone
     assert 'id="btn-fs"' not in page and "fs-only" not in page and 'id="speed"' not in page
-    assert "controlsList=\"nofullscreen\"" in page and "playsinline" in video_tags(page)[0]
+    assert "nofullscreen" not in page and "playsinline" in video_tags(page)[0]
     for text in ('id="btn-z"', 'id="btn-undo"', 'id="video-wrap"', 'id="timeline"'):
         assert text in page
 
@@ -100,3 +102,17 @@ def test_public_share_page_gets_the_strip_without_new_data(world, client):
     assert SCRIPT in page
     for secret in ("Trener", "Legia", "Wisła", "Kowalski"):
         assert secret not in page
+
+
+def test_video_js_is_vendored_and_only_pages_with_a_player_load_it(world, client):
+    from pathlib import Path
+    folder = Path(__file__).resolve().parents[1] / "app" / "static" / "vendor" / "videojs-8.24.1"
+    assert sorted(p.name for p in folder.iterdir()) == ["LICENSE", "pl.js", "video-js.min.css", "video.min.js"]
+    assert "Video.js 8.24.1" in (folder / "video.min.js").read_text()[:400]
+    assert client.get(VENDOR + "video.min.js").status_code == 200
+    for path in ("/", "/clips", "/matches"):
+        page = world["client"].get(path).text
+        assert "videojs" not in page and "player_controls" not in page
+    page = world["client"].get(f"/videos/{world['video'].id}").text
+    assert page.count(VENDOR + "video.min.js") == 1
+    assert "cdn" not in page

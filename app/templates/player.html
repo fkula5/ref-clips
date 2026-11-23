@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% block title %}{{ video.display_name }}{% endblock %}
+{% block head %}{% if state %}{% include "_videojs_head.html" %}{% endif %}{% endblock %}
 {% block content %}
 <div class="row between">
   <div>
@@ -32,18 +33,18 @@
 <div class="player-layout">
   <section>
     <div class="video-wrap" id="video-wrap">
-      <video id="player" src="/videos/{{ video.id }}/stream" preload="auto" controls controlsList="nofullscreen" playsinline></video>
+      <video id="player" src="/videos/{{ video.id }}/stream" preload="auto" controls playsinline></video>
       <div id="timeline" class="timeline" title="Kliknij, by przewinąć"></div>
       <div id="mark-count" class="mark-count" title="Liczba znaczników w tym nagraniu"></div>
       <div id="watch-badge" class="mark-count watch-badge hidden"></div>
       <div id="flash" class="flash hidden"></div>
       <div id="toast" class="toast hidden"></div>
     </div>
-    <div class="row controls">
+    <div class="row controls" id="player-controls">
       <span id="clock" class="clock">0:00</span>
       {% if perm.can_manage_clips(user, match) %}
-        <button class="btn primary pc-btn" id="btn-z" type="button" title="Dodaje znacznik w bieżącym czasie bez zatrzymywania odtwarzania">Zaznacz (Z)</button>
-        <button class="btn pc-btn" id="btn-undo" type="button" title="Usuwa Twój ostatni nieopisany znacznik (Backspace)">Cofnij</button>
+        <button class="btn primary" id="btn-z" type="button" title="Dodaje znacznik w bieżącym czasie bez zatrzymywania odtwarzania">Zaznacz (Z)</button>
+        <button class="btn" id="btn-undo" type="button" title="Usuwa Twój ostatni nieopisany znacznik (Backspace)">Cofnij</button>
         <button class="btn" id="btn-m" type="button" title="Pauza i pole tekstowe: sędzia, kategoria, opis"><kbd>M</kbd> Znacznik z notatką</button>
       {% endif %}
       {% if perm.can_upload_to_match(user, match) %}<button class="btn" id="btn-q" type="button"><kbd>Q</kbd> Początek kwarty (<span id="next-period">—</span>)</button>{% endif %}
@@ -119,4 +120,4 @@
 <script type="application/json" id="init-state">{{ state|tojson }}</script>
 {% endif %}
 {% endblock %}
-{% block scripts %}{% if state %}<script>window.CAN_MARK = {{ 'true' if perm.can_upload_to_match(user, match) else 'false' }};window.CAN_CLIP = {{ 'true' if perm.can_manage_clips(user, match) else 'false' }};window.START_AT = {{ start_at }};</script><script src="/static/player_controls.js"></script><script src="/static/player.js"></script><script src="/static/watch.js"></script>{% endif %}{% endblock %}
+{% block scripts %}{% if state %}<script>window.CAN_MARK = {{ 'true' if perm.can_upload_to_match(user, match) else 'false' }};window.CAN_CLIP = {{ 'true' if perm.can_manage_clips(user, match) else 'false' }};window.START_AT = {{ start_at }};</script>{% include "_videojs_scripts.html" %}<script src="/static/player.js"></script><script src="/static/watch.js"></script>{% endif %}{% endblock %}
