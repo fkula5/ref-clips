@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.16.1](https://github.com/fkula5/ref-clips/compare/v1.16.0...v1.16.1) (2026-11-24)
+
+
+### Bug Fixes
+
+* **static:** add content hashes to static URLs so releases never run with stale CSS/JS ([#56](https://github.com/fkula5/ref-clips/issues/56)) ([60e9a78](https://github.com/fkula5/ref-clips/commit/60e9a782636fe40a0ecfbe2e0e5aa7012f2280f9))
+* **ui:** align the share bar, pad the self-assessment list and tighten admin table columns ([#58](https://github.com/fkula5/ref-clips/issues/58)) ([741c8d1](https://github.com/fkula5/ref-clips/commit/741c8d1fe164c3b296bfb724a89f90c5ec379c2f))
+
 ## [1.16.0](https://github.com/fkula5/ref-clips/compare/v1.15.0...v1.16.0) (2026-11-23)
 
 
