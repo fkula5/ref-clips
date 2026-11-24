@@ -329,6 +329,14 @@ tr.no-activity td { background: var(--warn-wash); }
 .admin-tabs a { padding: 8px 14px; border: 1px solid transparent; border-bottom: 0; border-radius: 6px 6px 0 0; color: var(--text); }
 .admin-tabs a.active { background: var(--card); border-color: var(--line); font-weight: 600; position: relative; top: 1px; }
 .categories-table input { width: 100%; min-width: 140px; }
+/* Shrink the count, state and action columns to their content; the text fields take the rest. */
+@media (min-width: 721px) {
+  .categories-table td.actions-cell, .categories-table th:last-child { width: 1%; }
+  .categories-table td.actions-cell .table-actions { flex-wrap: nowrap; }
+  .categories-table td[data-label="Klipy"], .categories-table td[data-label="Arkusze"], .categories-table td[data-label="Stan"] { width: 1%; white-space: nowrap; }
+  .categories-table td[data-label="Grupa"] { width: 1%; }
+  .category-aliases td[data-label="Nazwa"] { width: 17%; }
+}
 .usage th { width: 60%; font-weight: 500; background: none; } .usage td { text-align: right; font-weight: 600; }
 .rejections { margin-top: 8px; }
 .banner.warn table { background: var(--card); }
@@ -337,8 +345,12 @@ tr.no-activity td { background: var(--warn-wash); }
 .share { max-width: 860px; margin: 0 auto; padding: 16px 16px 48px; }
 .share-clip h2 { margin: 0 0 2px; } .share-clip p { margin: 0 0 8px; }
 
-.share-bar { gap: 8px 14px; align-items: flex-end; }
-.share-bar label, .share-form label { display: flex; flex-direction: column; font-size: 13px; color: var(--muted); gap: 2px; }
+.share-bar { gap: 10px 16px; align-items: center; }
+.share-bar #share-count { color: var(--text); font-weight: 600; font-variant-numeric: tabular-nums; }
+.share-bar label { display: flex; align-items: center; gap: 8px; color: var(--muted); }
+.share-bar select, .share-bar .btn { min-height: 38px; box-sizing: border-box; }
+.share-bar select { padding: 6px 10px; }
+.share-form label { display: flex; flex-direction: column; font-size: 13px; color: var(--muted); gap: 2px; }
 .share-bar .share-note { flex: 1 1 100%; margin: 0; color: var(--muted); }
 .share-bar .error-text { color: var(--danger); }
 .share-warning { margin: 10px 0; font-size: 14px; }
@@ -352,7 +364,7 @@ tr.no-activity td { background: var(--warn-wash); }
   table.responsive td.select-cell:empty { display: none; }
   table.responsive td.select-cell { flex-wrap: nowrap; align-items: center; width: auto; }
   table.responsive td.select-cell input { flex: 0 0 24px; width: 24px; height: 24px; }
-  .share-bar label { flex: 1 1 140px; } .share-bar select { width: 100%; }
+  .share-bar label { flex: 1 1 160px; } .share-bar select { flex: 1; min-width: 0; }
 }
 
 .app-version { max-width: 1280px; margin: 0 auto; padding: 0 20px 16px; font-size: 12px; color: var(--muted); }
@@ -360,6 +372,7 @@ tr.no-activity td { background: var(--warn-wash); }
 .sheet-item { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 6px 12px; padding: 6px 0; border-top: 1px solid var(--line); }
 .sheet-item:first-child { border-top: 0; }
 .scoresheet-list { list-style: none; margin: 0; padding: 0; }
+.card.scoresheet-list { padding: 4px 14px; margin: 10px 0; }
 .scoresheet-item { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 8px 0; border-top: 1px solid var(--line); }
 .scoresheet-item:first-child { border-top: 0; }
 .scoresheet-thumb, .scoresheet-tile { flex: 0 0 auto; width: 72px; height: 72px; border-radius: 6px; border: 1px solid var(--line); background: var(--chip-bg); overflow: hidden; display: flex; align-items: center; justify-content: center; }
