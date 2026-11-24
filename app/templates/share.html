@@ -6,8 +6,8 @@
   <meta name="robots" content="noindex, nofollow">
   <meta name="referrer" content="no-referrer">
   <title>{{ 'Udostępniony klip' if view.single else 'Udostępnione klipy' }}</title>
-  <link rel="stylesheet" href="/static/vendor/videojs-8.24.1/video-js.min.css">
-  <link rel="stylesheet" href="/static/app.css">
+  <link rel="stylesheet" href="{{ asset('vendor/videojs-8.24.1/video-js.min.css') }}">
+  <link rel="stylesheet" href="{{ asset('app.css') }}">
 </head>
 {# Public page: only video, league and decision category. No navigation, app links or user data. #}
 <body class="share-page">

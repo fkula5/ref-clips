@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}Samoocena: {{ sa.title }}{% endblock %}
 {% block content %}
-<link rel="stylesheet" href="/static/self_assessment_report.css">
+<link rel="stylesheet" href="{{ asset('self_assessment_report.css') }}">
 <div class="row between no-print">
   <p class="muted"><a href="{{ '/matches/%d#samoocena'|format(match.id) if match else '/self-assessments' }}">&larr; {{ sa.title if match else 'Samooceny' }}</a></p>
   <div class="row">

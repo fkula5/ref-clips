@@ -7,10 +7,11 @@ import pytest
 from app import share, training_sets
 from app.models import Clip
 from app.storage import storage
+from app.web import asset
 from tests.helpers import category_named, make_match, make_ready_video, mark_periods
 
 MARKER = "data-controls-strip"
-SCRIPT = '<script src="/static/player_controls.js"></script>'
+SCRIPT = f'<script src="{asset("player_controls.js")}"></script>'
 VENDOR = "/static/vendor/videojs-8.24.1/"
 
 

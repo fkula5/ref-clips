@@ -35,11 +35,22 @@ async def lifespan(_app: FastAPI):
     sweeper.cancel()
 
 
+class CachedStaticFiles(StaticFiles):
+    """Hashed URLs (`asset()`) change with the content, so they may be cached for good; plain ones revalidate."""
+
+    async def get_response(self, path, scope):
+        response = await super().get_response(path, scope)
+        if response.status_code in (200, 304):
+            versioned = b"v=" in scope.get("query_string", b"")
+            response.headers["Cache-Control"] = "public, max-age=31536000, immutable" if versioned else "no-cache"
+        return response
+
+
 # No public API docs: every page except login needs a session.
 app = FastAPI(title="ref-clips", lifespan=lifespan, docs_url=None, redoc_url=None, openapi_url=None)
 app.add_middleware(SessionRefreshMiddleware)
 app.add_middleware(SharePrivacyHeadersMiddleware)
-app.mount("/static", StaticFiles(directory=BASE / "static"), name="static")
+app.mount("/static", CachedStaticFiles(directory=BASE / "static"), name="static")
 
 app.include_router(auth.public_router, dependencies=PUBLIC)
 app.include_router(share.router)  # no session or CSRF: read-only public links

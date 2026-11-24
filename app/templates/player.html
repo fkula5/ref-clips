@@ -120,4 +120,4 @@
 <script type="application/json" id="init-state">{{ state|tojson }}</script>
 {% endif %}
 {% endblock %}
-{% block scripts %}{% if state %}<script>window.CAN_MARK = {{ 'true' if perm.can_upload_to_match(user, match) else 'false' }};window.CAN_CLIP = {{ 'true' if perm.can_manage_clips(user, match) else 'false' }};window.START_AT = {{ start_at }};</script>{% include "_videojs_scripts.html" %}<script src="/static/player.js"></script><script src="/static/watch.js"></script>{% endif %}{% endblock %}
+{% block scripts %}{% if state %}<script>window.CAN_MARK = {{ 'true' if perm.can_upload_to_match(user, match) else 'false' }};window.CAN_CLIP = {{ 'true' if perm.can_manage_clips(user, match) else 'false' }};window.START_AT = {{ start_at }};</script>{% include "_videojs_scripts.html" %}<script src="{{ asset('player.js') }}"></script><script src="{{ asset('watch.js') }}"></script>{% endif %}{% endblock %}

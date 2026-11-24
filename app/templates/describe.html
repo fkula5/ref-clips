@@ -114,4 +114,4 @@
 </div>
 {% endif %}
 {% endblock %}
-{% block scripts %}{% if current %}{% include "_videojs_scripts.html" %}<script src="/static/clip.js"></script><script src="/static/describe.js"></script>{% endif %}{% endblock %}
+{% block scripts %}{% if current %}{% include "_videojs_scripts.html" %}<script src="{{ asset('clip.js') }}"></script><script src="{{ asset('describe.js') }}"></script>{% endif %}{% endblock %}
