@@ -37,11 +37,15 @@ Whoever may not see a sheet gets **404** (not 403) on every sheet route, so nobo
 - `/self-assessments/<id>`: the read-only report; for the author's draft it is a preview with a „SZKIC” marker.
 - `/self-assessments/<id>/edit`: the form (app-styled).
 - `/self-assessments/<id>/pdf`: „Pobierz PDF”, the same permission as viewing.
+- `/self-assessments/<id>/zip`: „Pobierz ZIP (PDF + klipy)”, the same permission as viewing, submitted sheets only (a draft has no button and the route answers 409).
 
 ## The report and the PDF
 The report copies the Excel layout: A4 portrait, margins 0.25 in left/right and 0.75 in top/bottom, columns B–K at the Excel widths (in pixels), thick black borders, red `#C90012` labels with white text, cream `#F9F3EA` value cells, a `#F0E5DB` background around the sheet on screen and plain white in print. A clip is one block at least as tall as the Excel's 5 rows and an answer block at least as tall as its 8 rows; they grow with the text and are not split across pages. Descriptions are centred as in the Excel; the answers are left-aligned and top-aligned, because long centred text reads badly. Font: Calibri, with Carlito (metric-compatible) as the free substitute.
 
 The PDF is rendered on the server by WeasyPrint from the same template and stylesheet (`app/self_assessment_pdf.py`, `app/static/self_assessment_report.css`), named `samoocena_<date>_<teams>_<crew function>.pdf`, e.g. `samoocena_2026-10-28_Legia-Wisla_CC.pdf`; a standalone sheet has no crew slot, so no function: `samoocena_2026-11-07_Slask-Zaglebie.pdf` (parts that are empty on a draft are left out). The image installs pango, harfbuzz-subset and `fonts-crosextra-carlito` (see the `Dockerfile`). „Drukuj” on the page uses the browser's print with the same stylesheet.
+
+## The ZIP
+`samoocena_<…>.zip` (the PDF's name with `.zip`) holds the same PDF at the root and `klipy/NN_<category>.mp4` for each row that has a cut clip file, in sheet order; NN is the row number in the PDF, so a skipped row leaves a gap. Manual rows, rows of deleted clips and clips that are not cut (or whose file is missing) are left out and listed in `README.txt` with the reason; with nothing skipped there is no README. The archive is built like the share-link ZIP (`share.write_zip`: temp file in `DATA_DIR/tmp`, stored without compression, fixed dates, the shared parallel-build limit and free-space check, 503 with `Retry-After` when busy or out of space) and deleted after sending.
 
 ## Notifications
 On submit the **coaches of the groups the author belongs to as a referee** get a bell notification (kind `self_assessment`, „<author>: wysłana samoocena w meczu …”) and, per the `self_assessment_submitted` switch („Wysłane samooceny sędziów z moich grup”, default on for coaches, shown to coaches and admins), a line in the daily e-mail digest ([email-digest.md](email-digest.md)). A standalone sheet notifies the same coaches (the notification has no `match_id`; the bell shows the typed teams, the digest lists it under „Mecze spoza systemu”). An author in no group notifies nobody; the sheet is still on the list page. Opening the sheet marks its notification read.

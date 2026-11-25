@@ -8,9 +8,11 @@ import logging
 from collections.abc import Callable
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
+from starlette.background import BackgroundTask
 
-from app import flash, permissions, self_assessment_pdf, self_assessments
+from app import flash, permissions, self_assessment_pdf, self_assessments, share
 from app.auth import current_user, require
 from app.db import get_db
 from app.loaders import get_match
@@ -98,16 +100,38 @@ def show(request: Request, db: Session = Depends(get_db), sa: SelfAssessment = v
                   questions=self_assessments.QUESTIONS)
 
 
-@router.get("/self-assessments/{self_assessment_id}/pdf")
-def pdf(sa: SelfAssessment = view_sa):
+def render_pdf_or_503(sa: SelfAssessment) -> bytes:
     try:
-        content = self_assessment_pdf.render_pdf(sa)
+        return self_assessment_pdf.render_pdf(sa)
     except OSError:  # WeasyPrint's system libraries (pango) are missing
         log.error("PDF rendering failed", exc_info=True)
         raise HTTPException(503, "Eksport do PDF jest niedostępny na tym serwerze. Użyj „Drukuj”.") from None
+
+
+@router.get("/self-assessments/{self_assessment_id}/pdf")
+def pdf(sa: SelfAssessment = view_sa):
+    content = render_pdf_or_503(sa)
     name = self_assessments.pdf_filename(sa)
     return Response(content, media_type="application/pdf", headers={
         "Content-Disposition": f'attachment; filename="{name}"', "Cache-Control": "private, no-store"})
+
+
+@router.get("/self-assessments/{self_assessment_id}/zip")
+def zip_archive(sa: SelfAssessment = view_sa):
+    if not sa.is_submitted:
+        raise HTTPException(409, "ZIP z klipami jest dostępny dopiero po wysłaniu samooceny.")
+    content = render_pdf_or_503(sa)
+    try:
+        path = self_assessments.build_zip(sa, content)
+    except share.ZipBusy:
+        raise HTTPException(503, "Serwer przygotowuje teraz inne paczki. Spróbuj ponownie za chwilę.",
+                            headers={"Retry-After": "10"}) from None
+    except share.ZipNoSpace:
+        raise HTTPException(503, "Serwer nie ma teraz miejsca na przygotowanie paczki. Spróbuj później.",
+                            headers={"Retry-After": "600"}) from None
+    return FileResponse(path, media_type="application/zip", filename=self_assessments.zip_filename(sa),
+                        headers={"Cache-Control": "private, no-store"},
+                        background=BackgroundTask(path.unlink, missing_ok=True))
 
 
 @router.get("/self-assessments/{self_assessment_id}/edit")

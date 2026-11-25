@@ -10,12 +10,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date
+from pathlib import Path
 
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
-from app import config, notify, permissions, services
+from app import config, notify, permissions, services, share
 from app.models import Clip, Match, SelfAssessment, SelfAssessmentClip, User
 from app.pagination import Page, paginate
 from app.textutil import format_clock, slugify
@@ -391,3 +392,31 @@ def pdf_filename(sa: SelfAssessment) -> str:
     # A standalone sheet has no crew slot, so no function.
     function = next((o.function for o in match.officials if o.user_id == sa.user_id), "") if match else ""
     return "_".join(part for part in ("samoocena", day.isoformat() if day else "", teams, function) if part) + ".pdf"
+
+
+def zip_filename(sa: SelfAssessment) -> str:
+    return pdf_filename(sa).removesuffix(".pdf") + ".zip"
+
+
+def build_zip(sa: SelfAssessment, pdf: bytes) -> Path:
+    """The PDF and `klipy/NN_<name>.mp4`, NN being the row number in the PDF, so a skipped row leaves a gap
+    instead of renumbering the rest. Rows without a file are listed in README.txt.
+    """
+    members: list[share.Member] = [(pdf_filename(sa), pdf)]
+    skipped: list[str] = []
+    for number, row in enumerate(sa.rows, start=1):
+        if row.is_manual:
+            reason = "wiersz wpisany ręcznie"
+        elif row.clip is None:
+            reason = "klip usunięty z platformy"
+        elif not share.has_file(row.clip):
+            reason = "klip jeszcze nie został wycięty (albo jego plik jest niedostępny)"
+        else:
+            slug = slugify(row.name_label)[:services.FILENAME_PART_MAX].strip("-") or "klip"
+            members.append((f"klipy/{number:02d}_{slug}.mp4", row.clip.clip_path))
+            continue
+        skipped.append(f"{number}. {row.name_label} — {reason}")
+    if skipped:
+        readme = "Tych wierszy samooceny nie ma w folderze klipy:\n\n" + "\n".join(skipped) + "\n"
+        members.append(("README.txt", readme.encode()))
+    return share.write_zip(members, "samoocena-")

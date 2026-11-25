@@ -213,27 +213,38 @@ def zip_slot() -> Iterator[None]:
             _zips_running -= 1
 
 
-def build_zip(clips: list[SharedClip]) -> Path:
+Member = tuple[str, str | bytes]  # archive name, and either a storage path or the content itself
+
+
+def write_zip(members: list[Member], prefix: str) -> Path:
     """ZIP (no compression, no CSV or metadata) in `DATA_DIR/tmp`. The caller deletes the file after
     sending; on a build error it is removed here; leftovers after a crash are cleaned by the worker
     (`retention.cleanup_tmp`). Dates in the archive are fixed so they do not reveal the cut time.
     """
     with zip_slot():
-        needed = sum(storage.size(c.clip.clip_path) for c in clips)
+        needed = sum(len(src) if isinstance(src, bytes) else storage.size(src) for _, src in members)
         if storage.free_bytes() < needed + config.DISK_SAFETY_BYTES:
             raise ZipNoSpace
-        names = services.unique_filenames(c.filename for c in clips)
-        fd, name = tempfile.mkstemp(prefix="share-", suffix=".zip", dir=config.DATA_DIR / "tmp")
+        fd, name = tempfile.mkstemp(prefix=prefix, suffix=".zip", dir=config.DATA_DIR / "tmp")
         path = Path(name)
         try:
             with os.fdopen(fd, "wb") as fh, zipfile.ZipFile(fh, "w", zipfile.ZIP_STORED) as archive:
-                for entry, member in zip(clips, names):
-                    source = storage.local_path(entry.clip.clip_path)
+                for member, src in members:
                     info = zipfile.ZipInfo(member, date_time=(2000, 1, 1, 0, 0, 0))
-                    info.compress_type, info.external_attr, info.file_size = zipfile.ZIP_STORED, 0o644 << 16, source.stat().st_size
-                    with source.open("rb") as src, archive.open(info, "w") as dst:
-                        shutil.copyfileobj(src, dst, 1024 * 1024)
+                    info.compress_type, info.external_attr = zipfile.ZIP_STORED, 0o644 << 16
+                    if isinstance(src, bytes):
+                        archive.writestr(info, src)
+                        continue
+                    source = storage.local_path(src)
+                    info.file_size = source.stat().st_size
+                    with source.open("rb") as handle, archive.open(info, "w") as dst:
+                        shutil.copyfileobj(handle, dst, 1024 * 1024)
         except BaseException:
             path.unlink(missing_ok=True)
             raise
         return path
+
+
+def build_zip(clips: list[SharedClip]) -> Path:
+    names = services.unique_filenames(c.filename for c in clips)
+    return write_zip([(member, c.clip.clip_path) for c, member in zip(clips, names)], "share-")
