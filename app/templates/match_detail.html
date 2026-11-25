@@ -47,11 +47,13 @@
 
 {% if perm.can_upload_to_match(user, match) %}
 <h3>Dodaj nagranie</h3>
-<form id="upload-form" class="card form" data-match="{{ match.id }}" data-max-gb="{{ max_upload_gb()|round(1) }}" data-chunk-bytes="{{ upload_chunk_bytes }}"
+{% set space = upload_space(user) %}
+<form id="upload-form" class="card form" data-match="{{ match.id }}" data-max-bytes="{{ max_upload_bytes() }}" data-max-label="{{ max_upload_bytes()|gb }}" data-chunk-bytes="{{ upload_chunk_bytes }}"
       data-can-notes="{{ 1 if perm.can_manage_clips(user, match) else 0 }}" data-notes-chars="{{ NOTES_MAX_CHARS }}" data-notes-lines="{{ NOTES_MAX_LINES }}">
   <div class="grid2">
-    <label>Pliki wideo (można kilka, np. osobne kwarty; maks. {{ max_upload_gb()|round(1) }} GB każdy)
+    <label>Pliki wideo (można kilka, np. osobne kwarty; maks. {{ max_upload_bytes()|gb }} każdy)
       <input type="file" id="upload-files" accept="video/*,.mkv,.mov,.mp4,.avi,.ts" multiple required>
+      <span id="upload-space" class="warn-text" aria-live="polite" {{ 'hidden' if not space.note }}>{{ space.note }}</span>
     </label>
     <label>Etykieta (opcjonalnie)
       <input id="upload-label" placeholder="np. Całość / Q1–Q2" maxlength="100">

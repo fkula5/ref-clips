@@ -86,6 +86,17 @@ def reserved_bytes(db: Session) -> int:
     return int(pending) + converting * config.DRAFT_RESERVE_BYTES
 
 
+def acceptable_bytes(db: Session, user: User | None = None) -> int:
+    """Largest file `check_space` would accept now. The user's own unfinished upload does not count: picking
+    the same file again restarts it and frees its reservation."""
+    free, reserved = storage.free_bytes(), reserved_bytes(db)
+    own = active_upload(db, user.id) if user is not None else None
+    if own is not None:
+        reserved -= max(0, own.reserved_bytes - own.offset_bytes)
+        free += own.offset_bytes
+    return max(0, free - reserved - config.DRAFT_RESERVE_BYTES - config.DISK_SAFETY_BYTES)
+
+
 def check_space(db: Session, size: int, user: User | None = None, filename: str = "") -> None:
     """A rejection is stored (time, size, user) so the admin panel can warn about a full disk."""
     need = size + config.DRAFT_RESERVE_BYTES + config.DISK_SAFETY_BYTES + reserved_bytes(db)

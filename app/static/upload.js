@@ -15,13 +15,39 @@
   let busy = false, rows = [];
 
   const mb = (n) => (n / 1048576).toFixed(n >= 10485760 ? 0 : 1);
+  const gb = (n) => (Math.floor((n / 1073741824) * 10) / 10).toString().replace(".", ",") + " GB";
+  const spaceNote = document.getElementById("upload-space");
+
+  // Checked again when a file is picked (the page may have been open for a while); the server re-checks on create.
+  async function fetchSpace() {
+    try {
+      const res = await fetch("/api/upload-space", { headers: { Accept: "application/json" } });
+      if (!res.ok) return null;
+      const space = await res.json();
+      if (spaceNote) { spaceNote.textContent = space.note; spaceNote.hidden = !space.note; }
+      return space;
+    } catch (e) { return null; }
+  }
+
+  function sizeProblem(file, space) {
+    const max = space ? space.max_bytes : parseInt(form.dataset.maxBytes, 10);
+    if (file.size > max) return "Plik ma " + gb(file.size) + " — limit to " + form.dataset.maxLabel + ". Podziel nagranie albo zmniejsz plik.";
+    if (!space) return "";
+    const resumes = space.active && space.active.filename === file.name && space.active.size === file.size;
+    if (!resumes && file.size > space.acceptable_bytes) {
+      return "Plik ma " + gb(file.size) + ", a na serwerze zmieści się teraz plik do " + space.acceptable_label
+        + ". Spróbuj później albo zmniejsz plik.";
+    }
+    return "";
+  }
 
   function togglePeriods(row) {
     row.querySelector(".content-periods").hidden = row.querySelector(".content-kind").value !== "multi";
   }
 
-  input.addEventListener("change", () => {
+  input.addEventListener("change", async () => {
     list.innerHTML = "";
+    const space = input.files.length ? await fetchSpace() : null;
     rows = Array.from(input.files).map((file) => {
       const row = document.createElement("div");
       row.className = "file-row";
@@ -34,8 +60,15 @@
         row.appendChild(notesTemplate.content.cloneNode(true));
         row.querySelector(".notes-preview-btn").addEventListener("click", () => previewNotes(row));
       }
+      const problem = sizeProblem(file, space);
+      if (problem) {
+        const warn = document.createElement("p");
+        warn.className = "error-text small-note size-problem";
+        warn.textContent = problem;
+        row.appendChild(warn);
+      }
       list.appendChild(row);
-      return { file, row };
+      return { file, row, blocked: !!problem };
     });
   });
 
@@ -141,7 +174,7 @@
     if (status === 507) return "Brak miejsca na serwerze, spróbuj później.";
     if (status === 401) return "Sesja wygasła — zaloguj się ponownie i spróbuj jeszcze raz.";
     if (status === 403) return detail || "Brak uprawnień do wgrywania nagrań do tego meczu.";
-    if (status === 413) return detail || "Plik jest za duży (limit " + form.dataset.maxGb + " GB).";
+    if (status === 413) return detail || "Plik jest za duży (limit " + form.dataset.maxLabel + ").";
     return detail || "Błąd serwera (" + status + ").";
   }
 
@@ -222,7 +255,12 @@
 
   form.addEventListener("submit", async (e) => {
     e.preventDefault();
-    if (!rows.length) return;
+    const ready = rows.filter((r) => !r.blocked);
+    if (!ready.length) {
+      if (rows.length) alert("Żaden z wybranych plików nie zmieści się teraz na serwerze.");
+      return;
+    }
+    rows = ready;
     let contents;
     try { contents = rows.map((r) => contentOf(r.row)); }
     catch (err) { alert(err.message); return; }

@@ -12,7 +12,7 @@ from jinja2 import pass_context
 from markupsafe import Markup, escape
 
 from app import (clip_list, config, feedback, flash, notify, pagination, retention, scoresheets, services, share,
-                 training_sets)
+                 training_sets, uploads)
 from app.auth import set_anon_csrf_cookie
 from app.db import SessionLocal
 from app import models as m
@@ -43,7 +43,32 @@ def human_bytes(value: int | float | None) -> str:
     return f"{size:.1f}".replace(".", ",") + f" {unit}"
 
 
+def gb_label(value: int) -> str:
+    """Polish GB label rounded down to 0.1 ("8,4 GB", "6 GB"), so a promised size never overstates the room."""
+    tenths = int(value * 10 // config.GB)
+    return (f"{tenths // 10}" if tenths % 10 == 0 else f"{tenths // 10},{tenths % 10}") + " GB"
+
+
+def space_note(acceptable: int) -> str:
+    if acceptable >= config.UPLOAD_MAX_BYTES:
+        return ""
+    if acceptable < config.GB:
+        return "Na serwerze brakuje teraz miejsca na nowe nagranie — spróbuj później."
+    return f"Na serwerze zmieści się teraz plik do {gb_label(acceptable)}."
+
+
+def upload_space(user) -> dict:
+    """The form's size check; `uploads.check_space` stays the authority when the upload is created."""
+    with SessionLocal() as db:
+        acceptable = min(uploads.acceptable_bytes(db, user), config.UPLOAD_MAX_BYTES)
+        own = uploads.active_upload(db, user.id)
+        active = {"filename": own.filename, "size": own.size_bytes} if own else None
+    return {"max_bytes": config.UPLOAD_MAX_BYTES, "acceptable_bytes": acceptable,
+            "acceptable_label": gb_label(acceptable), "note": space_note(acceptable), "active": active}
+
+
 env.filters["filesize"] = human_bytes
+env.filters["gb"] = gb_label
 
 
 # Uniform colours are typed by hand: only the beginning of the name is recognised (e.g. "czerwone",
@@ -105,7 +130,8 @@ env.globals.update(
     missing_periods_of=lambda v: (services.missing_periods(v.content, (mk.period for mk in v.marks))
                                   if v.status == "ready" and v.purged_at is None else []),
     NOTES_MAX_CHARS=config.NOTES_MAX_CHARS, NOTES_MAX_LINES=config.NOTES_MAX_LINES,
-    max_upload_gb=lambda: config.UPLOAD_MAX_BYTES / config.GB,
+    max_upload_bytes=lambda: config.UPLOAD_MAX_BYTES,
+    upload_space=upload_space,
     upload_chunk_bytes=config.UPLOAD_CHUNK_BYTES,
     expiry_note=retention.expiry_note, video_expiry_note=retention.video_expiry_note,
     clip_bounds=services.clip_range,
