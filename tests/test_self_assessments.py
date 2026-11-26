@@ -2,6 +2,7 @@ import io
 import re
 import shutil
 import subprocess
+import zipfile
 from datetime import timedelta
 from types import SimpleNamespace
 
@@ -10,9 +11,10 @@ from pypdf import PdfReader
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
-from app import digest, notify, self_assessments
+from app import config, digest, notify, self_assessments, share
 from app.models import (Clip, EmailPreference, GroupMember, Notification, SelfAssessment, SelfAssessmentClip,
                         TrainingGroup)
+from app.storage import storage
 from app.timeutil import utcnow
 from tests.helpers import category_named, make_match, make_ready_video, make_user, mark_periods
 
@@ -545,6 +547,141 @@ def test_a_long_report_does_not_split_a_clip_block_across_pages(w):
     for i in range(3):
         marker = f"Długi opis klipu {i}"
         assert sum(marker in p.extract_text() for p in pages) == 1
+
+
+# ---------- the ZIP ----------
+
+def cut(w, clip, content=None):
+    clip = w.db.get(Clip, clip.id)
+    clip.status, clip.clip_path, clip.clip_version = "cut", f"clips/{clip.id}_v1.mp4", 1
+    with storage.open_write(clip.clip_path) as fh:
+        fh.write(content or f"video-{clip.id}".encode())
+    w.db.commit()
+    return storage.local_path(clip.clip_path).read_bytes()
+
+
+def open_zip(response) -> zipfile.ZipFile:
+    assert response.status_code == 200 and response.headers["content-type"] == "application/zip", response.text[:300]
+    archive = zipfile.ZipFile(io.BytesIO(response.content))
+    assert archive.testzip() is None
+    return archive
+
+
+def tmp_files():
+    return list((config.DATA_DIR / "tmp").glob("*"))
+
+
+def test_the_zip_has_the_pdf_and_the_clips_numbered_like_the_rows(w):
+    sa_id = open_sheet(w)
+    complete(w, sa_id)
+    contents = {c.id: cut(w, c) for c in w.clips[:3]}
+    edit(w, "ref", sa_id, f"down:{sheet(w, sa_id).rows[0].id}")  # rows: osobisty, kroki, blok
+    submit(w, sa_id)
+    r = w.c["coach"].get(f"/self-assessments/{sa_id}/zip")
+    archive = open_zip(r)
+    assert r.headers["content-disposition"] == 'attachment; filename="samoocena_2026-10-28_Legia-Wisla_CC.zip"'
+    assert archive.namelist() == ["samoocena_2026-10-28_Legia-Wisla_CC.pdf", "klipy/01_osobisty.mp4",
+                                  "klipy/02_kroki.mp4", "klipy/03_blok-szarza.mp4"]
+    assert archive.read("klipy/01_osobisty.mp4") == contents[w.clips[1].id]
+    assert archive.read("klipy/02_kroki.mp4") == contents[w.clips[0].id]
+    assert archive.read("klipy/03_blok-szarza.mp4") == contents[w.clips[2].id]
+    pdf = archive.read("samoocena_2026-10-28_Legia-Wisla_CC.pdf")
+    assert pdf.startswith(b"%PDF") and "ARKUSZ SAMOOCENY RC 2026/27" in pdf_text(pdf)
+    assert all(i.date_time == (2000, 1, 1, 0, 0, 0) for i in archive.infolist())
+    assert tmp_files() == []
+
+
+def test_rows_without_a_cut_file_are_skipped_and_listed_in_the_readme(w):
+    sa_id = open_sheet(w)
+    complete(w, sa_id)
+    edit(w, "ref", sa_id, "manual")
+    manual = sheet(w, sa_id).rows[-1]
+    edit(w, "ref", sa_id, **{f"time_{manual.id}": "Q1, 1:00", f"name_{manual.id}": "Faul pod koszem",
+                             f"desc_{manual.id}": "Opis"})
+    kept = cut(w, w.clips[0])
+    cut(w, w.clips[2])  # a file that goes missing after the clip was cut
+    storage.local_path(f"clips/{w.clips[2].id}_v1.mp4").unlink()
+    submit(w, sa_id)
+    w.db.delete(w.db.get(Clip, w.clips[1].id))
+    w.db.commit()
+    archive = open_zip(w.c["ref"].get(f"/self-assessments/{sa_id}/zip"))
+    assert archive.namelist() == ["samoocena_2026-10-28_Legia-Wisla_CC.pdf", "klipy/01_kroki.mp4", "README.txt"]
+    assert archive.read("klipy/01_kroki.mp4") == kept
+    readme = archive.read("README.txt").decode()
+    assert "2. osobisty — klip usunięty z platformy" in readme
+    assert "3. blok / szarża — klip jeszcze nie został wycięty" in readme
+    assert "4. Faul pod koszem — wiersz wpisany ręcznie" in readme
+    assert "kroki" not in readme
+
+
+def test_a_clip_that_is_not_cut_yet_is_skipped_too(w):
+    sa_id = open_sheet(w)
+    complete(w, sa_id)
+    submit(w, sa_id)
+    archive = open_zip(w.c["ref"].get(f"/self-assessments/{sa_id}/zip"))
+    assert archive.namelist() == ["samoocena_2026-10-28_Legia-Wisla_CC.pdf", "README.txt"]
+    assert archive.read("README.txt").decode().count("klip jeszcze nie został wycięty") == 3
+
+
+def test_a_sheet_with_every_clip_cut_has_no_readme(w):
+    sa_id = open_sheet(w)
+    complete(w, sa_id)
+    for clip in w.clips[:3]:
+        cut(w, clip)
+    submit(w, sa_id)
+    assert "README.txt" not in open_zip(w.c["ref"].get(f"/self-assessments/{sa_id}/zip")).namelist()
+
+
+def test_a_standalone_sheet_gives_a_zip_with_the_pdf_and_a_readme_only(w):
+    sa_id = complete_standalone(w)
+    submit(w, sa_id)
+    archive = open_zip(w.c["ref"].get(f"/self-assessments/{sa_id}/zip"))
+    assert archive.namelist()[0].endswith(".pdf") and archive.namelist()[1:] == ["README.txt"]
+    assert archive.read("README.txt").decode().count("wiersz wpisany ręcznie") == 3
+
+
+def test_a_draft_has_no_zip_and_no_button(w):
+    sa_id = open_sheet(w)
+    complete(w, sa_id)
+    r = w.c["ref"].get(f"/self-assessments/{sa_id}/zip")
+    assert r.status_code == 409 and "po wysłaniu" in r.text
+    assert 'id="sa-zip"' not in w.c["ref"].get(f"/self-assessments/{sa_id}").text
+    submit(w, sa_id)
+    assert 'id="sa-zip"' in w.c["ref"].get(f"/self-assessments/{sa_id}").text
+    post(w, "admin", f"/self-assessments/{sa_id}/reopen")
+    assert w.c["ref"].get(f"/self-assessments/{sa_id}/zip").status_code == 409
+
+
+def test_who_may_see_the_sheet_may_download_its_zip(w):
+    sa_id = open_sheet(w)
+    complete(w, sa_id)
+    submit(w, sa_id)
+    for who in ("ref", "coach", "coach2", "admin"):
+        assert w.c[who].get(f"/self-assessments/{sa_id}/zip").status_code == 200, who
+    for who in ("ref2", "outsider"):
+        assert w.c[who].get(f"/self-assessments/{sa_id}/zip").status_code == 404, who
+
+
+def test_the_zip_needs_a_login(w, anon_client):
+    sa_id = open_sheet(w)
+    complete(w, sa_id)
+    submit(w, sa_id)
+    assert anon_client.get(f"/self-assessments/{sa_id}/zip", follow_redirects=False).status_code in (303, 401)
+
+
+@pytest.mark.parametrize("case,message", [("zajęte", "inne paczki"), ("brak miejsca", "nie ma teraz miejsca")])
+def test_a_busy_or_full_server_answers_503_and_leaves_nothing_behind(w, monkeypatch, case, message):
+    sa_id = open_sheet(w)
+    complete(w, sa_id)
+    cut(w, w.clips[0])
+    submit(w, sa_id)
+    if case == "zajęte":
+        monkeypatch.setattr(config, "SHARE_ZIP_MAX_PARALLEL", 0)
+    else:
+        monkeypatch.setattr(storage, "free_bytes", lambda: 0)
+    r = w.c["ref"].get(f"/self-assessments/{sa_id}/zip")
+    assert r.status_code == 503 and message in r.text and "retry-after" in r.headers
+    assert tmp_files() == [] and share._zips_running == 0
 
 
 # ---------- notifications and digest ----------

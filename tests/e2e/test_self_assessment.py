@@ -1,3 +1,5 @@
+import zipfile
+
 from playwright.sync_api import expect
 
 from tests.e2e.conftest import MOBILE
@@ -48,6 +50,13 @@ def test_referee_fills_in_a_self_assessment_and_a_coach_reads_it(ui):
     coach = ui.page("coach")
     assert coach.goto(f"/self-assessments/{referee.url.split('/')[-2]}").status == 404  # a draft stays private
 
+    sa_url = referee.url.removesuffix("/edit")
+    referee.goto(sa_url)
+    expect(referee.locator("#sa-draft-mark")).to_be_visible()
+    expect(referee.get_by_role("link", name="Pobierz PDF")).to_be_visible()
+    expect(referee.get_by_role("link", name="Pobierz ZIP (PDF + klipy)")).to_have_count(0)  # drafts have no ZIP
+    referee.goto(f"{sa_url}/edit")
+
     referee.get_by_role("button", name="Wyślij").click()
     expect(referee.locator("#page-notice")).to_contain_text("Wysłano samoocenę")
     expect(referee.locator("#sa-report")).to_contain_text("ARKUSZ SAMOOCENY RC 2026/27")
@@ -65,6 +74,13 @@ def test_referee_fills_in_a_self_assessment_and_a_coach_reads_it(ui):
     with coach.expect_download() as download:
         coach.get_by_role("link", name="Pobierz PDF").click()
     assert download.value.suggested_filename == "samoocena_2026-10-28_Legia-Wisla_CC.pdf"
+    with coach.expect_download() as download:
+        coach.get_by_role("link", name="Pobierz ZIP (PDF + klipy)").click()
+    assert download.value.suggested_filename == "samoocena_2026-10-28_Legia-Wisla_CC.zip"
+    with zipfile.ZipFile(download.value.path()) as archive:
+        assert archive.namelist()[0] == "samoocena_2026-10-28_Legia-Wisla_CC.pdf"
+        assert [n for n in archive.namelist() if n.startswith("klipy/")] == [
+            "klipy/01_kroki.mp4", "klipy/02_aut.mp4", "klipy/03_aut.mp4"]
 
     outsider = ui.page("outsider")
     assert outsider.goto(f"/self-assessments/{coach.url.split('/')[-1]}").status == 404
