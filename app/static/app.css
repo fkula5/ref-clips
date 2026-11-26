@@ -222,6 +222,9 @@ tr.no-activity td { background: var(--warn-wash); }
 .pc-player :focus-visible { outline: 2px solid var(--focus-on-dark); outline-offset: -2px; }
 .pc-player .vjs-control-bar { display: flex; flex-wrap: wrap; align-items: center; height: auto; padding: 0 6px; background: var(--scrim); border-radius: 0 0 6px 6px; }
 .pc-player.vjs-fullscreen .vjs-control-bar { border-radius: 0; }
+/* Full-window fallback (iPhone): stop above the browser's floating toolbar instead of running under it. */
+.vjs-full-window .pc-player.vjs-fullscreen { bottom: auto; height: 100% !important; height: 100svh !important; }
+.vjs-full-window .pc-player.vjs-fullscreen .vjs-control-bar { padding-bottom: env(safe-area-inset-bottom); }
 .pc-player.pc-fs-moved .vjs-control-bar { bottom: 10px; }
 .pc-player .vjs-control-bar .vjs-button { width: 3em; height: 3em; }
 .pc-player .vjs-control-bar .vjs-button:hover, .pc-player .vjs-control-bar .vjs-button:focus-visible { background: rgba(255, 255, 255, .16); }
@@ -253,6 +256,10 @@ tr.no-activity td { background: var(--warn-wash); }
 /* Narrow: times and seek bar get their own row above the buttons; the least important buttons make room. */
 @media (max-width: 599px) {
   .pc-player .vjs-control-bar { padding: 0; }
+  /* Portrait phones: the two-row bar sits under the picture and stays visible instead of covering a third of it. */
+  .pc-player.video-js:not(.vjs-fullscreen) { aspect-ratio: auto; height: auto; max-height: none !important; }
+  .pc-player:not(.vjs-fullscreen) video.vjs-tech { position: relative; display: block; height: auto; aspect-ratio: var(--pc-ar, 16 / 9); max-height: 60svh; }
+  .video-js.pc-player:not(.vjs-fullscreen) .vjs-control-bar { position: relative; opacity: 1 !important; visibility: visible !important; pointer-events: auto !important; transition: none; }
   .pc-player .vjs-current-time, .pc-player .vjs-duration { flex: 0 0 3.8em; width: 3.8em; padding: 0; text-align: center; line-height: 2.2em; }
   .pc-player .vjs-current-time { order: -3; }
   .pc-player .vjs-progress-control { order: -2; flex: 1 1 calc(100% - 7.6em); min-width: 0; height: 2.2em; }

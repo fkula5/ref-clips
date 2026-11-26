@@ -275,9 +275,26 @@ def test_full_window_fallback_where_element_fullscreen_is_missing(ui):
     expect(page.get_by_role("button", name="Zaznacz (Z)")).to_be_visible()
     page.keyboard.press("Escape")
     expect(page.locator(".video-js")).not_to_have_class(re.compile(r"vjs-fullscreen"))
+    # The button at the top of the viewport, so tap() has no reason to scroll the page first.
+    bar_button(page, "Pełny ekran").evaluate("el => el.scrollIntoView({block: 'start'})")
+    before = page.evaluate("window.scrollY")
+    assert before > 0
     bar_button(page, "Pełny ekran").tap()
     bar_button(page, "Zamknij pełny ekran").tap()
     assert page.evaluate("document.documentElement.style.overflow !== 'hidden'")
+    page.wait_for_function(f"Math.abs(window.scrollY - {before}) < 2")  # back where the page was
+
+
+def test_phone_portrait_bar_sits_under_the_picture_and_stays(ui):
+    page, _, _ = open_player(ui, mobile=True)
+    geometry = page.evaluate("""() => {
+      const video = document.querySelector('.video-js video').getBoundingClientRect();
+      const bar = document.querySelector('.vjs-control-bar').getBoundingClientRect();
+      return {videoBottom: video.bottom, barTop: bar.top, barVisible: getComputedStyle(document.querySelector('.vjs-control-bar')).visibility};
+    }""")
+    assert geometry["barTop"] >= geometry["videoBottom"] - 1, geometry
+    page.wait_for_timeout(3500)  # past the idle timeout
+    expect(bar_button(page, "Pełny ekran")).to_be_visible()
 
 
 def test_clip_page_has_the_bar_and_the_keys(ui):

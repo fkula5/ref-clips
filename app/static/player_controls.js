@@ -122,8 +122,15 @@
       video.playbackRate = rate;
     }
 
+    // iPhone has no element full screen: the full-window fallback locks the page scroll and leaves the page
+    // scrolled elsewhere on exit, so the position is taken before entering and restored afterwards.
+    let pageY = null;
+    const rememberScroll = () => { if (!player.isFullscreen()) pageY = window.scrollY; };
+    bar.addEventListener("pointerdown", rememberScroll, { capture: true, passive: true });
+
     function toggleFullscreen() {
       if (player.isFullscreen()) { player.exitFullscreen(); return; }
+      rememberScroll();
       const request = player.requestFullscreen();
       if (request && request.catch) request.catch(() => player.enterFullWindow());
     }
@@ -144,6 +151,11 @@
         (opts.fsButtons || []).forEach((node) => relocate(node, bar, bar.querySelector(".vjs-playback-rate")));
       } else {
         moved.splice(0).forEach(({ node, mark }) => mark.replaceWith(node));
+        if (pageY !== null) {
+          const y = pageY;
+          pageY = null;
+          requestAnimationFrame(() => window.scrollTo(0, y));
+        }
       }
       el.classList.toggle("pc-fs-moved", on && !!(opts.fsOverlays && opts.fsOverlays.length));
       wake();
