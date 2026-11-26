@@ -275,11 +275,14 @@ def test_full_window_fallback_where_element_fullscreen_is_missing(ui):
     expect(page.get_by_role("button", name="Zaznacz (Z)")).to_be_visible()
     page.keyboard.press("Escape")
     expect(page.locator(".video-js")).not_to_have_class(re.compile(r"vjs-fullscreen"))
-    page.evaluate("window.scrollTo(0, 150)")
+    # The button at the top of the viewport, so tap() has no reason to scroll the page first.
+    bar_button(page, "Pełny ekran").evaluate("el => el.scrollIntoView({block: 'start'})")
+    before = page.evaluate("window.scrollY")
+    assert before > 0
     bar_button(page, "Pełny ekran").tap()
     bar_button(page, "Zamknij pełny ekran").tap()
     assert page.evaluate("document.documentElement.style.overflow !== 'hidden'")
-    page.wait_for_function("Math.abs(window.scrollY - 150) < 2")  # back where the page was
+    page.wait_for_function(f"Math.abs(window.scrollY - {before}) < 2")  # back where the page was
 
 
 def test_phone_portrait_bar_sits_under_the_picture_and_stays(ui):
