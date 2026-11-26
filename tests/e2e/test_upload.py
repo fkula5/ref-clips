@@ -271,3 +271,16 @@ def test_two_files_at_once_with_separate_declarations(ui, tmp_path):
     # every one-quarter file gets a start marker (0:00) at once, so the banner does not appear
     expect(page.locator("#marks-banner")).to_have_count(0)
     expect(page.locator(".match-head .badge")).to_have_text("gotowy")
+
+
+def test_a_file_that_does_not_fit_now_is_flagged_before_sending(ui):
+    page, match_id = open_match(ui)
+    page.route("**/api/upload-space", lambda route: route.fulfill(json={
+        "max_bytes": 6 * 1024 ** 3, "acceptable_bytes": 1000, "acceptable_label": "0 GB",
+        "note": "Na serwerze brakuje teraz miejsca na nowe nagranie — spróbuj później.", "active": None}))
+    page.on("dialog", lambda d: d.accept())
+    row = choose_file(page, ui)
+    expect(row.locator(".size-problem")).to_contain_text("na serwerze zmieści się teraz plik do 0 GB")
+    expect(page.locator("#upload-space")).to_have_text("Na serwerze brakuje teraz miejsca na nowe nagranie — spróbuj później.")
+    page.get_by_role("button", name="Wgraj").click()
+    expect(page.locator("#upload-progress .upload-row")).to_have_count(0)

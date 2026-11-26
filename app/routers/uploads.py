@@ -15,7 +15,7 @@ from sqlalchemy.exc import InvalidRequestError
 from sqlalchemy.orm.exc import StaleDataError
 from starlette.requests import ClientDisconnect
 
-from app import config, permissions, services, uploads
+from app import config, permissions, services, uploads, web
 from app.auth import require
 from app.db import get_db
 from app.models import Match, UploadSession, User
@@ -82,6 +82,11 @@ def tus_options(user: User = require(permissions.can_view)):
     return Response(status_code=204, headers=_headers(**{
         "Tus-Version": TUS_VERSION, "Tus-Extension": EXTENSIONS,
         "Tus-Max-Size": str(config.UPLOAD_MAX_BYTES)}))
+
+
+@router.get("/api/upload-space")
+def upload_space(user: User = uploader):
+    return web.upload_space(user)
 
 
 @router.post("/uploads/", dependencies=[Depends(tus_version)])
