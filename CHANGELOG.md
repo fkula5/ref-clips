@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.17.0](https://github.com/fkula5/ref-clips/compare/v1.16.1...v1.17.0) (2026-11-26)
+
+
+### Features
+
+* **self-assessment:** download a submitted sheet as a ZIP with its clips ([#61](https://github.com/fkula5/ref-clips/issues/61)) ([29ba4cf](https://github.com/fkula5/ref-clips/commit/29ba4cf6f7948e7423ed998137e9a38f3d4bda22))
+* **upload:** show how large a file fits now and flag too-large files before sending ([#60](https://github.com/fkula5/ref-clips/issues/60)) ([0614442](https://github.com/fkula5/ref-clips/commit/0614442946fe338996d0dca3f115e41ef00ae6e0))
+
+
+### Bug Fixes
+
+* **player:** keep the page in place after the iPhone full-window mode and put the phone control bar under the picture ([#59](https://github.com/fkula5/ref-clips/issues/59)) ([0e3a853](https://github.com/fkula5/ref-clips/commit/0e3a8530f6dab5d0289e50ae2e7e109e4fec2ea6))
+
 ## [1.16.1](https://github.com/fkula5/ref-clips/compare/v1.16.0...v1.16.1) (2026-11-24)
 
 
