@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.18.0](https://github.com/fkula5/ref-clips/compare/v1.17.0...v1.18.0) (2026-11-27)
+
+
+### Features
+
+* **admin:** manage leagues in the admin panel and pick the match league from the list ([#63](https://github.com/fkula5/ref-clips/issues/63)) ([044f5da](https://github.com/fkula5/ref-clips/commit/044f5da85c92a31783e63f596ffcb40e4a1f0e09))
+
 ## [1.17.0](https://github.com/fkula5/ref-clips/compare/v1.16.1...v1.17.0) (2026-11-26)
 
 
