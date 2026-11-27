@@ -56,7 +56,8 @@ przeglądarka ──HTTPS──► Caddy ──► FastAPI (uvicorn, 2 procesy) 
 | `users` | e-mail, first and last name, password hash, active | |
 | `user_roles` | user_id, role (`admin` / `coach` / `referee`) | several roles at once |
 | `sessions` | token (hash), user_id, validity | logging out invalidates the session |
-| `invites` | token (hash), user_id, purpose (`activate` / `reset`), validity 7 days | link for setting a password |
+| `invites` | token (hash), user_id, purpose (`activate` / `reset`), validity 7 days (60 minutes for a self-service reset) | link for setting a password |
+| `password_reset_requests` | kind (`reset` / `token_miss`), e-mail hash, ip, mailed, time | throttling of the self-service reset and of unusable links; rows deleted after 24 h |
 | `matches` | date, league (text, picked from `leagues` in the form), teams (name, colour), author | |
 | `leagues` | name, position, is_active; the managed list of leagues | |
 | `match_officials` | match_id, function (`CC`/`U1`/`U2`), user_id **or** a typed first and last name | the check "was in the crew" by user_id |
@@ -134,7 +135,7 @@ przeglądarka ──HTTPS──► Caddy ──► FastAPI (uvicorn, 2 procesy) 
 - Session: a random token in an `HttpOnly`, `Secure`, `SameSite=Lax` cookie, valid for 30 days with refreshing. Only the token hash is kept in the database.
 - CSRF: `SameSite=Lax` + a CSRF token in the forms and in the HTMX header.
 - **Creating an account:** the admin enters the e-mail, first and last name and the roles, and the system generates an **invitation link** (valid 7 days). The admin sends it themselves, e.g. via Messenger or SMS. In the MVP the application does not send e-mails, so it does not need an SMTP server.
-- Password reset: the admin generates a reset link in the same way. Self-service reset by e-mail is in version 2.
+- Password reset: the admin generates a reset link in the same way (valid 7 days). Self-service: „Nie pamiętasz hasła?” on the login page sends a 60-minute, single-use link by e-mail (the SMTP settings of the digest). The answer is identical for every address (no account enumeration) and the mail goes out in a background task. Limits, counted in the database: per address 1 mail per 5 minutes and 3 per hour, per IP 5 requests per 15 minutes (429), 50 mails per hour in total, and 20 unusable `/set-password` links per IP per 15 minutes (429). Details: README, „Password reset by e-mail”. Volumetric DDoS is handled at the network level (OVH's anti-DDoS), not by the application.
 - The first admin is created with the command `python -m app.create_admin`.
 
 ## 8. Interface

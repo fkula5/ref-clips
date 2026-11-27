@@ -15,6 +15,7 @@ EXPECTED_TABLES = {
     "sheet_elements", "sheets", "sheet_columns", "sheet_rows", "sheet_cells", "notifications",
     "training_groups", "group_members", "training_sets", "training_set_clips", "training_set_groups",
     "match_scoresheets", "email_preferences", "self_assessments", "self_assessment_clips", "leagues",
+    "password_reset_requests",
 }
 
 
@@ -488,3 +489,29 @@ def test_leagues_migration_on_an_empty_database_seeds_nothing(tmp_path):
     command.upgrade(_config(url), "head")
     with create_engine(url).connect() as conn:
         assert conn.execute(text("SELECT COUNT(*) FROM leagues")).scalar() == 0
+
+
+def test_password_reset_requests_migration_creates_the_table_with_indexes_and_downgrades(tmp_path):
+    from sqlalchemy import text
+
+    url = f"sqlite:///{tmp_path / 'm.db'}"
+    cfg = _config(url)
+    command.upgrade(cfg, "mvp0014")
+    engine = create_engine(url)
+    assert "password_reset_requests" not in inspect(engine).get_table_names()
+    command.upgrade(cfg, "head")
+    inspector = inspect(create_engine(url))
+    assert {c["name"] for c in inspector.get_columns("password_reset_requests")} == {
+        "id", "kind", "email_key", "ip", "mailed", "requested_at"}
+    assert {tuple(i["column_names"]) for i in inspector.get_indexes("password_reset_requests")} == {
+        ("email_key",), ("ip",), ("requested_at",)}
+    with engine.begin() as conn:
+        conn.execute(text("INSERT INTO password_reset_requests (kind, email_key, ip, mailed, requested_at) "
+                          "VALUES ('reset', 'abc', '1.2.3.4', 1, '2026-11-27 10:00:00')"))
+    with engine.connect() as conn:
+        assert conn.execute(text("SELECT COUNT(*) FROM password_reset_requests")).scalar() == 1
+        assert compare_metadata(MigrationContext.configure(conn), Base.metadata) == []
+    command.downgrade(cfg, "mvp0014")
+    assert "password_reset_requests" not in inspect(create_engine(url)).get_table_names()
+    command.upgrade(cfg, "head")
+    assert "password_reset_requests" in inspect(create_engine(url)).get_table_names()

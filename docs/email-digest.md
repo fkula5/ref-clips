@@ -1,6 +1,6 @@
 # E-mail digest
 
-One e-mail per account per day at 07:00 Warsaw time, grouped by match, sent only when there is something to report. The in-app bell is unchanged. Setup on the server: [docs/wdrozenie.md](wdrozenie.md#e-mail-digest-smtp).
+One e-mail per account per day at 07:00 Warsaw time, grouped by match, sent only when there is something to report. The in-app bell is unchanged. Setup on the server: [docs/wdrozenie.md](wdrozenie.md#e-mail-digest-smtp). The same SMTP settings send the password-reset mails (see the README, „Password reset by e-mail”).
 
 ## What goes in
 

@@ -185,6 +185,8 @@ The daily digest ([docs/email-digest.md](email-digest.md)) is off until the serv
 | `REFCLIPS_MAIL_FROM_NAME` | sender name, default `ref-clips` |
 | `REFCLIPS_PUBLIC_URL` | already set for invitations; the links in the mails are built from it, and **without it the digest stays off** |
 
+The same SMTP settings send the password-reset mails („Nie pamiętasz hasła?” on the login page). They are subject to their own limits (3 per address per hour, 50 per hour in total, so a flood cannot use up the provider's daily quota, about 300 mails on Brevo's free plan); without SMTP or `REFCLIPS_PUBLIC_URL` no reset mail is sent and the page answers as usual. Switch off link click tracking at the provider for this sender. The details are in the README („Password reset by e-mail”).
+
 After editing `.env`: `docker compose -f compose.yaml -f compose.prod.yaml up -d`. Check it as an administrator: **Ustawienia powiadomień** → „Wyślij mi testowe podsumowanie”. A connection or login error is shown on the page and in `docker compose logs app`. For a sender address on your own domain add the SPF and DKIM records the provider asks for, otherwise the mail lands in spam. The unsubscribe links (`/unsubscribe/<token>`) are kept out of the Caddy and application logs like the other token links.
 
 ## Links to clips without an account (`/s/<kod>`)

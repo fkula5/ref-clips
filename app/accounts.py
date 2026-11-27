@@ -29,6 +29,11 @@ def normalize_email(email: str) -> str:
     return email.strip().lower()
 
 
+def valid_email(email: str) -> bool:
+    """For an already normalised address."""
+    return len(email) <= 255 and bool(_EMAIL_RE.match(email))
+
+
 def validate_password(password: str) -> str | None:
     if len(password) < config.MIN_PASSWORD_LENGTH:
         return f"Hasło musi mieć co najmniej {config.MIN_PASSWORD_LENGTH} znaków."
@@ -114,16 +119,18 @@ def end_all_sessions(db: Session, user_id: int) -> None:
     db.execute(delete(AuthSession).where(AuthSession.user_id == user_id))
 
 
-def create_invite(db: Session, user: User, purpose: str, created_by: User | None) -> str:
+def create_invite(db: Session, user: User, purpose: str, created_by: User | None, *,
+                  ttl: timedelta | None = None, commit: bool = True) -> str:
     """Invalidates the account's earlier unused links."""
     now = utcnow()
     for old in db.scalars(select(Invite).where(Invite.user_id == user.id, Invite.used_at.is_(None))):
         old.used_at = now
     token = security.new_token()
     db.add(Invite(user_id=user.id, token_hash=security.hash_token(token), purpose=purpose,
-                  expires_at=now + timedelta(days=config.INVITE_DAYS),
+                  expires_at=now + (ttl or timedelta(days=config.INVITE_DAYS)),
                   created_by=created_by.id if created_by else None))
-    db.commit()
+    if commit:
+        db.commit()
     return token
 
 
@@ -144,6 +151,8 @@ def redeem_invite(db: Session, invite: Invite, password: str) -> None:
     user.password_hash = security.hash_password(password)
     invite.used_at = utcnow()
     end_all_sessions(db, user.id)
+    # whoever the throttle locked out (maybe the user, maybe someone guessing) can now log in with the new password
+    db.execute(delete(LoginAttempt).where(LoginAttempt.email == user.email))
     db.commit()
 
 
@@ -163,7 +172,7 @@ def _active_admins_except(db: Session, user_id: int) -> int:
 
 def create_user(db: Session, *, email: str, name: str, roles, password: str | None = None) -> User:
     email, name = normalize_email(email), " ".join(name.split())
-    if not _EMAIL_RE.match(email) or len(email) > 255:
+    if not valid_email(email):
         raise AccountError("Podaj poprawny adres e-mail.")
     if not name:
         raise AccountError("Podaj imię i nazwisko.")

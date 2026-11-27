@@ -1,0 +1,12 @@
+Cześć {{ name }},
+
+ktoś (mamy nadzieję, że Ty) poprosił o ustawienie nowego hasła do konta w ref-clips. Aby je ustawić, otwórz ten link:
+
+{{ link }}
+
+Link jest ważny {{ minutes }} minut i można go użyć tylko raz.
+
+Jeśli to nie Ty prosiłeś(-aś) o zmianę hasła, zignoruj tę wiadomość — Twoje hasło się nie zmieni.
+
+--
+ref-clips

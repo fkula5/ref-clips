@@ -37,6 +37,17 @@ LOGIN_MAX_ATTEMPTS = 5
 LOGIN_WINDOW_MINUTES = 15
 MIN_PASSWORD_LENGTH = 10
 
+# Self-service password reset (README, "Accounts"). Every limit is counted in the database.
+PASSWORD_RESET_MINUTES = 60  # validity of an e-mailed link; admin-made links keep INVITE_DAYS
+RESET_EMAIL_COOLDOWN_MINUTES = 5  # at most one mail per address in this window...
+RESET_EMAIL_MAX_PER_HOUR = 3  # ...and this many per hour
+RESET_IP_MAX_REQUESTS = 5  # requests per RESET_IP_WINDOW_MINUTES from one address, then 429
+RESET_IP_WINDOW_MINUTES = 15
+RESET_GLOBAL_MAX_PER_HOUR = 50  # reset mails across the whole app: keeps a flood inside the mail quota
+RESET_KEEP_HOURS = 24  # older request rows are deleted
+TOKEN_MISS_MAX = 20  # unknown/used/expired /set-password links per IP per window, then 429
+TOKEN_MISS_WINDOW_MINUTES = 15
+
 
 def _flag(name: str, default: bool = False) -> bool:
     value = os.environ.get(name)

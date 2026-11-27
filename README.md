@@ -200,11 +200,13 @@ in the footer of the site after logging in.
 
 1. The administrator goes to **Użytkownicy** („Users”, in the menu at the top) and adds an account: first and last name, e-mail
    (this is the login) and roles. The application shows an **invitation link** to copy — send it to the
-   person yourself (Messenger, SMS). The application does not send e-mails.
+   person yourself (Messenger, SMS); the application does not e-mail invitations.
 2. The person opens the link, sets a password and logs in. The link is valid for 7 days and works only once;
    after the page is closed it cannot be read again, a new one must be generated.
-3. Forgotten password: the administrator clicks **Link resetu hasła** („Password reset link”) next to the account and sends the new link.
-   A reset logs the account out of all devices.
+3. Forgotten password: the person clicks **Nie pamiętasz hasła?** („Forgot your password?”) under the login form, gives their
+   e-mail and gets a link to set a new one (valid 60 minutes, works once; see "Password reset by e-mail" below). Alternatively the
+   administrator clicks **Link resetu hasła** („Password reset link”) next to the account and sends the link (valid 7 days).
+   Either way a reset logs the account out of all devices and clears that account's login throttle.
 4. Roles can be changed at any time; an account can be deactivated (the user is logged out
    and cannot log in, but their entries remain). There must always be at least one active administrator.
 
@@ -229,9 +231,38 @@ them on the server side (`auth.require(...)`); the interface only hides unavaila
 
 Security: passwords hashed with argon2; session in an `HttpOnly`, `SameSite=Lax` cookie
 (`Secure` via `REFCLIPS_COOKIE_SECURE`), valid for 30 days with renewal, only the token hash in the database;
-limit of 5 failed login attempts per 15 minutes, separately per account and per IP address; a CSRF token
+limit of 5 failed login attempts per 15 minutes, separately per account and per IP address (password reset below); a CSRF token
 in every form and in the `X-CSRF-Token` header of HTMX/fetch requests. Every page except login
 and setting a password requires logging in (pages redirect to `/login`, the API returns 401).
+
+### Password reset by e-mail
+
+`/forgot-password` (linked as „Nie pamiętasz hasła?” under the login form) takes an e-mail address and sends a link
+`<REFCLIPS_PUBLIC_URL>/set-password/<token>` through the same SMTP settings as the digest (without SMTP or `REFCLIPS_PUBLIC_URL`
+nothing is sent and a warning is logged). The link is the ordinary reset invite with a 60-minute life (`PASSWORD_RESET_MINUTES`),
+single use; a newer link cancels the older ones, and an inactive account never gets one. Opening it uses the `/set-password` page,
+which ends all of the account's sessions; the account's login throttle is cleared too, so a locked-out user can get back in.
+
+The endpoint cannot be used to find out who has an account: every request that gets past the per-IP limit is answered with the
+same redirect and the same message („Jeśli konto o tym adresie istnieje, wysłaliśmy na nie link…”) whether the account exists, is
+inactive, is over a limit, or the hidden honeypot field was filled. The database work is the same (one transaction), and the
+mail is sent after the response (a background task), so neither the answer nor its timing depends on the account. Only a
+malformed address (422) and the per-IP limit (429) differ, and neither says anything about accounts.
+
+Limits, all counted in the database table `password_reset_requests` (constants in `app/config.py`, enforced in
+`app/password_reset.py`; old rows are deleted after 24 hours):
+
+| Limit | Value | Over it |
+|---|---|---|
+| mails per e-mail address | 1 per 5 minutes and 3 per hour | nothing is sent, the answer stays neutral |
+| requests per IP address | 5 per 15 minutes | HTTP 429 with a generic message, nothing recorded |
+| reset mails across the whole app | 50 per hour (protects the ~300 mails/day of the Brevo free plan) | nothing is sent, the answer stays neutral, one warning per hour in the log |
+| unusable `/set-password/<token>` links per IP | 20 per 15 minutes | HTTP 429 (even for a good link) |
+
+The address is stored only as a SHA-256 hash and the logs hold at most a masked form (`a***@example.com`), never the token or the
+whole address. The IP is the client address from the trusted proxy (`REFCLIPS_TRUST_PROXY`). These limits cap the application's own work
+and mail; **volumetric DDoS is not handled by the application** — that is the job of the network level (OVH's anti-DDoS in front of
+the server). If the mail provider offers link click tracking, turn it off for this sender: it would route the token through the provider.
 
 ## Administrator panel (segment 7)
 
@@ -562,6 +593,7 @@ checks only the full-screen API and the layout in a narrow 390×844 window).
 app/main.py            aplikacja FastAPI, dołączanie tras z wymogiem logowania i CSRF
 app/auth.py            sesja, CSRF, zależność require(...) dla tras
 app/accounts.py        logowanie z limitem prób, sesje, zaproszenia, zarządzanie kontami
+app/password_reset.py reset hasła mailem: limity, wiadomość, wysyłka w tle
 app/permissions.py     uprawnienia (czyste funkcje, jedno miejsce)
 app/create_admin.py    polecenie zakładające pierwszego administratora
 app/routers/           trasy: logowanie, panel admina, mecze, nagrania/odtwarzacz/notatki, klipy, ekran opisywania
