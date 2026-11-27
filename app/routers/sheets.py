@@ -6,13 +6,14 @@ from __future__ import annotations
 from collections.abc import Callable
 
 from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
 from app import flash, permissions, sheets
 from app.auth import current_user, require
 from app.db import get_db
 from app.loaders import get_match
-from app.models import Match, Sheet, User
+from app.models import SHEET_DIFFICULTIES, Match, Sheet, User
 from app.sheets import SheetError
 from app.web import mark_seen, render
 
@@ -57,14 +58,33 @@ def render_form(request: Request, db: Session, sheet: Sheet, *, values: dict[str
                   changes=[] if sheet.is_published else sheets.crew_changes(sheet))
 
 
+def _data(sheet: Sheet, user: User) -> JSONResponse:
+    return JSONResponse({
+        "id": sheet.id, "match": {"id": sheet.match_id, "title": sheet.match.title},
+        "author": sheet.coach.name, "published": sheet.is_published,
+        "can_edit": permissions.can_edit_sheet(user, sheet), "can_publish": permissions.can_publish_sheet(user, sheet),
+        "can_delete": permissions.can_delete_sheet(user, sheet),
+        "changes": [] if sheet.is_published else sheets.crew_changes(sheet),
+        "values": sheets.form_values(sheet),
+        "difficulties": [{"value": key, "label": label} for key, label in SHEET_DIFFICULTIES.items()],
+        "columns": [{
+            "id": col.id, "label": col.label, "overall": sheets.overall_key(col),
+            "recommendation": sheets.recommendation_key(col),
+            "fields": [{"key": sheets.cell_key(row, col), "label": row.name} for row in sheet.rows],
+        } for col in sheet.columns],
+    }, headers={"Cache-Control": "no-store"})
+
+
 @router.post("/matches/{match_id}/sheets")
-def open_sheet(db: Session = Depends(get_db), match: Match = Depends(get_match),
+def open_sheet(request: Request, db: Session = Depends(get_db), match: Match = Depends(get_match),
                user: User = require(permissions.can_create_sheet)):
     try:
         sheet, created = sheets.create(db, match, user)
     except SheetError as exc:
         raise HTTPException(exc.status_code, str(exc)) from None
     db.commit()
+    if request.headers.get("accept") == "application/json":
+        return JSONResponse({"id": sheet.id, "editing": True})
     return flash.redirect_with_page_notice(
         f"/sheets/{sheet.id}/edit", "Założono arkusz jako szkic." if created else "Wracasz do swojego arkusza.")
 
@@ -73,11 +93,15 @@ def open_sheet(db: Session = Depends(get_db), match: Match = Depends(get_match),
 def show_sheet(request: Request, db: Session = Depends(get_db), sheet: Sheet = view_sheet,
                user: User = Depends(current_user)):
     mark_seen(request, db, sheet_id=sheet.id)
+    if request.headers.get("accept") == "application/json":
+        return _data(sheet, user)
     return render(request, "sheet.html", sheet=sheet, match=sheet.match, grid=sheets.grid(sheet))
 
 
 @router.get("/sheets/{sheet_id}/edit")
 def edit_form(request: Request, db: Session = Depends(get_db), sheet: Sheet = edit_sheet):
+    if request.headers.get("accept") == "application/json":
+        return _data(sheet, request.state.user)
     return render_form(request, db, sheet)
 
 
@@ -95,8 +119,12 @@ def save_sheet(request: Request, db: Session = Depends(get_db), sheet: Sheet = e
         notes = sheets.refresh_crew(db, sheet) if action == "refresh" else []
     except SheetError as exc:
         db.rollback()
+        if request.headers.get("accept") == "application/json":
+            raise HTTPException(exc.status_code, " ".join(exc.errors)) from exc
         return render_form(request, db, sheet, values=posted, errors=exc.errors, status_code=exc.status_code)
     db.commit()
+    if request.headers.get("accept") == "application/json":
+        return JSONResponse({"id": sheet.id, "editing": not sheet.is_published, "notes": notes})
     if published:
         empty, total = sheets.empty_count(sheet)
         return flash.redirect_with_page_notice(
@@ -115,8 +143,10 @@ def confirm_delete(request: Request, sheet: Sheet = delete_sheet_dep):
 
 
 @router.post("/sheets/{sheet_id}/delete")
-def delete_sheet(db: Session = Depends(get_db), sheet: Sheet = delete_sheet_dep):
+def delete_sheet(request: Request, db: Session = Depends(get_db), sheet: Sheet = delete_sheet_dep):
     match_id = sheet.match_id
     db.delete(sheet)
     db.commit()
+    if request.headers.get("accept") == "application/json":
+        return JSONResponse({"match_id": match_id})
     return flash.redirect_with_page_notice(f"/matches/{match_id}#arkusz", "Usunięto arkusz.")

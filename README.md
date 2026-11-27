@@ -1,5 +1,10 @@
 # ref-clips
 
+## Nowy frontend (Vue + Quasar)
+
+Nowy interfejs jest rozwijany w katalogu `frontend/`. Uruchomienie lokalne i zakres
+pierwszego etapu opisuje [frontend/README.md](frontend/README.md).
+
 A web application for cutting out and analysing referee decisions from basketball games, for referees
 and coaches of one district. You upload a recording, mark moments or paste notes such as
 `2:54 Filip kroki`, and the app cuts a clip from each entry (15 s before and 15 s after) and organises

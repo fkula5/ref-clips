@@ -6,9 +6,10 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Callable
+from dataclasses import asdict
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from sqlalchemy.orm import Session
 from starlette.background import BackgroundTask
 
@@ -53,6 +54,33 @@ async def posted(request: Request) -> tuple[dict[str, str], list[int]]:
     return fields, order
 
 
+def summary(sa: SelfAssessment) -> dict:
+    return {"id": sa.id, "title": sa.title, "author": sa.author.name, "published": sa.is_submitted,
+            "match_id": sa.match_id}
+
+
+def _data(db: Session, sa: SelfAssessment, user: User) -> JSONResponse:
+    editing = permissions.can_edit_self_assessment(user, sa)
+    hints = self_assessments.clip_hint(sa) if editing else {}
+    return JSONResponse({
+        **summary(sa), "header": asdict(self_assessments.header(sa)),
+        "can_edit": editing, "can_delete": permissions.can_delete_self_assessment(user, sa),
+        "can_reopen": permissions.can_reopen_self_assessment(user, sa),
+        "league_names": leagues.active_names(db) if editing and not sa.match_id else [],
+        "questions": [{"key": key, "label": label} for key, label in self_assessments.QUESTIONS],
+        "header_fields": [{"key": key, "label": label} for key, label, _ in self_assessments.HEADER_FIELDS],
+        "min_clips": self_assessments.MIN_CLIPS,
+        "values": self_assessments.form_values(sa),
+        "rows": [{
+            "id": row.id, "clip_id": row.clip_id, "manual": row.is_manual, "name": row.name_label,
+            "time": row.time_label, "hint": hints.get(row.id), "name_key": self_assessments.name_key(row),
+            "desc_key": self_assessments.desc_key(row),
+        } for row in self_assessments.ordered(sa, None)],
+        "available": [{"id": clip.id, "label": f"{name} · {time}"}
+                      for clip, time, name in self_assessments.available_clips(db, sa)] if editing else [],
+    }, headers={"Cache-Control": "no-store"})
+
+
 def render_form(request: Request, db: Session, sa: SelfAssessment, *, values: dict[str, str] | None = None,
                 order: list[int] | None = None, errors: list[str] | None = None, notice: str | None = None,
                 status_code: int = 200):
@@ -69,24 +97,34 @@ def render_form(request: Request, db: Session, sa: SelfAssessment, *, values: di
 def list_page(request: Request, db: Session = Depends(get_db),
               user: User = require(permissions.can_see_self_assessments)):
     submitted, pager, mine = self_assessments.listing(db, user, parse_page(request.query_params.get("page")))
+    if request.headers.get("accept") == "application/json":
+        return JSONResponse({
+            "mine": [summary(sa) for sa in mine], "submitted": [summary(sa) for sa in submitted],
+            "page": pager.page, "pages": pager.pages,
+            "can_create": permissions.can_create_standalone_self_assessment(user),
+        }, headers={"Cache-Control": "no-store"})
     return render(request, "self_assessments.html", submitted=submitted, pager=pager, mine=mine,
                   staff=permissions.can_view_submitted_self_assessments(user),
                   can_create_standalone=permissions.can_create_standalone_self_assessment(user))
 
 
 @router.post("/self-assessments/new")
-def open_standalone(db: Session = Depends(get_db),
+def open_standalone(request: Request, db: Session = Depends(get_db),
                     user: User = require(permissions.can_create_standalone_self_assessment)):
     sa = self_assessments.create_standalone(db, user)
     db.commit()
+    if request.headers.get("accept") == "application/json":
+        return JSONResponse({"id": sa.id, "editing": True})
     return flash.redirect_with_page_notice(f"/self-assessments/{sa.id}/edit", "Założono samoocenę jako szkic.")
 
 
 @router.post("/matches/{match_id}/self-assessments")
-def open_sa(db: Session = Depends(get_db), match: Match = Depends(get_match),
+def open_sa(request: Request, db: Session = Depends(get_db), match: Match = Depends(get_match),
             user: User = require(permissions.can_fill_self_assessment, get_match)):
     sa, created = self_assessments.get_or_create(db, match, user)
     db.commit()
+    if request.headers.get("accept") == "application/json":
+        return JSONResponse({"id": sa.id, "editing": not sa.is_submitted})
     if sa.is_submitted:
         return flash.redirect_with_page_notice(f"/self-assessments/{sa.id}", "Ta samoocena została już wysłana.")
     return flash.redirect_with_page_notice(
@@ -96,6 +134,8 @@ def open_sa(db: Session = Depends(get_db), match: Match = Depends(get_match),
 @router.get("/self-assessments/{self_assessment_id}")
 def show(request: Request, db: Session = Depends(get_db), sa: SelfAssessment = view_sa):
     mark_seen(request, db, self_assessment_id=sa.id)
+    if request.headers.get("accept") == "application/json":
+        return _data(db, sa, request.state.user)
     return render(request, "self_assessment.html", sa=sa, match=sa.match, h=self_assessments.header(sa),
                   questions=self_assessments.QUESTIONS)
 
@@ -136,6 +176,8 @@ def zip_archive(sa: SelfAssessment = view_sa):
 
 @router.get("/self-assessments/{self_assessment_id}/edit")
 def edit_form(request: Request, db: Session = Depends(get_db), sa: SelfAssessment = edit_sa):
+    if request.headers.get("accept") == "application/json":
+        return _data(db, sa, request.state.user)
     return render_form(request, db, sa)
 
 
@@ -153,10 +195,14 @@ def save(request: Request, db: Session = Depends(get_db), sa: SelfAssessment = e
         else:
             db.rollback()
         note = "Nie wysłano samooceny. Szkic został zapisany." if exc.saved else None
+        if request.headers.get("accept") == "application/json":
+            raise HTTPException(exc.status_code, " ".join([*([note] if note else []), *exc.errors])) from exc
         sa = db.get(SelfAssessment, sa.id)
         return render_form(request, db, sa, values=None if exc.saved else fields, order=None if exc.saved else order,
                            errors=exc.errors, notice=note, status_code=exc.status_code)
     db.commit()
+    if request.headers.get("accept") == "application/json":
+        return JSONResponse({"id": sa.id, "editing": not sa.is_submitted})
     if submitted:
         return flash.redirect_with_page_notice(f"/self-assessments/{sa.id}", "Wysłano samoocenę. Nie można jej już edytować.")
     if action != "save":
@@ -165,16 +211,20 @@ def save(request: Request, db: Session = Depends(get_db), sa: SelfAssessment = e
 
 
 @router.post("/self-assessments/{self_assessment_id}/delete")
-def delete(db: Session = Depends(get_db), sa: SelfAssessment = delete_sa):
+def delete(request: Request, db: Session = Depends(get_db), sa: SelfAssessment = delete_sa):
     back = f"/matches/{sa.match_id}#samoocena" if sa.match_id else "/self-assessments"
     db.delete(sa)
     db.commit()
+    if request.headers.get("accept") == "application/json":
+        return JSONResponse({"deleted": True})
     return flash.redirect_with_page_notice(back, "Usunięto szkic samooceny.")
 
 
 @router.post("/self-assessments/{self_assessment_id}/reopen")
-def reopen(db: Session = Depends(get_db), sa: SelfAssessment = reopen_sa):
+def reopen(request: Request, db: Session = Depends(get_db), sa: SelfAssessment = reopen_sa):
     self_assessments.reopen(sa)
     db.commit()
+    if request.headers.get("accept") == "application/json":
+        return JSONResponse({"id": sa.id, "editing": False})
     return flash.redirect_with_page_notice(
         f"/self-assessments/{sa.id}", "Przywrócono samoocenę do edycji. Autor może ją znów poprawić i wysłać.")

@@ -1,4 +1,5 @@
 import asyncio
+import os
 from contextlib import asynccontextmanager
 from urllib.parse import quote
 
@@ -22,6 +23,8 @@ from app.routers import (admin, auth, clips, clips_v2, describe, feedback, group
                          referees, scoresheets, self_assessments, settings, share, share_links, sheets, training_sets, unsubscribe, uploads, videos,
                          watch as watch_routes)
 from app.web import BASE, back_url, render
+from app.routers import frontend
+from app.frontend_shell import VueShell
 
 
 logfilter.install()
@@ -50,9 +53,17 @@ class CachedStaticFiles(StaticFiles):
 app = FastAPI(title="ref-clips", lifespan=lifespan, docs_url=None, redoc_url=None, openapi_url=None)
 app.add_middleware(SessionRefreshMiddleware)
 app.add_middleware(SharePrivacyHeadersMiddleware)
+frontend_dist = BASE / "frontend_dist"
+if os.getenv("REFCLIPS_VUE_FRONTEND") == "1":
+    if not (frontend_dist / "index.html").is_file():
+        raise RuntimeError("REFCLIPS_VUE_FRONTEND wymaga zbudowanego frontendu w app/frontend_dist")
+    app.add_middleware(VueShell, directory=frontend_dist)
+    app.mount("/assets", StaticFiles(directory=frontend_dist / "assets"), name="vue-assets")
 app.mount("/static", CachedStaticFiles(directory=BASE / "static"), name="static")
 
 app.include_router(auth.public_router, dependencies=PUBLIC)
+app.include_router(frontend.public_router)
+app.include_router(frontend.router)
 app.include_router(share.router)  # no session or CSRF: read-only public links
 app.include_router(unsubscribe.router)  # no session or CSRF: the token in the URL is the proof
 app.include_router(auth.router, dependencies=PROTECTED)
@@ -80,6 +91,7 @@ app.include_router(watch_routes.ws_router)
 
 def _wants_page(request: Request) -> bool:
     return (request.method == "GET" and not request.url.path.startswith("/api/")
+            and request.headers.get("accept") != "application/json"
             and "hx-request" not in request.headers)
 
 

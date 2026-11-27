@@ -8,7 +8,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
-from fastapi.responses import RedirectResponse
+from fastapi.responses import JSONResponse, RedirectResponse, Response
 from sqlalchemy.orm import Session
 
 from app import clip_list, feedback, permissions
@@ -19,6 +19,7 @@ from app.loaders import get_clip, get_match
 from app.models import Clip, Comment, Match, Rating, User
 from app.routers import clips as clips_router
 from app.routers import matches as matches_router
+from app.timeutil import local
 from app.web import is_htmx, render
 
 router = APIRouter()
@@ -33,6 +34,10 @@ def get_clip_rating(rating_id: int, clip: Clip = Depends(get_clip), db: Session 
 
 def _ratings_view(request: Request, db: Session, clip: Clip, *, status_code: int = 200,
                   error: str | None = None, error_for=None, draft: dict | None = None):
+    if request.headers.get("accept") == "application/json":
+        if error is not None:
+            raise HTTPException(status_code, error)
+        return Response(status_code=204)
     if is_htmx(request):
         return render(request, "_ratings.html", status_code=status_code, c=clip,
                       ratings=feedback.ratings_of(db, clip), rating_error=error,
@@ -135,6 +140,14 @@ def register_comment_routes(scope: CommentScope) -> None:
     @router.get(f"{prefix}/{{{id_name}}}/comments")
     def older_comments(request: Request, db: Session = Depends(get_db), parent=Depends(scope.loader),
                        user: User = require(permissions.can_view), before: int | None = None):
+        if request.headers.get("accept") == "application/json":
+            comments, older_before = feedback.comments_of(db, before=before, **{scope.column: parent.id})
+            return JSONResponse({
+                "items": [{"id": comment.id, "author": comment.author.name, "date": local(comment.created_at),
+                           "text": comment.body, "can_edit": permissions.can_edit_comment(user, comment),
+                           "can_delete": permissions.can_delete_comment(user, comment)} for comment in comments],
+                "older_before": older_before,
+            }, headers={"Cache-Control": "no-store"})
         if not is_htmx(request) or before is None:
             return RedirectResponse(f"{scope.base(parent)}?comments=all#komentarze", status_code=303)
         comments, older_before = feedback.comments_of(db, before=before, **{scope.column: parent.id})
@@ -148,11 +161,15 @@ def register_comment_routes(scope: CommentScope) -> None:
             comment = feedback.create_comment(db, user.id, body, **{scope.column: parent.id})
         except FeedbackError as exc:
             db.rollback()
+            if request.headers.get("accept") == "application/json":
+                raise HTTPException(exc.status_code, str(exc)) from exc
             if is_htmx(request):
                 return _htmx_form_error(request, scope, parent, str(exc), body)
             return scope.page(request, db, parent, status_code=exc.status_code,
                               comment_error=str(exc), comment_draft=body)
         db.commit()
+        if request.headers.get("accept") == "application/json":
+            return Response(status_code=204)
         if is_htmx(request):
             return render(request, "_comment_added.html", cm=comment, cbase=scope.base(parent),
                           editing=False, edit_error=None, edit_draft=None)
@@ -184,6 +201,8 @@ def register_comment_routes(scope: CommentScope) -> None:
             feedback.edit_comment(comment, body)
         except FeedbackError as exc:
             db.rollback()
+            if request.headers.get("accept") == "application/json":
+                raise HTTPException(exc.status_code, str(exc)) from exc
             if is_htmx(request):
                 return _item(request, scope, parent, comment, editing=True, error=str(exc),
                              draft=body, status_code=exc.status_code)
@@ -191,6 +210,8 @@ def register_comment_routes(scope: CommentScope) -> None:
                           cbase=scope.base(parent), parent_url=scope.base(parent),
                           edit_error=str(exc), edit_draft=body)
         db.commit()
+        if request.headers.get("accept") == "application/json":
+            return Response(status_code=204)
         if is_htmx(request):
             return _item(request, scope, parent, comment)
         return anchor(parent, comment)
@@ -201,6 +222,8 @@ def register_comment_routes(scope: CommentScope) -> None:
                        user: User = require(permissions.can_delete_comment, get_scoped_comment)):
         db.delete(comment)
         db.commit()
+        if request.headers.get("accept") == "application/json":
+            return Response(status_code=204)
         if is_htmx(request):
             return render(request, "_comment_removed.html",
                           empty=not feedback.has_comments(db, **{scope.column: parent.id}))

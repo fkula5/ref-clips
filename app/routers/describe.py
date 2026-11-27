@@ -4,6 +4,7 @@ returns here via `render_screen`.
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Request
+from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
 from app import permissions, services
@@ -29,6 +30,17 @@ def form_values(clip: Clip) -> dict[str, str]:
             "category_id": str(clip.category_id or ""),
             "custom_category": clip.custom_category or "",
             "description": clip.description or ""}
+
+
+def editor_data(db: Session, clip: Clip) -> dict:
+    blocker = services.describe_block(clip)
+    return {
+        "values": form_values(clip),
+        "blocker": {"message": blocker.message, "url": blocker.url} if blocker else None,
+        "officials": [{"value": str(o.id), "label": o.label} for o in clip.match.officials],
+        "categories": [{"value": str(c.id), "label": c.name, "custom": c.is_custom}
+                       for c in services.categories_for(db, clip)],
+    }
 
 
 def preview_of(clip: Clip) -> dict:
@@ -72,6 +84,17 @@ def render_screen(request: Request, db: Session, match: Match, *, clip_id: int |
     in_queue = current is not None and any(c.id == current.id for c in queue)
     position = [c.id for c in queue].index(current.id) + 1 if in_queue else None
     next_clip = services.next_in_queue(queue, current) if current is not None else None
+    if request.headers.get("accept") == "application/json":
+        return JSONResponse({
+            "match": {"id": match.id, "title": match.title}, "length": len(queue), "position": position,
+            "next_id": next_clip.id if next_clip else None,
+            "recordings": [{"value": str(v.id), "label": v.display_name} for v in match.videos],
+            "current": {
+                "id": current.id, "time": format_clock(current.time_sec), "editor": editor_data(db, current),
+                "preview": preview_of(current), "problem": cut_problem(current),
+                "proposal": PROPOSAL_NOTE if services.is_proposal(current) else "",
+            } if current else None,
+        }, headers={"Cache-Control": "no-store"})
     return render(
         request, "describe.html", status_code=status_code, match=match, scope=video,
         scope_q=f"&video_id={video.id}" if video else "", queue=queue, current=current,

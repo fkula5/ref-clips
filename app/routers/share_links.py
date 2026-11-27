@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
-from fastapi.responses import RedirectResponse
+from fastapi.responses import JSONResponse, RedirectResponse, Response
 from sqlalchemy.orm import Session
 
 from app import flash, permissions, share
@@ -16,7 +16,7 @@ router = APIRouter(prefix="/share-links")
 
 
 @router.post("")
-def create_link(db: Session = Depends(get_db), user: User = require(permissions.can_view),
+def create_link(request: Request, db: Session = Depends(get_db), user: User = require(permissions.can_view),
                 clip_ids: list[str] = Form(default=[]), days: str = Form("")):
     """A failure on any clip rejects the whole form (no partial link). Success is a 303 to a page with
     the code, which waits in a short-lived cookie, not in the URL.
@@ -26,6 +26,9 @@ def create_link(db: Session = Depends(get_db), user: User = require(permissions.
     except share.ShareError as exc:
         db.rollback()
         raise HTTPException(exc.status_code, str(exc)) from None
+    if request.headers.get("accept") == "application/json":
+        return JSONResponse({"url": share.public_url(request, code)}, status_code=201,
+                            headers={"Cache-Control": "no-store", "Referrer-Policy": "no-referrer"})
     return flash.redirect_with_share("/share-links/created", link.id, code)
 
 
@@ -46,8 +49,10 @@ def created_page(request: Request, db: Session = Depends(get_db), user: User = r
 
 
 @router.post("/{link_id}/revoke")
-def revoke_link(db: Session = Depends(get_db), link: ShareLink = Depends(get_share_link),
+def revoke_link(request: Request, db: Session = Depends(get_db), link: ShareLink = Depends(get_share_link),
                 user: User = require(permissions.can_revoke_share, get_share_link), clip_id: str = Form("")):
     share.revoke(db, link)
+    if request.headers.get("accept") == "application/json":
+        return Response(status_code=204)
     return RedirectResponse(f"/clips/{clip_id}" if clip_id.isascii() and clip_id.isdecimal() else "/clips",
                             status_code=303)

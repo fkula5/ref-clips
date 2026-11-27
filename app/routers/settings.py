@@ -5,7 +5,8 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import APIRouter, Depends, Form, Request
+from fastapi import APIRouter, Depends, Form, HTTPException, Request
+from fastapi.responses import JSONResponse, Response
 from sqlalchemy.orm import Session
 
 from app import digest, flash, mail, permissions
@@ -23,6 +24,14 @@ def _page(request: Request, db: Session, user: User, *, status_code: int = 200, 
     pref = digest.get_pref(db, user.id)
     shown = digest.configurable_events(user)
     enabled = digest.enabled_events(user, pref)
+    if request.headers.get("accept") == "application/json":
+        if error is not None:
+            raise HTTPException(status_code, error)
+        return JSONResponse({
+            "digest_enabled": pref.digest_enabled, "notice": notice,
+            "mail_problem": digest.disabled_reason(), "can_test": permissions.can_manage_users(user),
+            "events": [{"key": key, "label": DIGEST_EVENTS[key], "enabled": key in enabled} for key in shown],
+        }, headers={"Cache-Control": "no-store"})
     return render(request, "settings_notifications.html", status_code=status_code, notice=notice, error=error,
                   digest_enabled=pref.digest_enabled, events=[(e, DIGEST_EVENTS[e], e in enabled) for e in shown],
                   mail_problem=digest.disabled_reason())
@@ -35,7 +44,7 @@ def notification_settings(request: Request, db: Session = Depends(get_db), user:
 
 @router.post("/notifications")
 def save_notification_settings(
-        db: Session = Depends(get_db), user: User = require(permissions.can_view),
+        request: Request, db: Session = Depends(get_db), user: User = require(permissions.can_view),
         digest_enabled: str = Form(""), new_clips_in_groups: str = Form(""), new_match_in_groups: str = Form(""),
         comments_and_ratings: str = Form(""), sheet_published: str = Form(""), group_added: str = Form(""),
         self_assessment_submitted: str = Form("")):
@@ -47,6 +56,8 @@ def save_notification_settings(
     for event in digest.configurable_events(user):  # a switch the page did not show is never changed
         setattr(pref, event, bool(submitted[event]))
     db.commit()
+    if request.headers.get("accept") == "application/json":
+        return Response(status_code=204)
     return flash.redirect_with_page_notice("/settings/notifications", "Zapisano ustawienia powiadomień.")
 
 
