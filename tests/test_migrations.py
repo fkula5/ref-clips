@@ -469,8 +469,9 @@ def test_leagues_migration_seeds_from_match_levels_collapses_spellings_and_downg
         assert [tuple(r) for r in rows] == [("2 liga", 10, 1), ("A liga", 20, 1), ("II liga", 30, 1),
                                             ("III liga", 40, 1), ("zaki", 50, 1)]
         assert conn.execute(text("SELECT created_at FROM leagues LIMIT 1")).scalar() is not None
-        # the matches themselves keep their text
-        assert sorted(conn.execute(text("SELECT level FROM matches")).scalars().all()) == sorted(levels)
+        # other spellings of a league are rewritten to its name; empty levels stay empty
+        unified = ["II liga"] * 5 + ["2 liga"] * 2 + ["III liga", "", "   ", ""] + ["zaki"] * 3 + ["A liga"] * 2
+        assert sorted(conn.execute(text("SELECT level FROM matches")).scalars().all()) == sorted(unified)
         assert compare_metadata(MigrationContext.configure(conn), Base.metadata) == []
     command.downgrade(cfg, "mvp0013")
     assert "leagues" not in inspect(create_engine(url)).get_table_names()

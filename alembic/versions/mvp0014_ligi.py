@@ -1,4 +1,6 @@
-"""Managed list of leagues, seeded from the levels typed into existing matches."""
+"""Managed list of leagues, seeded from the levels typed into existing matches. Matches typed with another
+spelling of a seeded league ("II Liga", " ii liga ") are rewritten to the league's name, so every match counts
+toward its league; the downgrade keeps the unified spelling."""
 from collections import Counter
 import re
 import unicodedata
@@ -20,15 +22,17 @@ def _normalize(text: str) -> str:
     return re.sub(r"\s+", " ", text.casefold()).strip()
 
 
-def _seed_names(levels: list[str]) -> list[str]:
-    """Spellings that are equal after normalizing collapse into one league named like the most used one
-    (ties: the alphabetically first), listed by name.
-    """
+def _winners(levels: list[str]) -> dict[str, str]:
+    """Normalized spelling -> the league name: the most used spelling (ties: the alphabetically first)."""
     counts = Counter(level.strip() for level in levels if level and level.strip())
     best: dict[str, str] = {}
     for spelling, _ in sorted(counts.items(), key=lambda item: (-item[1], item[0])):
         best.setdefault(_normalize(spelling), spelling)
-    return sorted(best.values(), key=lambda name: (_normalize(name), name))
+    return best
+
+
+def _seed_names(levels: list[str]) -> list[str]:
+    return sorted(_winners(levels).values(), key=lambda name: (_normalize(name), name))
 
 
 def upgrade() -> None:
@@ -42,7 +46,13 @@ def upgrade() -> None:
         sa.PrimaryKeyConstraint('id', name=op.f('pk_leagues')),
         sa.UniqueConstraint('name', name=op.f('uq_leagues_name')),
     )
-    levels = [row[0] for row in op.get_bind().execute(sa.text("SELECT level FROM matches"))]
+    bind = op.get_bind()
+    levels = [row[0] for row in bind.execute(sa.text("SELECT level FROM matches"))]
+    winners = _winners(levels)
+    for raw in {level for level in levels if level and level.strip()}:
+        name = winners[_normalize(raw.strip())]
+        if raw != name:
+            bind.execute(sa.text("UPDATE matches SET level = :name WHERE level = :raw"), {"name": name, "raw": raw})
     names = _seed_names(levels)
     if names:
         op.bulk_insert(leagues, [{'name': name, 'position': index * 10, 'is_active': True}
