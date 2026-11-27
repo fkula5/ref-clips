@@ -1,3 +1,10 @@
+FROM node:24-bookworm-slim AS frontend-build
+WORKDIR /frontend
+COPY frontend/package.json frontend/package-lock.json ./
+RUN npm ci
+COPY frontend/ ./
+RUN npm run build
+
 # One image for the web server (app) and the worker; they differ only in the command.
 FROM python:3.12-slim-bookworm
 
@@ -34,6 +41,7 @@ RUN pip install -r requirements.txt
 COPY alembic.ini ./
 COPY alembic ./alembic
 COPY app ./app
+COPY --from=frontend-build /frontend/dist ./app/frontend_dist
 
 # Version shown in the page footer (logged-in users). GitHub Actions passes it as --build-arg
 # REFCLIPS_VERSION=vX.Y.Z; manual builds stay "dev". Placed after installing dependencies and copying

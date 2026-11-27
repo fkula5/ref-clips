@@ -38,6 +38,7 @@ def test_marker_creates_undescribed_clip_and_queues_cut(client, db):
     assert r.status_code == 200
     body = r.json()
     assert body["created"] is True
+    assert body["quick_cut"] == {"before": 15, "after": 15}
     m = body["marker"]
     assert m["time_sec"] == 125.4 and m["described"] is False and m["status"] == "queued"
     assert (m["clip_start"], m["clip_end"]) == pytest.approx((110.4, 140.4))

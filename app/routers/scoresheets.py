@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from starlette.datastructures import UploadFile
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from sqlalchemy.orm import Session
 
 from app import flash, permissions, scoresheets
@@ -39,7 +39,11 @@ def upload_scoresheets(request: Request, db: Session = Depends(get_db), match: M
     try:
         added = scoresheets.add_files(db, user, match, incoming)
     except ScoresheetError as exc:
+        if request.headers.get("accept") == "application/json":
+            raise HTTPException(exc.status_code, str(exc)) from exc
         return render_match(request, db, match, status_code=exc.status_code, scoresheet_error=str(exc))
+    if request.headers.get("accept") == "application/json":
+        return Response(status_code=204)
     return flash.redirect_with_page_notice(
         f"/matches/{match.id}{SECTION}", f"Dodano do protokołu: {scoresheets.plural_files(len(added))}.")
 
@@ -65,7 +69,9 @@ def scoresheet_download(scoresheet: MatchScoresheet = Depends(get_scoresheet),
 
 
 @router.post("/matches/{match_id}/scoresheets/{scoresheet_id}/delete")
-def delete_scoresheet(db: Session = Depends(get_db), match: Match = Depends(get_match),
+def delete_scoresheet(request: Request, db: Session = Depends(get_db), match: Match = Depends(get_match),
                       scoresheet: MatchScoresheet = Depends(get_scoresheet), user: User = manager):
     scoresheets.remove(db, scoresheet)
+    if request.headers.get("accept") == "application/json":
+        return Response(status_code=204)
     return flash.redirect_with_page_notice(f"/matches/{match.id}{SECTION}", "Usunięto plik protokołu.")

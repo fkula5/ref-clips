@@ -4,7 +4,7 @@ from datetime import date as date_type
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
-from fastapi.responses import RedirectResponse
+from fastapi.responses import JSONResponse, RedirectResponse, Response
 from sqlalchemy import case, func, select
 from sqlalchemy.orm import Session, selectinload
 
@@ -55,8 +55,16 @@ def _form_values(match: Match | None, user: User | None = None) -> dict:
 def _render_form(request: Request, db: Session, match: Match | None, values: dict,
                  error: str | None = None, status_code: int = 200):
     levels, extra_level = leagues.match_form_choices(db, match.level if match else "")
+    referees = services.referee_candidates(db)
+    if request.headers.get("accept") == "application/json":
+        if error is not None:
+            raise HTTPException(status_code, error)
+        return JSONResponse({
+            "values": values, "levels": levels, "extra_level": extra_level,
+            "referees": [{"value": str(referee.id), "label": referee.name} for referee in referees],
+        }, headers={"Cache-Control": "no-store"})
     return render(request, "match_form.html", status_code=status_code, match=match, values=values,
-                  error=error, referees=services.referee_candidates(db), levels=levels, extra_level=extra_level)
+                  error=error, referees=referees, levels=levels, extra_level=extra_level)
 
 
 FIELD_LIMITS = {"level": ("Liga", 100), "team_a_name": ("Nazwa drużyny A", 100),
@@ -112,6 +120,8 @@ def create_match(request: Request, db: Session = Depends(get_db),
         return _render_form(request, db, None, form, str(exc), exc.status_code)
     db.add(match)
     db.commit()
+    if request.headers.get("accept") == "application/json":
+        return JSONResponse({"id": match.id}, status_code=201)
     return RedirectResponse(f"/matches/{match.id}", status_code=303)
 
 
@@ -165,6 +175,8 @@ def update_match(request: Request, db: Session = Depends(get_db), match: Match =
         db.rollback()
         return _render_form(request, db, match, form, str(exc), exc.status_code)
     db.commit()
+    if request.headers.get("accept") == "application/json":
+        return JSONResponse({"id": match.id})
     return RedirectResponse(f"/matches/{match.id}", status_code=303)
 
 
@@ -182,7 +194,7 @@ def confirm_delete_match(request: Request, match: Match = Depends(get_match),
 
 
 @router.post("/matches/{match_id}/delete")
-def delete_match(db: Session = Depends(get_db), match: Match = Depends(get_match),
+def delete_match(request: Request, db: Session = Depends(get_db), match: Match = Depends(get_match),
                  user: User = require(permissions.can_delete_match, get_match)):
     for video in match.videos:
         services.remove_video_files(video)
@@ -193,4 +205,6 @@ def delete_match(db: Session = Depends(get_db), match: Match = Depends(get_match
     db.commit()
     for key in scoresheet_files:
         storage.delete(key)
+    if request.headers.get("accept") == "application/json":
+        return Response(status_code=204)
     return RedirectResponse("/", status_code=303)

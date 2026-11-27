@@ -20,3 +20,5 @@ compose.yaml
 .dockerignore
 deploy/
 compose.prod.yaml
+frontend/node_modules/
+frontend/dist/

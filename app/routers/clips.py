@@ -3,7 +3,7 @@ from __future__ import annotations
 from urllib.parse import urlencode
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
-from fastapi.responses import RedirectResponse
+from fastapi.responses import RedirectResponse, Response
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -84,12 +84,16 @@ def clip_update(request: Request, db: Session = Depends(get_db), clip: Clip = De
                                custom_category=custom_category, description=description)
     except services.ClipDescribeError as exc:
         db.rollback()
+        if request.headers.get("accept") == "application/json":
+            raise HTTPException(exc.status_code, str(exc)) from exc
         if describing:
             return describe.render_screen(request, db, clip.match, clip_id=clip.id, video_id=video_id,
                                           values=values, error=str(exc), status_code=exc.status_code)
         return render_clip(request, db, clip, clip_list.parse_filters(request.query_params),
                            values=values, error=str(exc), status_code=exc.status_code)
     db.commit()
+    if request.headers.get("accept") == "application/json":
+        return Response(status_code=204)
     if describing:
         return _to_next(db, clip, video_id)
     return _to_clip(request, clip)
@@ -121,11 +125,13 @@ def clip_recut(request: Request, db: Session = Depends(get_db), clip: Clip = Dep
         raise HTTPException(409, "Pełnego nagrania nie ma już na serwerze — klipu nie da się wyciąć ponownie")
     services.queue_cut(db, clip)
     db.commit()
+    if request.headers.get("accept") == "application/json":
+        return Response(status_code=204)
     return _to_clip(request, clip)
 
 
 @router.post("/clips/{clip_id}/delete")
-def clip_delete(db: Session = Depends(get_db), clip: Clip = Depends(get_clip),
+def clip_delete(request: Request, db: Session = Depends(get_db), clip: Clip = Depends(get_clip),
                 user: User = require(permissions.can_delete_clip, get_clip),
                 context: str = "", video_id: int | None = None):
     match_id = clip.match_id
@@ -135,6 +141,8 @@ def clip_delete(db: Session = Depends(get_db), clip: Clip = Depends(get_clip),
     services.remove_clip_files(clip)
     db.delete(clip)
     db.commit()
+    if request.headers.get("accept") == "application/json":
+        return Response(status_code=204)
     if context == "describe":
         return _describe_redirect(match_id, following, video_id)
     return RedirectResponse(f"/matches/{match_id}#klipy", status_code=303)

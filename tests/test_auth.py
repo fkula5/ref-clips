@@ -208,7 +208,8 @@ def test_pages_redirect_to_login_and_api_returns_401(anon_client):
 # Public clip links (/s/<code>): no session, read only; tests/test_share.py checks them.
 # /unsubscribe/<token>: the token is the proof; tests/test_digest_web.py checks it.
 PUBLIC_PATHS = {"/login", "/forgot-password", "/set-password/{token}", "/health", "/s/{code}", "/s/{code}/clips/{position}/file",
-                "/s/{code}/clips/{position}/download", "/s/{code}/zip", "/unsubscribe/{token}"}
+                "/s/{code}/clips/{position}/download", "/s/{code}/zip", "/unsubscribe/{token}",
+                "/api/frontend/csrf", "/api/frontend/login"}
 
 
 def test_every_route_requires_login_except_public_ones(anon_client):

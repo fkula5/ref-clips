@@ -1,15 +1,16 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
-from fastapi.responses import RedirectResponse
+from fastapi.responses import JSONResponse, RedirectResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app import accounts, categories, config, disk, flash, leagues, permissions, retention, services, sheet_elements
 from app.auth import require
 from app.db import get_db
-from app.models import Category, League, SheetElement, User, Video
+from app.models import USER_ROLES, VIDEO_STATUSES, Category, League, SheetElement, User, Video
 from app.pagination import parse_page
+from app.timeutil import local
 from app.web import render
 
 router = APIRouter(prefix="/admin")
@@ -18,6 +19,23 @@ categories_admin = require(permissions.can_manage_categories)
 sheet_elements_admin = require(permissions.can_manage_sheet_elements)
 leagues_admin = require(permissions.can_manage_leagues)
 retention_admin = require(permissions.can_manage_retention)
+
+
+def _json(data: dict, status_code: int = 200, error: str | None = None):
+    if error:
+        raise HTTPException(status_code, error)
+    return JSONResponse(data, status_code=status_code,
+                        headers={"Cache-Control": "no-store", "Referrer-Policy": "no-referrer"})
+
+
+def _notice(request: Request, url: str, notice: str = ""):
+    if request.headers.get("accept") == "application/json":
+        return _json({"notice": notice, "target": url})
+    return flash.redirect_with_notice(url, notice)
+
+
+def _dictionary_row(item, used: dict) -> dict:
+    return {"id": item.id, "name": item.name, "active": item.is_active, "used": used.get(item.id, 0)}
 
 
 def render_admin(request: Request, db: Session, template: str, status_code: int = 200,
@@ -30,7 +48,16 @@ def render_admin(request: Request, db: Session, template: str, status_code: int 
 
 
 @router.get("")
-def admin_home(user: User = require(permissions.can_access_admin)):
+def admin_home(request: Request, user: User = require(permissions.can_access_admin)):
+    if request.headers.get("accept") == "application/json":
+        sections = [
+            ("users", "Użytkownicy", permissions.can_manage_users),
+            ("categories", "Kategorie klipów", permissions.can_manage_categories),
+            ("sheet-elements", "Elementy arkusza", permissions.can_manage_sheet_elements),
+            ("leagues", "Ligi", permissions.can_manage_leagues),
+            ("retention", "Retencja i dysk", permissions.can_manage_retention),
+        ]
+        return _json({"sections": [{"id": key, "label": label} for key, label, check in sections if check(user)]})
     return RedirectResponse(permissions.admin_home_url(user), status_code=303)
 
 
@@ -47,6 +74,16 @@ def _page(request: Request, db: Session, *, status_code: int = 200, error: str |
         invite_for = db.get(User, pending[0])
         invite_link = _invite_url(request, pending[1]) if invite_for else None
     users = db.scalars(select(User).order_by(User.is_active.desc(), User.name)).all()
+    if request.headers.get("accept") == "application/json":
+        response = _json({
+            "items": [{"id": user.id, "name": user.name, "email": user.email, "roles": sorted(user.roles),
+                       "active": user.is_active, "has_password": user.password_hash is not None} for user in users],
+            "roles": [{"value": key, "label": label} for key, label in USER_ROLES.items()],
+            "invite": invite_link,
+        }, status_code, error)
+        if invite_link:
+            flash.clear_invite(request, response)
+        return response
     response = render_admin(request, db, "admin_users.html", status_code=status_code, users=users, error=error,
                             invite_link=invite_link, invite_for=invite_for, notice=notice,
                             new_values=new_values or {"name": "", "email": "", "roles": ["referee"]},
@@ -79,6 +116,8 @@ def create_user(request: Request, db: Session = Depends(get_db), admin: User = a
         return _page(request, db, status_code=422, error=str(exc),
                      new_values={"name": name, "email": email, "roles": roles})
     token = accounts.create_invite(db, user, "activate", admin)
+    if request.headers.get("accept") == "application/json":
+        return _json({"invite": _invite_url(request, token)}, 201)
     return flash.redirect_with_invite("/admin/users", user.id, token)
 
 
@@ -92,8 +131,8 @@ def update_roles(request: Request, user_id: int, db: Session = Depends(get_db),
         db.rollback()
         return _page(request, db, status_code=422, error=str(exc), roles_edit={user_id: set(roles)})
     if not permissions.can_manage_users(admin):  # an admin who removed their own role may no longer see the list
-        return flash.redirect_with_notice("/")
-    return flash.redirect_with_notice("/admin/users", f"Zapisano role: {user.name}.")
+        return _notice(request, "/")
+    return _notice(request, "/admin/users", f"Zapisano role: {user.name}.")
 
 
 @router.post("/users/{user_id}/active")
@@ -104,8 +143,8 @@ def set_active(request: Request, user_id: int, db: Session = Depends(get_db),
         accounts.set_active(db, user, bool(active))
     except accounts.AccountError as exc:
         return _page(request, db, status_code=422, error=str(exc))
-    return flash.redirect_with_notice(
-        "/admin/users", f"Konto {user.name} jest teraz {'aktywne' if user.is_active else 'nieaktywne'}.")
+    return _notice(request, "/admin/users",
+                   f"Konto {user.name} jest teraz {'aktywne' if user.is_active else 'nieaktywne'}.")
 
 
 @router.post("/users/{user_id}/invite")
@@ -119,6 +158,8 @@ def new_link(request: Request, user_id: int, db: Session = Depends(get_db),
         return _page(request, db, status_code=422, error="Konto jest nieaktywne — najpierw je aktywuj.")
     purpose = "reset" if user.password_hash else "activate"
     token = accounts.create_invite(db, user, purpose, admin)
+    if request.headers.get("accept") == "application/json":
+        return _json({"invite": _invite_url(request, token)})
     return flash.redirect_with_invite("/admin/users", user.id, token)
 
 
@@ -132,6 +173,14 @@ def _get_category(db: Session, category_id: int) -> Category:
 def _categories_page(request: Request, db: Session, *, status_code: int = 200, error: str | None = None,
                      notice: str | None = None, new_values: dict | None = None,
                      edit_values: dict[int, dict] | None = None):
+    if request.headers.get("accept") == "application/json":
+        used = categories.usage_counts(db)
+        return _json({
+            "groups": categories.available_groups(db),
+            "items": [{**_dictionary_row(category, used), "group": group,
+                       "aliases": ", ".join(category.alias_list), "protected": category.is_custom}
+                      for group, items in categories.grouped(db) for category in items],
+        }, status_code, error)
     return render_admin(
         request, db, "admin_categories.html", status_code=status_code, error=error, notice=notice,
         groups=categories.grouped(db), group_names=categories.available_groups(db),
@@ -154,7 +203,7 @@ def create_category(request: Request, db: Session = Depends(get_db), _admin: Use
         db.rollback()
         return _categories_page(request, db, status_code=exc.status_code, error=str(exc),
                                 new_values={"name": name, "group": group, "aliases": aliases})
-    return flash.redirect_with_notice("/admin/categories", f"Dodano kategorię „{category.name}”.")
+    return _notice(request, "/admin/categories", f"Dodano kategorię „{category.name}”.")
 
 
 @router.post("/categories/{category_id}/update")
@@ -168,7 +217,7 @@ def update_category(request: Request, category_id: int, db: Session = Depends(ge
         db.rollback()
         return _categories_page(request, db, status_code=exc.status_code, error=str(exc),
                                 edit_values={category_id: {"name": name, "group": group, "aliases": aliases}})
-    return flash.redirect_with_notice("/admin/categories", f"Zapisano kategorię „{category.name}”.")
+    return _notice(request, "/admin/categories", f"Zapisano kategorię „{category.name}”.")
 
 
 @router.post("/categories/{category_id}/active")
@@ -180,7 +229,7 @@ def set_category_active(request: Request, category_id: int, db: Session = Depend
     except categories.CategoryError as exc:
         db.rollback()
         return _categories_page(request, db, status_code=exc.status_code, error=str(exc))
-    return flash.redirect_with_notice("/admin/categories", f"Kategoria „{category.name}” jest teraz "
+    return _notice(request, "/admin/categories", f"Kategoria „{category.name}” jest teraz "
                                                            f"{'aktywna' if category.is_active else 'nieaktywna'}.")
 
 
@@ -193,7 +242,7 @@ def move_category(request: Request, category_id: int, db: Session = Depends(get_
     except categories.CategoryError as exc:
         db.rollback()
         return _categories_page(request, db, status_code=exc.status_code, error=str(exc))
-    return flash.redirect_with_notice("/admin/categories")
+    return _notice(request, "/admin/categories")
 
 
 @router.post("/categories/{category_id}/delete")
@@ -206,7 +255,7 @@ def delete_category(request: Request, category_id: int, db: Session = Depends(ge
     except categories.CategoryError as exc:
         db.rollback()
         return _categories_page(request, db, status_code=exc.status_code, error=str(exc))
-    return flash.redirect_with_notice("/admin/categories", f"Usunięto kategorię „{name}”.")
+    return _notice(request, "/admin/categories", f"Usunięto kategorię „{name}”.")
 
 
 def _get_element(db: Session, element_id: int) -> SheetElement:
@@ -218,6 +267,10 @@ def _get_element(db: Session, element_id: int) -> SheetElement:
 
 def _elements_page(request: Request, db: Session, *, status_code: int = 200, error: str | None = None,
                    new_name: str = "", edit_values: dict[int, str] | None = None):
+    if request.headers.get("accept") == "application/json":
+        used = sheet_elements.usage_counts(db)
+        return _json({"items": [_dictionary_row(item, used) for item in sheet_elements.ordered(db)]},
+                     status_code, error)
     return render_admin(request, db, "admin_sheet_elements.html", status_code=status_code, error=error,
                         elements=sheet_elements.ordered(db), used=sheet_elements.usage_counts(db),
                         new_name=new_name, edit_values=edit_values or {})
@@ -229,7 +282,7 @@ def _element_action(request: Request, db: Session, action, notice: str, **failed
     except sheet_elements.SheetElementError as exc:
         db.rollback()
         return _elements_page(request, db, status_code=exc.status_code, error=str(exc), **failed)
-    return flash.redirect_with_notice("/admin/sheet-elements", notice)
+    return _notice(request, "/admin/sheet-elements", notice)
 
 
 @router.get("/sheet-elements")
@@ -286,6 +339,11 @@ def _get_league(db: Session, league_id: int) -> League:
 
 def _leagues_page(request: Request, db: Session, *, status_code: int = 200, error: str | None = None,
                   new_name: str = "", edit_values: dict[int, str] | None = None):
+    if request.headers.get("accept") == "application/json":
+        used = leagues.usage_counts(db)
+        return _json({"items": [{**_dictionary_row(item, {}), "used": used.get(item.name, 0)}
+                                for item in leagues.ordered(db)]},
+                     status_code, error)
     return render_admin(request, db, "admin_leagues.html", status_code=status_code, error=error,
                         items=leagues.ordered(db), used=leagues.usage_counts(db),
                         new_name=new_name, edit_values=edit_values or {})
@@ -297,7 +355,7 @@ def _league_action(request: Request, db: Session, action, notice: str | None = N
     except leagues.LeagueError as exc:
         db.rollback()
         return _leagues_page(request, db, status_code=exc.status_code, error=str(exc), **failed)
-    return flash.redirect_with_notice("/admin/leagues", notice(result) if callable(notice) else notice or "")
+    return _notice(request, "/admin/leagues", notice(result) if callable(notice) else notice or "")
 
 
 @router.get("/leagues")
@@ -352,6 +410,27 @@ def _retention_page(request: Request, db: Session, *, status_code: int = 200, er
                     notice: str | None = None, days_value: str | None = None):
     last_run, last_summary = retention.last_run(db)
     rows, pager = disk.video_rows(db, parse_page(request.query_params.get("page")))
+    if request.headers.get("accept") == "application/json":
+        usage = disk.usage(db)
+        return _json({
+            "days": services.retention_days(db), "min": config.RETENTION_DAYS_MIN, "max": config.RETENTION_DAYS_MAX,
+            "page": pager.page, "pages": pager.pages, "total": pager.total,
+            "last_run": local(last_run), "last_summary": last_summary,
+            "usage": {
+                "drafts": usage.drafts, "originals": usage.originals + usage.partial, "clips": usage.clips,
+                "free": usage.free, "total": usage.total, "reserved": usage.reserved, "acceptable": usage.acceptable,
+            },
+            "rejections": [{
+                "id": row.id, "date": local(row.created_at), "name": row.user.name if row.user else "",
+                "filename": row.filename, "size": row.size_bytes, "free": row.free_bytes,
+            } for row in disk.recent_rejections(db)],
+            "items": [{
+                "id": row.video.id, "name": row.video.display_name, "match_id": row.video.match_id,
+                "match": row.video.match.title, "status": VIDEO_STATUSES.get(row.video.status, row.video.status),
+                "uploaded": local(row.video.created_at), "expires": local(row.video.expires_at),
+                "size": row.size, "clips": row.clips, "pending": row.pending, "blocker": row.blocker,
+            } for row in rows],
+        }, status_code, error)
     return render_admin(
         request, db, "admin_retention.html", status_code=status_code, error=error, notice=notice,
         days=services.retention_days(db), days_value=days_value, days_min=config.RETENTION_DAYS_MIN,
@@ -378,7 +457,7 @@ def save_retention(request: Request, db: Session = Depends(get_db), _admin: User
         notice = (f"Zapisano: {value} dni. Przeliczono termin {change.recalculated} istniejących nagrań"
                   + (f"; {change.overdue} jest już po nowym terminie i zostanie usunięte przy najbliższym "
                      "sprzątaniu (workera)." if change.overdue else "."))
-    return flash.redirect_with_notice("/admin/retention", notice)
+    return _notice(request, "/admin/retention", notice)
 
 
 @router.post("/videos/{video_id}/purge")
@@ -392,4 +471,4 @@ def purge_video(request: Request, video_id: int, db: Session = Depends(get_db), 
     except retention.PurgeError as exc:
         db.rollback()
         return _retention_page(request, db, status_code=409, error=f"Nie usunięto nagrania „{name}”: {exc}")
-    return flash.redirect_with_notice("/admin/retention", f"Usunięto pełne nagranie „{name}”. Klipy zostają.")
+    return _notice(request, "/admin/retention", f"Usunięto pełne nagranie „{name}”. Klipy zostają.")

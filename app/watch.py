@@ -247,7 +247,8 @@ class Room:
                 "people": [{"id": p.user_id, "name": p.name} for p in self.participants.values()]}
 
     def welcome(self, person: Participant) -> dict:
-        return {**self.roster(), "type": "welcome", "you": person.user_id, "state": self.current_state()}
+        return {**self.roster(), "type": "welcome", "you": person.user_id,
+                "video_id": self.video_id, "state": self.current_state()}
 
     def broadcast(self, message: dict, exclude: Participant | None = None) -> None:
         for person in list(self.participants.values()):

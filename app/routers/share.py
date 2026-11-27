@@ -6,7 +6,7 @@ headers come from `app.privacy`.
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Request
-from fastapi.responses import FileResponse, Response
+from fastapi.responses import FileResponse, JSONResponse, Response
 from sqlalchemy.orm import Session
 from starlette.background import BackgroundTask
 
@@ -39,9 +39,18 @@ def gone_response(request: Request):
 def share_page(request: Request, code: str, db: Session = Depends(get_db)):
     view = share.open_link(db, code)
     if view is None:
+        if request.headers.get("accept") == "application/json":
+            return JSONResponse({"detail": "Link nie istnieje, wygasł albo został unieważniony."},
+                                status_code=404, headers=NO_STORE)
         return gone_response(request)
     if request.method == "GET":  # only page visits count; files, Range, HEAD and ZIP do not
         share.count_view(db, view.link.id)
+    if request.headers.get("accept") == "application/json":
+        return JSONResponse({
+            "single": view.single,
+            "clips": [{"position": entry.position, "category": entry.category,
+                       "level": entry.level, "filename": entry.filename} for entry in view.clips],
+        }, headers=NO_STORE)
     return templates.TemplateResponse(request, "share.html", {"code": code, "view": view}, headers=NO_STORE)
 
 

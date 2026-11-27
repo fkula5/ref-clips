@@ -8,6 +8,7 @@ from __future__ import annotations
 import re
 
 from fastapi import APIRouter, Depends, Request
+from fastapi.responses import JSONResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -27,6 +28,8 @@ def _preference(db: Session, token: str) -> EmailPreference | None:
 
 
 def _page(request: Request, status_code: int, **context):
+    if request.headers.get("accept") == "application/json":
+        return JSONResponse({"state": context["state"]}, status_code=status_code)
     return templates.TemplateResponse(request, "unsubscribe.html", context, status_code=status_code)
 
 

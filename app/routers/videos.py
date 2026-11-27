@@ -3,16 +3,16 @@ from __future__ import annotations
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
-from fastapi.responses import RedirectResponse
-from pydantic import BaseModel
+from fastapi.responses import JSONResponse, RedirectResponse, Response
+from pydantic import BaseModel, FiniteFloat
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app import permissions, services, watch
+from app import config, permissions, services, watch
 from app.auth import require, via_match
 from app.db import get_db
 from app.loaders import get_clip, get_mark, get_match, get_video
-from app.models import Category, Clip, Match, PeriodMark, User, Video
+from app.models import PERIODS, Category, Clip, Match, PeriodMark, User, Video
 from app.notes_parser import parse_notes, parse_time
 from app.storage import storage
 from app.textutil import format_clock
@@ -52,7 +52,7 @@ def _proxy_file(video: Video) -> Path:
 
 
 @router.post("/videos/{video_id}/retry")
-def retry_video(db: Session = Depends(get_db), video: Video = Depends(get_video),
+def retry_video(request: Request, db: Session = Depends(get_db), video: Video = Depends(get_video),
                 user: User = require(can_upload_video, get_video)):
     """only while the original exists (it is deleted after a successful conversion)"""
     if video.status != "error":
@@ -62,12 +62,21 @@ def retry_video(db: Session = Depends(get_db), video: Video = Depends(get_video)
                                  "Wgraj plik jeszcze raz.")
     services.queue_transcode(db, video)
     db.commit()
+    if request.headers.get("accept") == "application/json":
+        return Response(status_code=204)
     return RedirectResponse(f"/matches/{video.match_id}", status_code=303)
 
 
 @router.get("/videos/{video_id}/edit")
 def edit_video_form(request: Request, video: Video = Depends(get_video),
                     user: User = require(can_upload_video, get_video)):
+    if request.headers.get("accept") == "application/json":
+        return JSONResponse({
+            "id": video.id, "name": video.display_name, "label": video.label or "",
+            "match_id": video.match_id, "purged": video.purged_at is not None,
+            "kind": _content_kind(video.content), "checked": services.declared_periods(video.content) or [],
+            "periods": PERIODS,
+        }, headers={"Cache-Control": "no-store"})
     return render(request, "video_edit.html", video=video, match=video.match, error=None, warnings=None,
                   kind=_content_kind(video.content), checked=services.declared_periods(video.content) or [])
 
@@ -83,20 +92,29 @@ def update_video(request: Request, label: str = Form(""), content_kind: str = Fo
     if video.purged_at is not None:
         video.label = label.strip()[:100]
         db.commit()
+        if request.headers.get("accept") == "application/json":
+            return JSONResponse({"match_id": video.match_id})
         return RedirectResponse(f"/matches/{video.match_id}", status_code=303)
     try:
         content = services.content_from_form(content_kind, periods)
     except services.MatchFormError as exc:
+        if request.headers.get("accept") == "application/json":
+            raise HTTPException(422, str(exc)) from exc
         return render(request, "video_edit.html", status_code=422, video=video, match=video.match,
                       error=str(exc), warnings=None, kind=content_kind, checked=periods)
     change = services.plan_content_change(video, content)
     if change.needs_confirmation and confirm_marks != change.token:
+        if request.headers.get("accept") == "application/json":
+            return JSONResponse({"match_id": video.match_id, "warnings": change.warnings(), "confirm": change.token},
+                                headers={"Cache-Control": "no-store"})
         return render(request, "video_edit.html", video=video, match=video.match, error=None,
                       warnings=change.warnings(), confirm_token=change.token, label=label,
                       kind=content_kind, checked=periods)
     video.label = label.strip()[:100]
     services.set_content(db, video, content)
     db.commit()
+    if request.headers.get("accept") == "application/json":
+        return JSONResponse({"match_id": video.match_id})
     return RedirectResponse(f"/matches/{video.match_id}", status_code=303)
 
 
@@ -106,12 +124,14 @@ def _content_kind(content: str | None) -> str:
 
 
 @router.post("/videos/{video_id}/delete")
-def delete_video(db: Session = Depends(get_db), video: Video = Depends(get_video),
+def delete_video(request: Request, db: Session = Depends(get_db), video: Video = Depends(get_video),
                  user: User = require(permissions.can_delete_video, get_video)):
     match_id = video.match_id
     services.remove_video_files(video)
     db.delete(video)
     db.commit()
+    if request.headers.get("accept") == "application/json":
+        return Response(status_code=204)
     return RedirectResponse(f"/matches/{match_id}", status_code=303)
 
 
@@ -136,6 +156,14 @@ def _periods(video: Video) -> list[dict]:
 def _state(video: Video, user: User) -> dict:
     return {
         "video_id": video.id,
+        "name": video.display_name,
+        "match_id": video.match_id,
+        "match_title": video.match.title,
+        "playable": _playable(video),
+        "can_mark": can_upload_video(user, video),
+        "can_clip": can_manage_video_clips(user, video),
+        "quick_cut": {"before": config.DEFAULT_MARGIN_BEFORE, "after": config.DEFAULT_MARGIN_AFTER},
+        "can_download": can_download_recording(user, video),
         "duration": video.duration,
         "fps": video.fps or 25,
         "content_label": services.content_label(video.content),
@@ -211,6 +239,45 @@ def delete_mark(db: Session = Depends(get_db), mark: PeriodMark = Depends(get_ma
 
 class MarkerIn(BaseModel):
     time_sec: float
+
+
+class ClipRangeIn(BaseModel):
+    start: FiniteFloat
+    end: FiniteFloat
+
+
+def _range_margins(body: ClipRangeIn, video: Video, time_sec: float) -> tuple[float, float]:
+    if body.start < 0 or body.end - body.start < 0.5 or (video.duration is not None and body.end > video.duration + 0.001):
+        raise HTTPException(422, "Zakres klipu musi mieścić się w nagraniu i trwać co najmniej 0,5 s.")
+    if not body.start <= time_sec <= body.end:
+        raise HTTPException(422, "Znacznik musi znajdować się w zakresie klipu.")
+    before, after = time_sec - body.start, body.end - time_sec
+    if max(before, after) > config.MAX_MARGIN:
+        raise HTTPException(422, f"Od znacznika do granicy klipu może być najwyżej {config.MAX_MARGIN:g} s.")
+    return before, after
+
+
+@router.post("/api/videos/{video_id}/clips", status_code=201)
+def cut_range(body: ClipRangeIn, db: Session = Depends(get_db), video: Video = Depends(get_video),
+              user: User = require(can_manage_video_clips, get_video)):
+    _require_playable(video)
+    midpoint = (body.start + body.end) / 2
+    before, after = _range_margins(body, video, midpoint)
+    clip = services.create_clip(db, video, user, time_sec=midpoint, margin_before=before, margin_after=after)
+    db.commit()
+    watch.notify_markers_changed(video.id)
+    return {"clip_id": clip.id, **_state(video, user)}
+
+
+@router.post("/api/clips/{clip_id}/range", status_code=204)
+def adjust_range(body: ClipRangeIn, db: Session = Depends(get_db), clip: Clip = Depends(get_clip),
+                 user: User = require(via_match(permissions.can_manage_clips), get_clip)):
+    _require_playable(clip.video)
+    clip.margin_before, clip.margin_after = _range_margins(body, clip.video, clip.time_sec)
+    services.queue_cut(db, clip)
+    db.commit()
+    watch.notify_markers_changed(clip.video_id)
+    return Response(status_code=204)
 
 
 @router.post("/api/videos/{video_id}/markers")
@@ -322,6 +389,27 @@ def notes_parse_api(payload: dict, db: Session = Depends(get_db), video: Video =
     return _rows_json(services.parse_for_match(db, video.match, text))
 
 
+class NotesPreviewIn(BaseModel):
+    text: str = ""
+
+
+@router.post("/api/videos/{video_id}/notes/preview")
+def notes_preview_json(payload: NotesPreviewIn, db: Session = Depends(get_db), video: Video = Depends(get_video),
+                       user: User = require(can_manage_video_clips, get_video)):
+    _require_playable(video)
+    _notes_limit(payload.text)
+    rows = services.parse_for_match(db, video.match, payload.text)
+    categories = services.active_categories(db)
+    return {
+        "rows": [{**item, "in_range": item["time_sec"] is not None
+                  and (not video.duration or item["time_sec"] <= video.duration)}
+                 for item in _rows_json(rows)],
+        "officials": [{"value": str(o.id), "label": o.label} for o in video.match.officials],
+        "categories": [{"value": str(c.id), "label": c.name} for c in categories],
+        "category_ids": {c.name: str(c.id) for c in categories},
+    }
+
+
 @router.post("/api/matches/{match_id}/notes/parse")
 def match_notes_parse(payload: dict, db: Session = Depends(get_db), match: Match = Depends(get_match),
                       user: User = require(permissions.can_manage_clips, get_match)):
@@ -342,7 +430,10 @@ async def notes_commit(request: Request, db: Session = Depends(get_db),
     valid_officials = {o.id for o in video.match.officials}
     valid_categories = set(db.scalars(select(Category.id).where(Category.is_active.is_(True))))
     created = skipped = 0
-    for i in range(int(form.get("count", 0))):
+    count = str(form.get("count", "0"))
+    if not count.isascii() or not count.isdecimal() or len(count) > 6 or int(count) > config.NOTES_MAX_LINES:
+        raise HTTPException(422, "Nieprawidłowa liczba notatek")
+    for i in range(int(count)):
         if not form.get(f"include_{i}"):
             continue
         time_sec = parse_time(str(form.get(f"time_{i}", "")))
@@ -357,5 +448,9 @@ async def notes_commit(request: Request, db: Session = Depends(get_db),
                              category_id=category_id, description=str(form.get(f"desc_{i}", "")).strip())
         created += 1
     db.commit()
+    if request.headers.get("accept") == "application/json":
+        if created:
+            watch.notify_markers_changed(video.id)
+        return JSONResponse({"created": created, "skipped": skipped})
     return RedirectResponse(f"/clips?video_id={video.id}&created={created}&skipped={skipped}",
                             status_code=303)

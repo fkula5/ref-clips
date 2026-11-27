@@ -9,8 +9,8 @@ import os
 import tempfile
 import zipfile
 
-from fastapi import APIRouter, Depends, Form, HTTPException, Query
-from fastapi.responses import FileResponse, RedirectResponse
+from fastapi import APIRouter, Depends, Form, HTTPException, Query, Request
+from fastapi.responses import FileResponse, RedirectResponse, Response
 from sqlalchemy.orm import Session
 from starlette.background import BackgroundTask
 
@@ -63,7 +63,7 @@ def export_zip(db: Session = Depends(get_db), user: User = require(permissions.c
 
 
 @router.post("/clips/{clip_id}/adjust")
-def clip_adjust(db: Session = Depends(get_db), clip: Clip = Depends(get_clip),
+def clip_adjust(request: Request, db: Session = Depends(get_db), clip: Clip = Depends(get_clip),
                 user: User = require(via_match(permissions.can_manage_clips), get_clip),
                 start: str = Form(), end: str = Form()):
     if clip.video.purged_at is not None or not clip.video.proxy_path:
@@ -85,4 +85,6 @@ def clip_adjust(db: Session = Depends(get_db), clip: Clip = Depends(get_clip),
     clip.margin_after = min(end_s - clip.time_sec, config.MAX_MARGIN)
     services.queue_cut(db, clip)
     db.commit()
+    if request.headers.get("accept") == "application/json":
+        return Response(status_code=204)
     return RedirectResponse(f"/clips/{clip.id}", status_code=303)

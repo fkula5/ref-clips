@@ -1,0 +1,13 @@
+# Optional local Vue frontend: docker compose -f compose.yaml -f compose.frontend.yaml up -d --build
+services:
+  frontend:
+    build: ./frontend
+    environment:
+      FRONTEND_API_TARGET: http://app:8000
+    ports:
+      - "127.0.0.1:5173:5173"
+    volumes:
+      - ./frontend/src:/srv/frontend/src:ro
+    depends_on:
+      app:
+        condition: service_healthy
