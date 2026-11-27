@@ -33,6 +33,10 @@ def can_manage_sheet_elements(user) -> bool:
     return _has(user, ADMIN, COACH)
 
 
+def can_manage_leagues(user) -> bool:
+    return _has(user, ADMIN, COACH)
+
+
 def can_manage_retention(user) -> bool:
     return _has(user, ADMIN)
 
@@ -40,7 +44,8 @@ def can_manage_retention(user) -> bool:
 def admin_home_url(user) -> str | None:
     """The first admin area the user may open, or None when there is none."""
     areas = (("/admin/users", can_manage_users), ("/admin/categories", can_manage_categories),
-             ("/admin/sheet-elements", can_manage_sheet_elements), ("/admin/retention", can_manage_retention))
+             ("/admin/sheet-elements", can_manage_sheet_elements), ("/admin/leagues", can_manage_leagues),
+             ("/admin/retention", can_manage_retention))
     return next((url for url, check in areas if check(user)), None)
 
 

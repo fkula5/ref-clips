@@ -10,8 +10,12 @@
       <input type="date" name="date" required value="{{ values.date }}">
     </label>
     <label>Liga / poziom rozgrywek
-      <input name="level" list="levels" maxlength="100" autocomplete="off" placeholder="np. II liga" value="{{ values.level }}">
-      <datalist id="levels">{% for lv in levels %}<option value="{{ lv }}">{% endfor %}</datalist>
+      <select name="level">
+        <option value="">— bez ligi —</option>
+        {% for lv in levels %}<option value="{{ lv }}" {{ 'selected' if values.level|trim == lv }}>{{ lv }}</option>{% endfor %}
+        {% if extra_level %}<option value="{{ extra_level }}" {{ 'selected' if values.level|trim == extra_level }}>{{ extra_level }} (nieaktywna)</option>{% endif %}
+      </select>
+      {% if not levels and not extra_level %}<small class="muted">Lista lig jest pusta.{% if perm.can_manage_leagues(user) %} <a href="/admin/leagues">Dodaj ligę</a>.{% else %} Poproś trenera lub administratora o dodanie lig.{% endif %}</small>{% endif %}
     </label>
   </div>
   <div class="grid2">

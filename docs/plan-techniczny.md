@@ -57,7 +57,8 @@ przeglądarka ──HTTPS──► Caddy ──► FastAPI (uvicorn, 2 procesy) 
 | `user_roles` | user_id, role (`admin` / `coach` / `referee`) | several roles at once |
 | `sessions` | token (hash), user_id, validity | logging out invalidates the session |
 | `invites` | token (hash), user_id, purpose (`activate` / `reset`), validity 7 days | link for setting a password |
-| `matches` | date, league, teams (name, colour), author | |
+| `matches` | date, league (text, picked from `leagues` in the form), teams (name, colour), author | |
+| `leagues` | name, position, is_active; the managed list of leagues | |
 | `match_officials` | match_id, function (`CC`/`U1`/`U2`), user_id **or** a typed first and last name | the check "was in the crew" by user_id |
 | `videos` | match_id, content (`full` / list of quarters), proxy path, duration, status, `expires_at`, `purged_at` | the original only during conversion |
 | `upload_sessions` | tus: id, user_id, size, offset, reserved bytes, metadata | cleaned after 24 h of inactivity |

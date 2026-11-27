@@ -237,7 +237,7 @@ and setting a password requires logging in (pages redirect to `/login`, the API 
 
 The **Administracja** („Administration”) menu is shown to everyone who may open at least one of its tabs and leads to the first
 one they may open. The server checks the role on every route: **Użytkownicy** and **Retencja i dysk** are for administrators only,
-**Kategorie** and **Arkusz oceny** are also open to coaches; other roles get 403, logged-out users get 401/a redirect to login,
+**Kategorie**, **Arkusz oceny** and **Ligi** are also open to coaches; other roles get 403, logged-out users get 401/a redirect to login,
 and writes require a CSRF token. A user sees only the tabs they may open (the out-of-space banner is shown to administrators only).
 
 **Użytkownicy** („Users”) — accounts, roles, invitation links (described above).
@@ -252,6 +252,19 @@ and writes require a CSRF token. A user sees only the tabs they may open (the ou
   „nieaktywna” — "inactive" — in the form), and saving a description without changes keeps the category; clip filters still know it. An unused
   category can be deleted;
 - the „własna” („custom”) category (a name typed in for the clip) cannot be deactivated or deleted.
+
+**Ligi** („Leagues”, `/admin/leagues`) — the list of leagues for the match form and the filter of the match list:
+- adding, renaming, order (↑/↓), activation and deactivation, deletion; names are unique regardless of letter case and Polish diacritics.
+  The table shows how many matches use each league;
+- the match form picks the league **only from this list** (the active leagues in this order; the field stays optional). Editing a match whose
+  current league is not active (deactivated, or an old free-text value) shows it as an extra option marked „(nieaktywna)”, so saving the match keeps it;
+  any other value is rejected. The standalone self-assessment form still takes typed text and offers the active leagues as suggestions;
+- `Match.level` stays plain text. **Renaming a league rewrites** the matches (and standalone self-assessments) that had the old name.
+  Renaming to the name of another league asks for confirmation and **merges**: the matches move to that league and the renamed one is deleted;
+- **a league used by matches can only be deactivated** (not deleted): it disappears from the form, while existing matches still show it;
+- the match-list filter lists all leagues in this order (also inactive ones), then old values that are not on the list.
+- Migration `mvp0014` seeds the list from the distinct trimmed levels of existing matches; spellings equal regardless of case and
+  diacritics become one league (the most used spelling), ordered by name; the matches are not changed.
 
 **Retencja i dysk** („Retention and disk”, `/admin/retention`):
 - *Retention of full recordings:* number of days (1–365, default 30) after which the proxy of the full recording is deleted.

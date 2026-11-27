@@ -1,11 +1,19 @@
 import re
 
+import pytest
 from playwright.sync_api import expect
+
+
+@pytest.fixture(scope="module", autouse=True)
+def leagues(server):
+    for name in ("Liga Formularzowa", "Liga Zachowana"):
+        server.add_league(name)
+    server.add_league("Liga Wycofana", active=False)
 
 
 def fill_basics(page, level="Liga Formularzowa"):
     page.locator("input[name=date]").fill("2026-10-30")
-    page.locator("input[name=level]").fill(level)
+    page.locator("select[name=level]").select_option(level)
     page.locator("input[name=team_a_name]").fill("Arka")
     page.locator("input[name=team_a_color]").fill("czerwone")
     page.locator("input[name=team_b_name]").fill("Bałtyk")
@@ -13,12 +21,12 @@ def fill_basics(page, level="Liga Formularzowa"):
 
 
 def test_new_match_with_crew_from_an_account_and_a_typed_name(ui):
-    ui.server.make_match(level="Liga Podpowiedziana")
     page = ui.page("admin")
     page.goto("/matches/new")
     expect(page.get_by_role("heading", name="Nowy mecz")).to_be_visible()
-    options = page.locator("datalist#levels option")
-    assert "Liga Podpowiedziana" in [o.get_attribute("value") for o in options.all()]
+    options = page.locator("select[name=level] option").all_inner_texts()
+    assert "Liga Formularzowa" in options and "Liga Wycofana" not in options
+    expect(page.locator("input[name=level]")).to_have_count(0)
     names = page.locator("select[name=cc_user] option").all_inner_texts()
     assert "Roman Sędzia" in names and "Ula Druga" in names
     assert "Adam Admin" not in names
@@ -53,7 +61,7 @@ def test_duplicate_person_form_error_with_values_kept(ui):
     expect(page.locator(".banner.error")).to_have_text("To samo konto nie może zajmować dwóch pozycji w obsadzie.")
     expect(page.get_by_role("heading", name="Nowy mecz")).to_be_visible()
     assert page.locator("input[name=date]").input_value() == "2026-10-30"
-    assert page.locator("input[name=level]").input_value() == "Liga Zachowana"
+    assert page.locator("select[name=level]").input_value() == "Liga Zachowana"
     assert page.locator("input[name=team_a_name]").input_value() == "Arka"
     assert page.locator("input[name=team_b_color]").input_value() == "niebieskie"
     assert page.locator("select[name=cc_user] option:checked").inner_text() == "Roman Sędzia"
@@ -101,3 +109,21 @@ def test_referee_cannot_save_a_match_without_themself_in_the_crew(ui):
     expect(page.locator(".banner.error")).to_be_visible()
     expect(page.get_by_role("heading", name="Nowy mecz")).to_be_visible()
     assert page.locator("input[name=team_a_name]").input_value() == "Arka"
+
+
+def test_editing_a_match_keeps_a_level_that_is_no_longer_active(ui):
+    ui.server.add_league("Liga Aktywna")
+    match_id = ui.server.make_match(level="Liga Dawna")
+    page = ui.page("admin")
+    page.goto(f"/matches/{match_id}/edit")
+    expect(page.locator("select[name=level] option:checked")).to_have_text("Liga Dawna (nieaktywna)")
+    page.locator("input[name=team_a_name]").fill("Zmieniona")
+    page.get_by_role("button", name="Zapisz").click()
+    expect(page).to_have_url(ui.server.base_url + f"/matches/{match_id}")
+    expect(page.locator("dd", has_text="Liga Dawna")).to_be_visible()
+    page.goto(f"/matches/{match_id}/edit")
+    page.locator("select[name=level]").select_option("Liga Aktywna")
+    page.get_by_role("button", name="Zapisz").click()
+    expect(page).to_have_url(ui.server.base_url + f"/matches/{match_id}")
+    page.goto(f"/matches/{match_id}/edit")
+    assert [o for o in page.locator("select[name=level] option").all_inner_texts() if "nieaktywna" in o] == []

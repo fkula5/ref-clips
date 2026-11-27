@@ -8,7 +8,7 @@ from fastapi.responses import RedirectResponse
 from sqlalchemy import case, func, select
 from sqlalchemy.orm import Session, selectinload
 
-from app import clip_list, groups, match_list, permissions, self_assessments, services, share, sheets, uploads
+from app import clip_list, groups, leagues, match_list, permissions, self_assessments, services, share, sheets, uploads
 from app.auth import require
 from app.db import get_db
 from app.loaders import get_match
@@ -54,9 +54,9 @@ def _form_values(match: Match | None, user: User | None = None) -> dict:
 
 def _render_form(request: Request, db: Session, match: Match | None, values: dict,
                  error: str | None = None, status_code: int = 200):
+    levels, extra_level = leagues.match_form_choices(db, match.level if match else "")
     return render(request, "match_form.html", status_code=status_code, match=match, values=values,
-                  error=error, referees=services.referee_candidates(db),
-                  levels=services.known_levels(db))
+                  error=error, referees=services.referee_candidates(db), levels=levels, extra_level=extra_level)
 
 
 FIELD_LIMITS = {"level": ("Liga", 100), "team_a_name": ("Nazwa drużyny A", 100),
@@ -72,6 +72,8 @@ def _save(db: Session, user: User, match: Match, form: dict[str, str]) -> None:
     for field, (label, limit) in FIELD_LIMITS.items():
         if len(form[field].strip()) > limit:
             raise services.MatchFormError(f"{label}: najwyżej {limit} znaków.")
+    if not leagues.allowed_for_match(db, form["level"], match.level):
+        raise services.MatchFormError("Wybierz ligę z listy.")
     officials = services.officials_from_form(db, form)
     if not permissions.can_save_match(user, [user_id for _, user_id, _ in officials]):
         raise services.MatchForbiddenError(
@@ -88,7 +90,7 @@ def index(request: Request, db: Session = Depends(get_db),
           user: User = require(permissions.can_view)):
     filters = match_list.parse_filters(request.query_params)
     result = match_list.list_matches(db, filters, user.id)
-    return render(request, "index.html", f=filters, result=result, levels=services.known_levels(db),
+    return render(request, "index.html", f=filters, result=result, levels=leagues.filter_levels(db),
                   people=services.people(db), groups=groups.all_groups(db))
 
 

@@ -54,13 +54,13 @@ def test_referee_cannot_change_dictionaries(make_client, db):
 def test_header_link_and_tabs_follow_the_roles(admin, make_client):
     page = admin[0].get("/admin/categories").text
     assert '<a href="/admin/users">Administracja</a>' in page
-    for tab in ("/admin/users", "/admin/categories", "/admin/sheet-elements", "/admin/retention"):
+    for tab in ("/admin/users", "/admin/categories", "/admin/sheet-elements", "/admin/leagues", "/admin/retention"):
         assert f'<a href="{tab}"' in page
 
     coach, _ = make_client("coach")
     page = coach.get("/admin/categories").text
     assert '<a href="/admin/categories">Administracja</a>' in page
-    assert '<a href="/admin/sheet-elements"' in page
+    assert '<a href="/admin/sheet-elements"' in page and '<a href="/admin/leagues"' in page
     assert 'href="/admin/users"' not in page and 'href="/admin/retention"' not in page
     assert '<a href="/admin/categories">Administracja</a>' in coach.get("/").text
 

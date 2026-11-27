@@ -5,10 +5,10 @@ from fastapi.responses import RedirectResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app import accounts, categories, config, disk, flash, permissions, retention, services, sheet_elements
+from app import accounts, categories, config, disk, flash, leagues, permissions, retention, services, sheet_elements
 from app.auth import require
 from app.db import get_db
-from app.models import Category, SheetElement, User, Video
+from app.models import Category, League, SheetElement, User, Video
 from app.pagination import parse_page
 from app.web import render
 
@@ -16,6 +16,7 @@ router = APIRouter(prefix="/admin")
 admin_only = require(permissions.can_manage_users)
 categories_admin = require(permissions.can_manage_categories)
 sheet_elements_admin = require(permissions.can_manage_sheet_elements)
+leagues_admin = require(permissions.can_manage_leagues)
 retention_admin = require(permissions.can_manage_retention)
 
 
@@ -274,6 +275,77 @@ def delete_sheet_element(request: Request, element_id: int, db: Session = Depend
     name = element.name
     return _element_action(request, db, lambda: sheet_elements.delete(db, element),
                            f"Usunięto element „{name}”.")
+
+
+def _get_league(db: Session, league_id: int) -> League:
+    league = db.get(League, league_id)
+    if league is None:
+        raise HTTPException(404, "Nie ma takiej ligi")
+    return league
+
+
+def _leagues_page(request: Request, db: Session, *, status_code: int = 200, error: str | None = None,
+                  new_name: str = "", edit_values: dict[int, str] | None = None):
+    return render_admin(request, db, "admin_leagues.html", status_code=status_code, error=error,
+                        items=leagues.ordered(db), used=leagues.usage_counts(db),
+                        new_name=new_name, edit_values=edit_values or {})
+
+
+def _league_action(request: Request, db: Session, action, notice: str | None = None, **failed):
+    try:
+        result = action()
+    except leagues.LeagueError as exc:
+        db.rollback()
+        return _leagues_page(request, db, status_code=exc.status_code, error=str(exc), **failed)
+    return flash.redirect_with_notice("/admin/leagues", notice(result) if callable(notice) else notice or "")
+
+
+@router.get("/leagues")
+def leagues_page(request: Request, db: Session = Depends(get_db), _admin: User = leagues_admin):
+    return _leagues_page(request, db)
+
+
+@router.post("/leagues")
+def create_league(request: Request, db: Session = Depends(get_db), _admin: User = leagues_admin,
+                  name: str = Form("")):
+    return _league_action(request, db, lambda: leagues.create(db, name),
+                          lambda league: f"Dodano ligę „{league.name}”.", new_name=name)
+
+
+def _renamed_notice(result: leagues.Renamed) -> str:
+    if result.merged:
+        return f"Połączono z ligą „{result.league.name}” — przeniesiono mecze: {result.moved_matches}."
+    return f"Zapisano ligę „{result.league.name}” (zmieniono mecze: {result.moved_matches})."
+
+
+@router.post("/leagues/{league_id}/update")
+def update_league(request: Request, league_id: int, db: Session = Depends(get_db), _admin: User = leagues_admin,
+                  name: str = Form(""), merge: int = Form(0)):
+    league = _get_league(db, league_id)
+    return _league_action(request, db, lambda: leagues.rename(db, league, name, merge=bool(merge)),
+                          _renamed_notice, edit_values={league_id: name})
+
+
+@router.post("/leagues/{league_id}/active")
+def set_league_active(request: Request, league_id: int, db: Session = Depends(get_db),
+                      _admin: User = leagues_admin, active: int = Form(0)):
+    league = _get_league(db, league_id)
+    return _league_action(request, db, lambda: leagues.set_active(db, league, bool(active)),
+                          f"Liga „{league.name}” jest teraz {'aktywna' if active else 'nieaktywna'}.")
+
+
+@router.post("/leagues/{league_id}/move")
+def move_league(request: Request, league_id: int, db: Session = Depends(get_db), _admin: User = leagues_admin,
+                direction: str = Form("")):
+    league = _get_league(db, league_id)
+    return _league_action(request, db, lambda: leagues.move(db, league, direction))
+
+
+@router.post("/leagues/{league_id}/delete")
+def delete_league(request: Request, league_id: int, db: Session = Depends(get_db), _admin: User = leagues_admin):
+    league = _get_league(db, league_id)
+    name = league.name
+    return _league_action(request, db, lambda: leagues.delete(db, league), f"Usunięto ligę „{name}”.")
 
 
 def _retention_page(request: Request, db: Session, *, status_code: int = 200, error: str | None = None,

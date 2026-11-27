@@ -14,7 +14,7 @@ from app import video as vid  # noqa: E402
 from app.db import Base, SessionLocal, engine  # noqa: E402
 from app.main import app  # noqa: E402
 from app.seed import seed  # noqa: E402
-from tests.helpers import make_user, seed_sheet_elements  # noqa: E402
+from tests.helpers import make_user, seed_leagues, seed_sheet_elements  # noqa: E402
 
 needs_ffmpeg = pytest.mark.skipif(not vid.ffmpeg_available(), reason="brak ffmpeg/ffprobe")
 
@@ -33,6 +33,7 @@ def db():
     with SessionLocal() as session:
         seed(session)
         seed_sheet_elements(session)
+        seed_leagues(session)
         yield session
 
 

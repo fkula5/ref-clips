@@ -3,7 +3,7 @@ from datetime import date
 from functools import lru_cache
 
 from app import security
-from app.models import Category, Match, MatchOfficial, PeriodMark, SheetElement, User, Video
+from app.models import Category, League, Match, MatchOfficial, PeriodMark, SheetElement, User, Video
 from app.storage import storage
 
 PASSWORD = "correct-horse-battery"
@@ -108,3 +108,17 @@ def seed_sheet_elements(db, names=SHEET_ELEMENT_NAMES):
     for index, name in enumerate(names, start=1):
         db.add(SheetElement(name=name, sort=index * 10))
     db.commit()
+
+
+def make_league(db, name, *, active=True) -> League:
+    position = (db.query(League).count() + 1) * 10
+    league = League(name=name, position=position, is_active=active)
+    db.add(league)
+    db.commit()
+    return league
+
+
+def seed_leagues(db, names=("II liga",)):
+    """The matches that tests create and submit use "II liga"; migration mvp0014 would have seeded it."""
+    for name in names:
+        make_league(db, name)

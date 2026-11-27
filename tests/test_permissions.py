@@ -81,6 +81,9 @@ ROWS = [
     _row("elementy arkusza", lambda u, _: p.can_manage_sheet_elements(u), [None],
          **{"brak ról": (False,), "admin": (True,), "coach": (True,), "referee": (False,),
             "admin+coach": (True,), "admin+referee": (True,), "coach+referee": (True,)}),
+    _row("słownik lig", lambda u, _: p.can_manage_leagues(u), [None],
+         **{"brak ról": (False,), "admin": (True,), "coach": (True,), "referee": (False,),
+            "admin+coach": (True,), "admin+referee": (True,), "coach+referee": (True,)}),
     _row("przeglądanie", lambda u, _: p.can_view(u), [None],
          **{k: (True,) for k in ROLE_SETS}),
     _row("nowy mecz (formularz)", lambda u, _: p.can_create_match(u), [None],
@@ -392,6 +395,10 @@ def forbidden_requests(w):
         ("sędzia: nowy element arkusza", "member", "post", "/admin/sheet-elements", {"data": {"name": "X"}}),
         ("sędzia: zmiana elementu arkusza", "member", "post", "/admin/sheet-elements/1/update", {"data": {"name": "X"}}),
         ("sędzia: usunięcie elementu arkusza", "outsider", "post", "/admin/sheet-elements/1/delete", {}),
+        ("sędzia: lista lig", "outsider", "get", "/admin/leagues", {}),
+        ("sędzia: nowa liga", "member", "post", "/admin/leagues", {"data": {"name": "X"}}),
+        ("sędzia: zmiana ligi", "member", "post", "/admin/leagues/1/update", {"data": {"name": "X"}}),
+        ("sędzia: usunięcie ligi", "outsider", "post", "/admin/leagues/1/delete", {}),
     ]
 
 

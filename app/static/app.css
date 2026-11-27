@@ -340,7 +340,7 @@ tr.no-activity td { background: var(--warn-wash); }
 @media (min-width: 721px) {
   .categories-table td.actions-cell, .categories-table th:last-child { width: 1%; }
   .categories-table td.actions-cell .table-actions { flex-wrap: nowrap; }
-  .categories-table td[data-label="Klipy"], .categories-table td[data-label="Arkusze"], .categories-table td[data-label="Stan"] { width: 1%; white-space: nowrap; }
+  .categories-table td[data-label="Klipy"], .categories-table td[data-label="Mecze"], .categories-table td[data-label="Arkusze"], .categories-table td[data-label="Stan"] { width: 1%; white-space: nowrap; }
   .categories-table td[data-label="Grupa"] { width: 1%; }
   .category-aliases td[data-label="Nazwa"] { width: 17%; }
 }
