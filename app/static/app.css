@@ -130,6 +130,10 @@ form.inline { display: inline; margin: 0; }
 .linklike:hover { text-decoration: underline; } .linklike:active { opacity: .7; }
 .auth-box { max-width: 420px; margin: 40px auto; }
 .auth-box input { width: 100%; }
+.auth-links { margin: 14px 0 6px; }
+.auth-links a { display: inline-block; padding: 8px 0; }
+/* The honeypot: off-screen rather than display:none, which simple bots skip. */
+.hp-field { position: absolute; left: -10000px; width: 1px; height: 1px; overflow: hidden; }
 label.inline { display: inline-block; margin: 0 10px 0 0; font-weight: 400; }
 label.inline input { display: inline-block; margin: 0 4px 0 0; }
 tr.inactive td { color: var(--muted); }

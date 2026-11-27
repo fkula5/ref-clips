@@ -113,6 +113,8 @@ env.globals.update(
     asset=asset,
     ffmpeg_message=config.FFMPEG_MISSING_MESSAGE,
     csrf_input=csrf_input,
+    invite_days=config.INVITE_DAYS, reset_minutes=config.PASSWORD_RESET_MINUTES,
+    reset_cooldown=config.RESET_EMAIL_COOLDOWN_MINUTES,
     perm=permissions,
     USER_ROLES=m.USER_ROLES, OFFICIAL_FUNCTIONS=m.OFFICIAL_FUNCTIONS,
     SHEET_DIFFICULTIES=m.SHEET_DIFFICULTIES, SHEET_RESULT_MAX=config.SHEET_RESULT_MAX_CHARS,

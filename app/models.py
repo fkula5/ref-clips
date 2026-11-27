@@ -121,6 +121,20 @@ class LoginAttempt(Base):
     attempted_at: Mapped[datetime] = mapped_column(DateTime, index=True)
 
 
+class PasswordResetRequest(Base):
+    """Throttling state of the public password-reset flow. kind "reset": a valid request on
+    /forgot-password (`mailed` says whether a mail was queued; `email_key` is a hash, never the address);
+    kind "token_miss": an unusable link opened on /set-password (no e-mail key)."""
+    __tablename__ = "password_reset_requests"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    kind: Mapped[str] = mapped_column(String(16), default="reset")
+    email_key: Mapped[str] = mapped_column(String(64), default="", index=True)
+    ip: Mapped[str] = mapped_column(String(64), index=True)
+    mailed: Mapped[bool] = mapped_column(Boolean, default=False)
+    requested_at: Mapped[datetime] = mapped_column(DateTime, index=True)
+
+
 class Match(Base):
     __tablename__ = "matches"
 

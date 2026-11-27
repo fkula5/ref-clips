@@ -2,11 +2,11 @@ from __future__ import annotations
 
 from urllib.parse import urlsplit
 
-from fastapi import APIRouter, Depends, Form, Request
-from fastapi.responses import RedirectResponse
+from fastapi import APIRouter, BackgroundTasks, Depends, Form, Request
+from fastapi.responses import RedirectResponse, Response
 from sqlalchemy.orm import Session
 
-from app import accounts, auth, config
+from app import accounts, auth, config, password_reset
 from app.db import get_db
 from app.models import INVITE_PURPOSES
 from app.web import render
@@ -16,6 +16,12 @@ router = APIRouter()
 
 THROTTLE_MESSAGE = (f"Zbyt wiele nieudanych prób logowania. Spróbuj ponownie za "
                     f"{config.LOGIN_WINDOW_MINUTES} minut.")
+
+
+RESET_THROTTLE_MESSAGE = (f"Zbyt wiele próśb o reset hasła. Spróbuj ponownie za "
+                          f"{config.RESET_IP_WINDOW_MINUTES} minut.")
+TOKEN_THROTTLE_MESSAGE = (f"Zbyt wiele prób z nieprawidłowymi linkami. Spróbuj ponownie za "
+                          f"{config.TOKEN_MISS_WINDOW_MINUTES} minut.")
 
 
 def safe_next(target: str) -> str:
@@ -56,6 +62,36 @@ def login(request: Request, db: Session = Depends(get_db), email: str = Form("")
     return response
 
 
+@public_router.get("/forgot-password")
+def forgot_password_page(request: Request, sent: int = 0):
+    return render(request, "forgot_password.html", sent=bool(sent), error=None, email="")
+
+
+@public_router.post("/forgot-password")
+def forgot_password(request: Request, background: BackgroundTasks, db: Session = Depends(get_db),
+                    email: str = Form(""), contact_url: str = Form("")):
+    """Whatever happens to the request (no such account, inactive, limits, honeypot) the answer is the same
+    redirect; only a malformed address and the per-IP limit are told apart, and neither depends on accounts.
+    """
+    neutral = RedirectResponse("/forgot-password?sent=1", status_code=303)
+    if contact_url.strip():  # the honeypot: a human never sees this field
+        return neutral
+    address = accounts.normalize_email(email)
+    if not accounts.valid_email(address):
+        return render(request, "forgot_password.html", status_code=422, sent=False, email=email[:255],
+                      error="Podaj poprawny adres e-mail.")
+    try:
+        pending = password_reset.request_reset(db, address, auth.client_ip(request))
+    except password_reset.ResetThrottled:
+        response = render(request, "forgot_password.html", status_code=429, sent=False, email=email[:255],
+                          error=RESET_THROTTLE_MESSAGE)
+        response.headers["Retry-After"] = str(config.RESET_IP_WINDOW_MINUTES * 60)
+        return response
+    if pending is not None:
+        background.add_task(password_reset.deliver, pending)
+    return neutral
+
+
 @router.post("/logout")
 def logout(request: Request, db: Session = Depends(get_db)):
     accounts.end_session(db, request.cookies.get(config.SESSION_COOKIE))
@@ -74,20 +110,37 @@ def _token_page(request: Request, **context):
     return response
 
 
-@public_router.get("/set-password/{token}")
-def set_password_page(request: Request, token: str, db: Session = Depends(get_db)):
+def _usable_invite(request: Request, db: Session, token: str):
+    """The invite, or the page to answer with. Unusable links are counted per IP (the tokens are 256-bit,
+    so this only caps the noise); a throttled address is refused before the token is even looked at.
+    """
+    ip = auth.client_ip(request)
+    if password_reset.token_throttled(db, ip):
+        response = _token_page(request, status_code=429, invite=None, error=None, throttled=True,
+                               throttle_message=TOKEN_THROTTLE_MESSAGE)
+        response.headers["Retry-After"] = str(config.TOKEN_MISS_WINDOW_MINUTES * 60)
+        return response
     invite = accounts.find_invite(db, token)
     if invite is None:
+        password_reset.note_token_miss(db, ip)
         return _token_page(request, status_code=410, invite=None, error=None)
+    return invite
+
+
+@public_router.get("/set-password/{token}")
+def set_password_page(request: Request, token: str, db: Session = Depends(get_db)):
+    invite = _usable_invite(request, db, token)
+    if isinstance(invite, Response):
+        return invite
     return _token_page(request, invite=invite, error=None, purpose=INVITE_PURPOSES[invite.purpose])
 
 
 @public_router.post("/set-password/{token}")
 def set_password(request: Request, token: str, db: Session = Depends(get_db),
                  password: str = Form(""), password2: str = Form("")):
-    invite = accounts.find_invite(db, token)
-    if invite is None:
-        return _token_page(request, status_code=410, invite=None, error=None)
+    invite = _usable_invite(request, db, token)
+    if isinstance(invite, Response):
+        return invite
     error = None
     if password != password2:
         error = "Hasła nie są takie same."
