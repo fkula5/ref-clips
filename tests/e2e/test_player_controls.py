@@ -275,6 +275,8 @@ def test_full_window_fallback_where_element_fullscreen_is_missing(ui):
     expect(page.get_by_role("button", name="Zaznacz (Z)")).to_be_visible()
     page.keyboard.press("Escape")
     expect(page.locator(".video-js")).not_to_have_class(re.compile(r"vjs-fullscreen"))
+    # The exit restores the scroll position in the next frame; let it land before scrolling ourselves.
+    page.evaluate("new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done)))")
     # Room below the player so the page can scroll whatever its content, then the button at the top of the
     # viewport, so tap() has no reason to scroll the page first.
     page.evaluate("document.body.style.paddingBottom = '2000px'")
