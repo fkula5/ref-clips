@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.19.0](https://github.com/fkula5/ref-clips/compare/v1.18.0...v1.19.0) (2026-11-27)
+
+
+### Features
+
+* **auth:** self-service password reset by e-mail with abuse limits ([#65](https://github.com/fkula5/ref-clips/issues/65)) ([d5081b7](https://github.com/fkula5/ref-clips/commit/d5081b77f9343281042f3bd1a6b6acfefe0ff3f9))
+
 ## [1.18.0](https://github.com/fkula5/ref-clips/compare/v1.17.0...v1.18.0) (2026-11-27)
 
 
