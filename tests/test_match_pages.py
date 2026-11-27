@@ -1,9 +1,10 @@
+import re
 from datetime import datetime
 
 from sqlalchemy import select
 
-from app.models import Clip, Match, PeriodMark, User, Video
-from tests.helpers import make_match, make_ready_video, make_user
+from app.models import Clip, League, Match, PeriodMark, User, Video
+from tests.helpers import make_league, make_match, make_ready_video, make_user
 
 BASE = {"date": "2026-10-28", "level": "II liga", "team_a_name": "Legia", "team_a_color": "białe",
         "team_b_name": "Wisła", "team_b_color": "ciemne"}
@@ -109,40 +110,104 @@ def test_delete_confirmation_permissions(make_client, db):
     assert owner_client.get("/matches/9999/delete").status_code == 404
 
 
-def test_level_datalist_has_distinct_levels_alphabetically(client, db):
-    for level in ("II liga", "Juniorzy U18", "II liga", "Ekstraklasa", "", "Żaki"):
-        make_match(db).level = level
-        db.commit()
+def level_options(page):
+    select = page.split('<select name="level">')[1].split("</select>")[0]
+    return re.findall(r'<option value="([^"]*)"\s*(selected)?>([^<]*)</option>', select)
+
+
+def test_level_select_lists_active_leagues_in_admin_order(client, db):
+    make_league(db, "Ekstraklasa")
+    make_league(db, "Stara liga", active=False)
+    make_league(db, "Żaki")
     page = client.get("/matches/new").text
-    assert 'list="levels"' in page
-    options = page.split('<datalist id="levels">')[1].split("</datalist>")[0]
-    import re
-    assert re.findall(r'<option value="([^"]+)">', options) == ["Ekstraklasa", "II liga", "Juniorzy U18", "Żaki"]
-    assert 'name="level" list="levels"' in client.get("/matches/new").text
+    assert 'list="levels"' not in page and '<input name="level"' not in page
+    assert [(v, label) for v, _, label in level_options(page)] == [
+        ("", "— bez ligi —"), ("II liga", "II liga"), ("Ekstraklasa", "Ekstraklasa"), ("Żaki", "Żaki")]
+    assert not any(selected for _, selected, _ in level_options(page))
 
 
-def test_level_datalist_is_available_in_edit_form_and_empty_without_matches(client, db):
-    assert '<datalist id="levels"></datalist>' in client.get("/matches/new").text
-    match = make_match(db)
-    assert '<option value="II liga">' in client.get(f"/matches/{match.id}/edit").text
-
-
-def test_known_levels_service(db):
-    from app import services
-    for level in ("b liga", "A liga", "a liga", " B liga "):
-        db.add(Match(date=datetime(2026, 1, 1).date(), level=level))
+def test_level_select_without_leagues_points_to_the_admin_tab(client, make_client, db):
+    db.query(League).delete()
     db.commit()
-    assert services.known_levels(db) == ["A liga", "a liga", "B liga", "b liga"]
+    page = client.get("/matches/new").text
+    assert level_options(page) == [("", "", "— bez ligi —")]
+    assert 'Lista lig jest pusta. <a href="/admin/leagues">Dodaj ligę</a>' in page
+    referee, _ = make_client("referee")
+    assert "Poproś trenera lub administratora" in referee.get("/matches/new").text
+
+
+def test_edit_form_preselects_the_current_league(client, db):
+    match = make_match(db)
+    assert ("II liga", "selected", "II liga") in level_options(client.get(f"/matches/{match.id}/edit").text)
+
+
+def test_edit_form_keeps_an_inactive_or_legacy_level_as_an_extra_option(client, db):
+    make_league(db, "Stara liga", active=False)
+    for stored in ("Stara liga", "ii LIGA", "Nieznana"):
+        match = make_match(db)
+        match.level = stored
+        db.commit()
+        options = level_options(client.get(f"/matches/{match.id}/edit").text)
+        assert (stored, "selected", f"{stored} (nieaktywna)") in options, stored
+        assert [o for o in options if o[1]] == [(stored, "selected", f"{stored} (nieaktywna)")]
+        r = client.post(f"/matches/{match.id}", data={**BASE, "level": stored, "team_a_name": "Nowa",
+                                                       "cc_name": "A B", "u1_name": "C D"})
+        assert r.status_code == 200
+        db.expire_all()
+        assert db.get(Match, match.id).level == stored and db.get(Match, match.id).team_a_name == "Nowa"
+
+
+def test_the_extra_option_is_not_offered_for_a_new_match_or_an_active_level(client, db):
+    make_league(db, "Stara liga", active=False)
+    assert "Stara liga" not in client.get("/matches/new").text
+    match = make_match(db)
+    assert "(nieaktywna)" not in client.get(f"/matches/{match.id}/edit").text
+
+
+def test_match_with_an_unknown_level_is_rejected_on_create_and_edit(client, db):
+    make_league(db, "Stara liga", active=False)
+    data = {**BASE, "cc_name": "A B", "u1_name": "C D"}
+    for level in ("Wymyślona", "ii liga", "Stara liga"):
+        r = client.post("/matches", data={**data, "level": level})
+        assert r.status_code == 422 and "Wybierz ligę z listy." in r.text, level
+    assert db.query(Match).count() == 0
+    match = make_match(db)
+    r = client.post(f"/matches/{match.id}", data={**data, "level": "Wymyślona"})
+    assert r.status_code == 422 and "Wybierz ligę z listy." in r.text
+    r = client.post(f"/matches/{match.id}", data={**data, "level": "Stara liga"})
+    assert r.status_code == 422
+    db.expire_all()
+    assert db.get(Match, match.id).level == "II liga"
+
+
+def test_match_level_is_optional_and_a_new_active_league_is_accepted(client, db):
+    make_league(db, "III liga")
+    data = {**BASE, "cc_name": "A B", "u1_name": "C D"}
+    r = client.post("/matches", data={**data, "level": "III liga"})
+    assert r.status_code == 200 and db.query(Match).one().level == "III liga"
+    r = client.post("/matches", data={**data, "level": ""})
+    assert r.status_code == 200 and sorted(m.level for m in db.query(Match)) == ["", "III liga"]
+
+
+def test_match_filter_levels_are_leagues_in_order_then_legacy_values(client, db):
+    from app import leagues
+    make_league(db, "Ekstraklasa")
+    make_league(db, "Stara liga", active=False)
+    for level in ("Juniorzy U18", " Żaki ", "II liga", "", "ii liga", "Juniorzy U18"):
+        make_match(db).level = level
+    db.commit()
+    assert leagues.filter_levels(db) == ["II liga", "Ekstraklasa", "Stara liga", "ii liga", "Juniorzy U18", "Żaki"]
 
 
 def test_match_form_validation_error_keeps_values(client, db):
     ref = make_user(db, ["referee"], email="r@example.com", name="Rafał Sędzia")
+    make_league(db, "Liga testowa")
     data = {**BASE, "date": "", "level": "Liga testowa", "team_a_color": "zielone",
             "cc_user": str(ref.id), "u1_name": "Ewa Druga", "u2_name": "Kuba"}
     r = client.post("/matches", data=data)
     assert r.status_code == 422
     assert 'role="alert">Podaj poprawną datę meczu.' in r.text
-    for fragment in ('value="Liga testowa"', 'value="Legia"', 'value="zielone"', 'value="Wisła"',
+    for fragment in ('<option value="Liga testowa" selected>', 'value="Legia"', 'value="zielone"', 'value="Wisła"',
                      f'<option value="{ref.id}" selected>', 'value="Ewa Druga"', 'value="Kuba"'):
         assert fragment in r.text, fragment
     assert db.query(Match).count() == 0
@@ -157,10 +222,11 @@ def test_match_form_missing_position_and_too_long_field(client, db):
 
 def test_edit_form_validation_error_keeps_values_and_old_data_in_db(client, db):
     match = make_match(db)
+    make_league(db, "Nowa liga")
     r = client.post(f"/matches/{match.id}", data={**BASE, "level": "Nowa liga", "date": "32.13.2026",
                                                     "cc_name": "A B", "u1_name": "C D"})
     assert r.status_code == 422 and "Podaj poprawną datę" in r.text
-    assert 'value="Nowa liga"' in r.text and f'action="/matches/{match.id}"' in r.text
+    assert '<option value="Nowa liga" selected>' in r.text and f'action="/matches/{match.id}"' in r.text
     db.expire_all()
     stored = db.get(Match, match.id)
     assert stored.level == "II liga" and stored.date.isoformat() == "2026-10-28"
@@ -168,12 +234,13 @@ def test_edit_form_validation_error_keeps_values_and_old_data_in_db(client, db):
 
 def test_referee_not_in_crew_gets_form_with_message_not_bare_error(make_client, db):
     client, ref = make_client("referee", name="Rafał Sędzia")
+    make_league(db, "Liga testowa")
     data = {**BASE, "level": "Liga testowa", "cc_name": "Jan Pierwszy", "u1_name": "Ewa Druga"}
     r = client.post("/matches", data=data)
     assert r.status_code == 403
     assert "Jako sędzia możesz zapisać tylko mecz, w którego obsadzie jesteś" in r.text
     assert '<form method="post" action="/matches"' in r.text
-    assert 'value="Liga testowa"' in r.text and 'value="Jan Pierwszy"' in r.text
+    assert '<option value="Liga testowa" selected>' in r.text and 'value="Jan Pierwszy"' in r.text
     assert db.query(Match).count() == 0
 
 

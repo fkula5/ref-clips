@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block title %}Ligi{% endblock %}
+{% block content %}
+{% set tab = "leagues" %}{% include "_admin_tabs.html" %}
+<h1>Ligi</h1>
+<p class="muted">Lista lig do wyboru w formularzu meczu i w filtrze listy meczów (nazwy porównujemy bez względu na wielkość liter i polskie znaki).
+  Zmiana nazwy zmienia też ligę w istniejących meczach i w samoocenach spoza systemu. Gdy nowa nazwa jest już nazwą innej ligi, mecze trafiają do niej,
+  a zmieniana liga znika z listy (po potwierdzeniu). Ligę użytą w meczach można tylko dezaktywować: znika z wyboru w nowych meczach,
+  a istniejące mecze dalej ją pokazują. Nieużywaną ligę można usunąć.</p>
+
+{% if error %}<div class="banner error" role="alert" id="admin-error">{{ error }}</div>{% endif %}
+{% if notice %}<div class="banner ok" role="status" id="admin-notice">{{ notice }}</div>{% endif %}
+
+<h2>Nowa liga</h2>
+<form method="post" action="/admin/leagues" class="card form row" id="new-league">
+  {{ csrf_input() }}
+  <label class="grow">Nazwa <input name="name" required maxlength="100" value="{{ new_name }}" placeholder="np. II liga"></label>
+  <button class="btn primary">Dodaj ligę</button>
+</form>
+
+<h2>Lista lig</h2>
+{% if not items %}<p class="muted">Brak lig — w formularzu meczu nie będzie z czego wybierać.</p>{% else %}
+<table class="responsive categories-table">
+  <thead><tr><th>Nazwa</th><th>Mecze</th><th>Stan</th><th></th></tr></thead>
+  <tbody>
+  {% for lg in items %}
+    <tr class="{{ 'inactive' if not lg.is_active }}" data-league="{{ lg.name }}">
+      <td data-label="Nazwa">
+        <form id="lg-{{ lg.id }}" method="post" action="/admin/leagues/{{ lg.id }}/update" data-league-others='{{ items|rejectattr("id", "equalto", lg.id)|map(attribute="name")|list|tojson }}' data-league-old='{{ lg.name|tojson }}'>
+          {{ csrf_input() }}<input type="hidden" name="merge" value="0"></form>
+        <input form="lg-{{ lg.id }}" name="name" required maxlength="100" aria-label="Nazwa ligi" value="{{ edit_values.get(lg.id, lg.name) }}">
+      </td>
+      <td data-label="Mecze">{{ used.get(lg.name, 0) }}</td>
+      <td data-label="Stan">{% if lg.is_active %}<span class="badge ready">aktywna</span>{% else %}<span class="badge error">nieaktywna</span>{% endif %}</td>
+      <td class="actions-cell"><div class="table-actions">
+        <button form="lg-{{ lg.id }}" class="btn small primary">Zapisz</button>
+        <form method="post" action="/admin/leagues/{{ lg.id }}/move" class="inline">{{ csrf_input() }}<input type="hidden" name="direction" value="up"><button class="btn small" aria-label="Wyżej: {{ lg.name }}" title="Wyżej" {{ 'disabled' if loop.first }}>↑</button></form>
+        <form method="post" action="/admin/leagues/{{ lg.id }}/move" class="inline">{{ csrf_input() }}<input type="hidden" name="direction" value="down"><button class="btn small" aria-label="Niżej: {{ lg.name }}" title="Niżej" {{ 'disabled' if loop.last }}>↓</button></form>
+        {% if lg.is_active %}
+          <form method="post" action="/admin/leagues/{{ lg.id }}/active" class="inline" onsubmit="return confirm('Dezaktywować ligę? Zniknie z wyboru w nowych meczach; istniejące mecze ją zachowają.')">
+            {{ csrf_input() }}<input type="hidden" name="active" value="0"><button class="btn small">Dezaktywuj</button></form>
+        {% else %}
+          <form method="post" action="/admin/leagues/{{ lg.id }}/active" class="inline">{{ csrf_input() }}<input type="hidden" name="active" value="1"><button class="btn small">Aktywuj</button></form>
+        {% endif %}
+        {% if not used.get(lg.name, 0) %}
+          <form method="post" action="/admin/leagues/{{ lg.id }}/delete" class="inline" onsubmit='return confirm({{ ("Usunąć ligę „" ~ lg.name ~ "”?")|tojson }})'>
+            {{ csrf_input() }}<button class="btn small danger">Usuń</button></form>
+        {% endif %}
+      </div></td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+<script src="{{ asset('leagues.js') }}"></script>
+{% endif %}
+{% endblock %}

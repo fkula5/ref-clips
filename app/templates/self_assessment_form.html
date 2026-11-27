@@ -31,7 +31,8 @@
   {% if not match %}
   <fieldset class="sa-head-form" id="sa-head"><legend>Mecz spoza systemu</legend>
     <div class="grid2">
-      <label>Liga <input name="league" maxlength="200" value="{{ values.league }}"></label>
+      <label>Liga <input name="league" list="league-names" maxlength="200" autocomplete="off" value="{{ values.league }}">
+        <datalist id="league-names">{% for lv in league_names %}<option value="{{ lv }}">{% endfor %}</datalist></label>
       <label>Data meczu <input type="date" name="match_date" value="{{ values.match_date }}"></label>
       <label>Gospodarze <input name="home_team" maxlength="200" value="{{ values.home_team }}"></label>
       <label>Goście <input name="away_team" maxlength="200" value="{{ values.away_team }}"></label>

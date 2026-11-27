@@ -16,7 +16,7 @@ from app.models import (Clip, EmailPreference, GroupMember, Notification, SelfAs
                         TrainingGroup)
 from app.storage import storage
 from app.timeutil import utcnow
-from tests.helpers import category_named, make_match, make_ready_video, make_user, mark_periods
+from tests.helpers import category_named, make_league, make_match, make_ready_video, make_user, mark_periods
 
 ANSWERS = {"opinion": "Dobrze, ale za późno reagowałem.", "good": "Komunikacja z U1.", "bad": "Pozycja w kontrataku."}
 
@@ -905,6 +905,18 @@ def test_the_header_is_typed_and_stored_on_a_draft_that_may_be_incomplete(w):
     assert 'id="sa-picker"' not in page and "Dodaj klip z meczu" not in page
     edit(w, "ref", sa_id, match_date="")
     assert sheet(w, sa_id).match_date is None
+
+
+def test_the_standalone_league_is_typed_with_active_leagues_offered_in_a_datalist(w):
+    make_league(w.db, "Stara liga", active=False)
+    make_league(w.db, "Ekstraklasa")
+    sa_id = new_standalone(w)
+    page = w.c["ref"].get(f"/self-assessments/{sa_id}/edit").text
+    assert 'name="league" list="league-names"' in page
+    options = page.split('<datalist id="league-names">')[1].split("</datalist>")[0]
+    assert re.findall(r'<option value="([^"]+)">', options) == ["II liga", "Ekstraklasa"]
+    edit(w, "ref", sa_id, league="Dowolna liga spoza listy")  # still free text
+    assert sheet(w, sa_id).league == "Dowolna liga spoza listy"
 
 
 def test_a_bad_date_or_too_long_header_is_refused_and_the_typed_text_stays(w):

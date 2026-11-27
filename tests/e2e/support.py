@@ -23,7 +23,7 @@ from sqlalchemy import create_engine, event, select
 from sqlalchemy.orm import sessionmaker
 
 from app import accounts
-from app.models import Match, MatchOfficial, User, Video
+from app.models import League, Match, MatchOfficial, User, Video
 
 ROOT = Path(__file__).resolve().parents[2]
 PASSWORD = "E2e-haslo-12345"
@@ -176,6 +176,17 @@ class Server:
             db.add(match)
             db.commit()
             return match.id
+
+    def add_league(self, name: str, *, active: bool = True) -> int:
+        with self.db() as db:
+            league = League(name=name, is_active=active, position=(db.query(League).count() + 1) * 10)
+            db.add(league)
+            db.commit()
+            return league.id
+
+    def match_level(self, match_id: int) -> str:
+        with self.db() as db:
+            return db.get(Match, match_id).level
 
     def sample_duration(self) -> float:
         if self._duration is None:

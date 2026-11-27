@@ -14,7 +14,7 @@ EXPECTED_TABLES = {
     "jobs", "settings", "upload_rejections", "share_links", "share_link_clips",
     "sheet_elements", "sheets", "sheet_columns", "sheet_rows", "sheet_cells", "notifications",
     "training_groups", "group_members", "training_sets", "training_set_clips", "training_set_groups",
-    "match_scoresheets", "email_preferences", "self_assessments", "self_assessment_clips",
+    "match_scoresheets", "email_preferences", "self_assessments", "self_assessment_clips", "leagues",
 }
 
 
@@ -446,3 +446,45 @@ def test_standalone_self_assessment_migration_keeps_data_and_downgrade_drops_sta
         assert conn.execute(text("SELECT id FROM self_assessments")).scalars().all() == [1]
         assert conn.execute(text("SELECT COUNT(*) FROM self_assessment_clips")).scalar() == 1
         assert conn.execute(text("SELECT self_assessment_id FROM notifications")).scalars().all() == [1]
+
+
+def test_leagues_migration_seeds_from_match_levels_collapses_spellings_and_downgrades(tmp_path):
+    from sqlalchemy import text
+
+    url = f"sqlite:///{tmp_path / 'm.db'}"
+    cfg = _config(url)
+    command.upgrade(cfg, "mvp0013")
+    engine = create_engine(url)
+    levels = ["II liga"] * 3 + ["II Liga", "  ii  liga "] + ["2 liga"] * 2 + [" III liga ", "", "   ", ""] \
+        + ["Żaki"] + ["zaki"] * 2 + ["A liga", "a LIGA"]  # a tie: the alphabetically first spelling wins
+    with engine.begin() as conn:
+        for index, level in enumerate(levels, start=1):
+            conn.execute(text("INSERT INTO matches (id, date, level, team_a_name, team_a_color, team_b_name, "
+                              "team_b_color) VALUES (:i, '2026-10-28', :level, '', '', '', '')"),
+                         {"i": index, "level": level})
+    assert "leagues" not in inspect(engine).get_table_names()
+    command.upgrade(cfg, "head")
+    with engine.connect() as conn:
+        rows = conn.execute(text("SELECT name, position, is_active FROM leagues ORDER BY position")).all()
+        assert [tuple(r) for r in rows] == [("2 liga", 10, 1), ("A liga", 20, 1), ("II liga", 30, 1),
+                                            ("III liga", 40, 1), ("zaki", 50, 1)]
+        assert conn.execute(text("SELECT created_at FROM leagues LIMIT 1")).scalar() is not None
+        # other spellings of a league are rewritten to its name; empty levels stay empty
+        unified = ["II liga"] * 5 + ["2 liga"] * 2 + ["III liga", "", "   ", ""] + ["zaki"] * 3 + ["A liga"] * 2
+        assert sorted(conn.execute(text("SELECT level FROM matches")).scalars().all()) == sorted(unified)
+        assert compare_metadata(MigrationContext.configure(conn), Base.metadata) == []
+    command.downgrade(cfg, "mvp0013")
+    assert "leagues" not in inspect(create_engine(url)).get_table_names()
+    with engine.connect() as conn:
+        assert conn.execute(text("SELECT COUNT(*) FROM matches")).scalar() == len(levels)
+    command.upgrade(cfg, "head")
+    assert "leagues" in inspect(create_engine(url)).get_table_names()
+
+
+def test_leagues_migration_on_an_empty_database_seeds_nothing(tmp_path):
+    from sqlalchemy import text
+
+    url = f"sqlite:///{tmp_path / 'm.db'}"
+    command.upgrade(_config(url), "head")
+    with create_engine(url).connect() as conn:
+        assert conn.execute(text("SELECT COUNT(*) FROM leagues")).scalar() == 0

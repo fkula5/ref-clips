@@ -1,3 +1,4 @@
+import re
 from datetime import timedelta
 
 from playwright.sync_api import expect
@@ -99,6 +100,111 @@ def test_coach_opens_administration_and_edits_a_category(ui):
 
     ui.allow(r"status of 403")
     assert coach.goto("/admin/users").status == 403
+
+
+def league_row(page, name):
+    return page.locator("tr[data-league]").filter(has=page.locator(f'input[name="name"][value="{name}"]'))
+
+
+def test_admin_adds_a_league_and_a_coach_renames_it_and_the_match_form_offers_it(ui):
+    admin = ui.page("admin")
+    admin.goto("/admin/users")
+    admin.get_by_role("link", name="Ligi").click()
+    expect(admin.get_by_role("heading", name="Ligi", exact=True)).to_be_visible()
+    form = admin.locator("#new-league")
+    form.get_by_label("Nazwa").fill("Liga Panelowa")
+    form.get_by_role("button", name="Dodaj ligę").click()
+    expect(admin.locator("#admin-notice")).to_contain_text("Dodano ligę „Liga Panelowa”")
+    expect(league_row(admin, "Liga Panelowa")).to_contain_text("aktywna")
+    ui.allow(r"status of 409")
+    form.get_by_label("Nazwa").fill("liga panelowa")
+    form.get_by_role("button", name="Dodaj ligę").click()
+    expect(admin.locator("#admin-error")).to_contain_text("już istnieje")
+
+    coach = ui.page("coach")
+    coach.goto("/admin/leagues")
+    expect(coach.locator(".admin-tabs").get_by_role("link", name="Ligi")).to_be_visible()
+    row = league_row(coach, "Liga Panelowa")
+    row.locator('input[name="name"]').fill("Liga Przemianowana")
+    row.get_by_role("button", name="Zapisz").click()
+    expect(coach.locator("#admin-notice")).to_contain_text("Zapisano ligę „Liga Przemianowana”")
+    expect(league_row(coach, "Liga Panelowa")).to_have_count(0)
+
+    page = ui.page("referee")
+    page.goto("/matches/new")
+    options = page.locator("select[name=level] option").all_inner_texts()
+    assert "Liga Przemianowana" in options and "Liga Panelowa" not in options
+    page.locator("input[name=date]").fill("2026-10-31")
+    page.locator("select[name=level]").select_option("Liga Przemianowana")
+    page.locator("input[name=team_a_name]").fill("Panelowi")
+    page.locator("input[name=u1_name]").fill("Piotr Partner")
+    page.get_by_role("button", name="Zapisz").click()
+    expect(page).to_have_url(re.compile(r"/matches/\d+$"))
+    expect(page.locator("dd", has_text="Liga Przemianowana")).to_be_visible()
+
+    coach.reload()  # the match uses it now: only deactivating is offered
+    used = league_row(coach, "Liga Przemianowana")
+    expect(used.get_by_role("button", name="Usuń")).to_have_count(0)
+    expect(used.locator('td[data-label="Mecze"]')).to_have_text("1")
+
+
+def test_renaming_a_league_to_another_one_asks_and_merges_their_matches(ui):
+    ui.server.add_league("Liga Scalana A")
+    ui.server.add_league("Liga Scalana B")
+    in_a = ui.server.make_match(level="Liga Scalana A")
+    in_b = ui.server.make_match(level="Liga Scalana B")
+    admin = ui.page("admin")
+    messages, accept = [], {"now": False}
+    admin.on("dialog", lambda dialog: (messages.append(dialog.message),
+                                       dialog.accept() if accept["now"] else dialog.dismiss()))
+    admin.goto("/admin/leagues")
+    row = league_row(admin, "Liga Scalana A")
+    row.locator('input[name="name"]').fill("liga scalana b")
+    row.get_by_role("button", name="Zapisz").click()
+    admin.wait_for_timeout(300)
+    assert len(messages) == 1 and "Liga „Liga Scalana B” już istnieje" in messages[0]
+    assert ui.server.match_level(in_a) == "Liga Scalana A"
+    expect(league_row(admin, "Liga Scalana A")).to_have_count(1)
+
+    accept["now"] = True
+    row.get_by_role("button", name="Zapisz").click()
+    expect(admin.locator("#admin-notice")).to_contain_text("Połączono z ligą „Liga Scalana B” — przeniesiono mecze: 1")
+    expect(league_row(admin, "Liga Scalana A")).to_have_count(0)
+    expect(league_row(admin, "Liga Scalana B").locator('td[data-label="Mecze"]')).to_have_text("2")
+    assert ui.server.match_level(in_a) == ui.server.match_level(in_b) == "Liga Scalana B"
+
+    row = league_row(admin, "Liga Scalana B")  # an ordinary rename does not ask
+    count = len(messages)
+    row.locator('input[name="name"]').fill("Liga Scalona")
+    row.get_by_role("button", name="Zapisz").click()
+    expect(admin.locator("#admin-notice")).to_contain_text("Zapisano ligę „Liga Scalona” (zmieniono mecze: 2)")
+    assert len(messages) == count and ui.server.match_level(in_a) == "Liga Scalona"
+
+
+def test_league_can_be_reordered_deactivated_and_deleted(ui):
+    ui.server.add_league("Liga Kolejna 1")
+    ui.server.add_league("Liga Kolejna 2")
+    admin = ui.page("admin")
+    accept_dialogs(admin)
+    admin.goto("/admin/leagues")
+    names = lambda: [r.get_attribute("data-league") for r in admin.locator("tr[data-league]").all()]
+    assert names().index("Liga Kolejna 1") < names().index("Liga Kolejna 2")
+    league_row(admin, "Liga Kolejna 2").get_by_role("button", name="Wyżej: Liga Kolejna 2").click()
+    def moved_up():
+        try:
+            return names().index("Liga Kolejna 2") < names().index("Liga Kolejna 1")
+        except Exception:  # the page is reloading
+            return False
+
+    wait_until(admin, moved_up, message="liga nie przesunęła się wyżej")
+    league_row(admin, "Liga Kolejna 1").get_by_role("button", name="Dezaktywuj").click()
+    expect(admin.locator("#admin-notice")).to_contain_text("„Liga Kolejna 1” jest teraz nieaktywna")
+    page = ui.page("admin")
+    page.goto("/matches/new")
+    options = page.locator("select[name=level] option").all_inner_texts()
+    assert "Liga Kolejna 2" in options and "Liga Kolejna 1" not in options
+    league_row(admin, "Liga Kolejna 2").get_by_role("button", name="Usuń").click()
+    expect(admin.locator("#admin-notice")).to_contain_text("Usunięto ligę „Liga Kolejna 2”")
 
 
 def test_admin_changes_retention_days_with_validation_and_the_recalculate_option(ui):

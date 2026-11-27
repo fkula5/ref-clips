@@ -19,7 +19,7 @@ A tool for basketball referees and coaches for **analysing referee decisions in 
 |---|---|---|
 | **Referee** | member of a training group | uploads matches, marks and describes their own situations, responds to comments, browses the library |
 | **Coach** | observer / instructor | points out situations to describe, rates, comments, publishes clips to the library, manages the category dictionary and the assessment sheet elements |
-| **Admin** | group leader | manages accounts and roles, retention and disk (the dictionaries are shared with coaches) |
+| **Admin** | group leader | manages accounts and roles, retention and disk (the dictionaries, including leagues, are shared with coaches) |
 
 Referee functions in a match crew: **CC** (first referee), **U1** (second), **U2** (optional third).
 
@@ -48,7 +48,7 @@ Priority: **M** = must be in the MVP · **S** = worth having · **P** = later (o
 | M-03 | Editing and deleting a match (with its recordings and clips) | ✅ | |
 | M-04 | Match list on the home page | ✅ | |
 | M-05 | Dictionary of referees (people repeatedly chosen for crews) | ✅ (created automatically) | |
-| M-06 | Dictionary of league levels (a list instead of free text) | ⬜ | |
+| M-06 | Dictionary of league levels (a list instead of free text): the „Ligi” admin tab (admins and coaches) and a list-only league field in the match form; see README, „Administrator panel” | ✅ | |
 | M-07 | Match scoresheet („Protokół”): on the match page, up to 10 files per match (PDF, JPEG, PNG, WebP, HEIC/HEIF; 20 MB each; type checked by the file's magic bytes). Uploaded from a phone too (camera or photos); the crew's referees, coaches and admins upload and delete (with confirmation), every logged-in user views and downloads. Images show as thumbnails, PDF opens in a new tab, HEIC is a download tile. The match list marks matches that have one; deleting the match deletes the files. Not in public share links or training sets. Details: `docs/match-scoresheet.md` | ✅ | |
 
 ### 4.2 Recordings

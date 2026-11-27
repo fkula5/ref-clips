@@ -167,7 +167,7 @@ def test_coach_reaches_the_admin_dictionaries_from_the_phone_menu(ui):
     toggle(page).tap()
     page.locator("#site-nav").get_by_role("link", name="Administracja").tap()
     page.wait_for_url("**/admin/categories")
-    for path in ("/admin/categories", "/admin/sheet-elements"):
+    for path in ("/admin/categories", "/admin/sheet-elements", "/admin/leagues"):
         page.goto(path)
         page.wait_for_load_state("networkidle")
         result = overflow(page)

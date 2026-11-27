@@ -322,6 +322,17 @@ class Category(Base):
         return [a.strip() for a in self.aliases.split(",") if a.strip()]
 
 
+class League(Base):
+    """The managed list of leagues. `Match.level` stays text (no foreign key); renaming a league rewrites it."""
+    __tablename__ = "leagues"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(100), unique=True)
+    position: Mapped[int] = mapped_column(Integer, default=100)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+
 class Clip(Base):
     """`described_at = None` means undescribed; `described_by_id` is NULL for clips described before it was recorded."""
     __tablename__ = "clips"

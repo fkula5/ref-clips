@@ -225,6 +225,8 @@ DICTIONARY_ROUTES = [
     ("get", "/admin/sheet-elements"), ("post", "/admin/sheet-elements"),
     ("post", "/admin/sheet-elements/1/update"), ("post", "/admin/sheet-elements/1/active"),
     ("post", "/admin/sheet-elements/1/move"), ("post", "/admin/sheet-elements/1/delete"),
+    ("get", "/admin/leagues"), ("post", "/admin/leagues"), ("post", "/admin/leagues/1/update"),
+    ("post", "/admin/leagues/1/active"), ("post", "/admin/leagues/1/move"), ("post", "/admin/leagues/1/delete"),
 ]
 ADMIN_ROUTES = [("get", "/admin"), *ADMIN_ONLY_ROUTES, *DICTIONARY_ROUTES]
 

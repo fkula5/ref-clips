@@ -12,7 +12,7 @@ from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 from starlette.background import BackgroundTask
 
-from app import flash, permissions, self_assessment_pdf, self_assessments, share
+from app import flash, leagues, permissions, self_assessment_pdf, self_assessments, share
 from app.auth import current_user, require
 from app.db import get_db
 from app.loaders import get_match
@@ -58,7 +58,7 @@ def render_form(request: Request, db: Session, sa: SelfAssessment, *, values: di
                 status_code: int = 200):
     """After a failed save `values` is what the user typed; it is shown instead of the stored text."""
     return render(request, "self_assessment_form.html", status_code=status_code, sa=sa, match=sa.match,
-                  h=self_assessments.header(sa), questions=self_assessments.QUESTIONS,
+                  h=self_assessments.header(sa), league_names=leagues.active_names(db), questions=self_assessments.QUESTIONS,
                   rows=self_assessments.ordered(sa, order), values={**self_assessments.form_values(sa), **(values or {})},
                   errors=errors or [], error_notice=notice, unsaved=bool(errors) and not notice,
                   hints=self_assessments.clip_hint(sa), available=self_assessments.available_clips(db, sa),

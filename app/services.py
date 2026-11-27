@@ -382,11 +382,6 @@ def transcode_queue(db: Session) -> dict[int, int]:
     return queue
 
 
-def known_levels(db: Session) -> list[str]:
-    levels = {lv.strip() for lv in db.scalars(select(Match.level).distinct()) if lv and lv.strip()}
-    return sorted(levels, key=lambda lv: (normalize(lv), lv))
-
-
 def period_for(marks: list[PeriodMark], time_sec: float) -> str | None:
     current = None
     for mark in sorted(marks, key=lambda m: m.time_sec):
